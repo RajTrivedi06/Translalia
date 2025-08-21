@@ -11,7 +11,7 @@ function renderContentWithCitations(
   content: string,
   onClickId: (id: string) => void
 ) {
-  const parts: (string | JSX.Element)[] = [];
+  const parts: React.ReactNode[] = [];
   const regex = /\[v:([0-9a-fA-F-]{36})\]/g;
   let last = 0;
   let m: RegExpExecArray | null;

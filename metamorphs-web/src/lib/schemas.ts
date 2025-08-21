@@ -15,7 +15,7 @@ export const createMessageSchema = z.object({
   projectId: z.string().uuid(),
   content: z.string().min(1),
   role: z.enum(["user", "assistant", "system"]).optional(),
-  meta: z.record(z.any()).optional(),
+  meta: z.record(z.string(), z.any()).optional(),
 });
 
 export const createVersionSchema = z.object({
@@ -23,7 +23,7 @@ export const createVersionSchema = z.object({
   title: z.string().trim().min(1).max(120),
   lines: z.array(z.string()).min(1),
   tags: z.array(z.string()).optional(),
-  meta: z.record(z.any()).optional(),
+  meta: z.record(z.string(), z.any()).optional(),
   summary: z.string().optional(),
 });
 

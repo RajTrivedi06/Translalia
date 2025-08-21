@@ -1,20 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 
 function makeServerClientWithAuth(req: NextRequest) {
   const authHeader =
     req.headers.get("authorization") ?? req.headers.get("Authorization") ?? "";
-  const cookieStore = cookies();
+  const cookieAdapter: {
+    get: (name: string) => string | undefined;
+    set: (
+      name: string,
+      value: string,
+      options?: Record<string, unknown>
+    ) => void;
+    remove: (name: string, options?: Record<string, unknown>) => void;
+  } = {
+    get: (key: string) => req.cookies.get(key)?.value,
+    set: () => {},
+    remove: () => {},
+  };
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
-      cookies: {
-        get: (key: string) => cookieStore.get(key)?.value,
-        set: () => {},
-        remove: () => {},
-      },
+      cookies: cookieAdapter,
       global: authHeader ? { headers: { Authorization: authHeader } } : {},
     }
   );
