@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: 255 255 255;
+  --fg: 17 24 39;
+  --header-h: 56px; /* keep header height consistent */
+}
+
+:root.dark {
+  --bg: 17 24 39;
+  --fg: 229 231 235;
+}
+
+/* Use min-height/viewport and prevent accidental horizontal scroll */
+html,
+body {
+  min-height: 100%;
+}
+body {
+  min-height: 100vh;
+  background-color: rgb(var(--bg));
+  color: rgb(var(--fg));
+  overflow-x: hidden;
+}

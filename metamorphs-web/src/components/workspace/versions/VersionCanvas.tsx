@@ -1,0 +1,212 @@
+"use client";
+
+import React from "react";
+import ReactFlow, {
+  Background,
+  Controls,
+  type Node,
+  type Edge,
+  type ReactFlowInstance,
+} from "reactflow";
+import "reactflow/dist/style.css";
+import { VersionCardNode } from "./nodes/VersionCardNode";
+import { CompareCardNode } from "./nodes/CompareCardNode";
+import { useWorkspace } from "@/store/workspace";
+import { Wand2 } from "lucide-react";
+import { supabase } from "@/lib/supabaseClient";
+
+export function VersionCanvas() {
+  const nodeTypes = React.useMemo(
+    () => ({ versionCard: VersionCardNode, compareCard: CompareCardNode }),
+    []
+  );
+  const versions = useWorkspace((s) => s.versions);
+  const compares = useWorkspace((s) => s.compares);
+  const setVersionPos = useWorkspace((s) => s.setVersionPos);
+  const tidyPositions = useWorkspace((s) => s.tidyPositions);
+  const projectId = useWorkspace((s) => s.projectId);
+  const addCompare = useWorkspace((s) => s.addCompare);
+  const setActiveCompare = useWorkspace((s) => s.setActiveCompare);
+  const setCompareOpen = useWorkspace((s) => s.setCompareOpen);
+  const highlightVersionId = useWorkspace((s) => s.highlightVersionId);
+  const rfRef = React.useRef<ReactFlowInstance | null>(null);
+
+  const [selectedVersionIds, setSelectedVersionIds] = React.useState<string[]>(
+    []
+  );
+  const canCompare = selectedVersionIds.length === 2;
+
+  const savePositions = React.useCallback(async () => {
+    if (!projectId) return;
+    const payload = versions
+      .filter((v) => !!v.pos)
+      .map((v) => ({ id: v.id, pos: v.pos! }));
+    if (!payload.length) return;
+    await fetch("/api/versions/positions", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId, positions: payload }),
+    });
+  }, [projectId, versions]);
+
+  const nodes = React.useMemo<Node[]>(() => {
+    const versionNodes = versions.map((v, i) => ({
+      id: v.id,
+      type: "versionCard" as const,
+      position: v.pos ?? { x: 120, y: 40 + i * 200 },
+      data: { id: v.id, highlight: highlightVersionId === v.id },
+    }));
+    const compareNodes = compares.map((c, i) => ({
+      id: c.id,
+      type: "compareCard" as const,
+      position: { x: 420, y: 160 + i * 220 },
+      data: { leftId: c.leftVersionId, rightId: c.rightVersionId },
+    }));
+    return [...versionNodes, ...compareNodes];
+  }, [versions, compares, highlightVersionId]);
+
+  const edges = React.useMemo<Edge[]>(
+    () =>
+      compares.flatMap((c) => [
+        {
+          id: `${c.leftVersionId}->${c.id}`,
+          source: c.leftVersionId,
+          target: c.id,
+        },
+        {
+          id: `${c.rightVersionId}->${c.id}`,
+          source: c.rightVersionId,
+          target: c.id,
+        },
+      ]),
+    [compares]
+  );
+
+  const onNodeDragStop = React.useCallback(
+    (_e: unknown, node: Node) => {
+      if (node.type === "versionCard") setVersionPos(node.id, node.position);
+      // debounce persist
+      clearTimeout((window as unknown as { __posTimer?: number }).__posTimer);
+      (window as unknown as { __posTimer?: number }).__posTimer =
+        window.setTimeout(savePositions, 350);
+    },
+    [setVersionPos, savePositions]
+  );
+
+  const onSelectionChange = React.useCallback(
+    ({
+      nodes,
+    }: {
+      nodes: Array<{ id: string; type?: string; selected?: boolean }>;
+    }) => {
+      const ids = nodes
+        .filter((n) => n.type === "versionCard" && n.selected)
+        .map((n) => n.id);
+      setSelectedVersionIds(ids);
+    },
+    []
+  );
+
+  React.useEffect(() => {
+    if (!highlightVersionId) return;
+    const inst = rfRef.current;
+    if (inst) {
+      try {
+        inst.fitView({
+          nodes: [{ id: highlightVersionId }],
+          padding: 0.2,
+          duration: 500,
+        });
+      } catch {
+        // ignore
+      }
+    }
+    const timer = window.setTimeout(() => {
+      useWorkspace.getState().setHighlightVersionId(undefined);
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [highlightVersionId]);
+
+  async function onCompareClick() {
+    if (!projectId || !canCompare) return;
+    const [leftId, rightId] = selectedVersionIds;
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    const res = await fetch("/api/compares", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
+      body: JSON.stringify({
+        projectId,
+        leftId,
+        rightId,
+        lens: "meaning",
+        granularity: "line",
+      }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      alert(json?.error ?? "Failed to create compare");
+      return;
+    }
+    addCompare({
+      id: json.compare.id,
+      leftVersionId: json.compare.left_version_id,
+      rightVersionId: json.compare.right_version_id,
+      lens: json.compare.lens,
+      granularity: json.compare.granularity,
+    });
+    setActiveCompare({ leftId, rightId });
+    setCompareOpen(true);
+  }
+
+  return (
+    <div className="relative h-full w-full overflow-hidden">
+      <div className="absolute right-3 top-3 z-10 flex items-center gap-2">
+        <button
+          onClick={tidyPositions}
+          className="inline-flex items-center gap-1 rounded-md border bg-white px-2 py-1 text-xs shadow"
+          aria-label="Tidy graph"
+        >
+          <Wand2 className="h-3.5 w-3.5" /> Tidy
+        </button>
+        <button
+          type="button"
+          onClick={onCompareClick}
+          disabled={!canCompare}
+          className="inline-flex items-center gap-1 rounded-md border bg-white px-2 py-1 text-xs shadow disabled:opacity-50"
+          title={
+            canCompare
+              ? `Compare ${selectedVersionIds[0]} vs ${selectedVersionIds[1]}`
+              : "Select two version nodes"
+          }
+        >
+          Compare
+        </button>
+      </div>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        fitView
+        proOptions={{ hideAttribution: true }}
+        panOnScroll
+        zoomOnDoubleClick={false}
+        minZoom={0.5}
+        maxZoom={1.5}
+        onNodeDragStop={onNodeDragStop}
+        onSelectionChange={
+          onSelectionChange as unknown as (params: unknown) => void
+        }
+        onInit={(inst) => {
+          rfRef.current = inst;
+        }}
+      >
+        <Background />
+        <Controls />
+      </ReactFlow>
+    </div>
+  );
+}
