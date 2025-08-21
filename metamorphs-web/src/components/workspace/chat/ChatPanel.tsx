@@ -6,6 +6,8 @@ import ThreadsDrawer from "./ThreadsDrawer";
 import { useWorkspace } from "@/store/workspace";
 import { useThreadMessages } from "@/hooks/useThreadMessages";
 import { supabase } from "@/lib/supabaseClient";
+import { useInterviewFlow } from "@/hooks/useInterviewFlow";
+import { PlanPreviewSheet } from "../flow/PlanPreviewSheet";
 
 function renderContentWithCitations(
   content: string,
@@ -39,6 +41,14 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
   const [cites, setCites] = React.useState<string[]>([]);
   const addVersion = useWorkspace((s) => s.addVersion);
   const threadId = useWorkspace((s) => s.threadId);
+  const { peek, start, answer, confirm } = useInterviewFlow(threadId);
+  const phase = peek.data?.phase ?? "welcome";
+  const nextQ = peek.data?.nextQuestion ?? null;
+  const snapshot = peek.data?.snapshot ?? {
+    poem_excerpt: "",
+    collected_fields: {} as Record<string, unknown>,
+  };
+  const [planOpen, setPlanOpen] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement | null>(null);
   const versions = useWorkspace((s) => s.versions);
   const setActiveVersionId = useWorkspace((s) => s.setActiveVersionId);
@@ -79,6 +89,12 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
       <ThreadsDrawer projectId={projectId} />
       <div className="border-b p-3 font-semibold">Chat</div>
       <div className="flex-1 overflow-auto p-2 space-y-2 text-sm">
+        {phase === "welcome" ? (
+          <div className="mb-2 rounded-md border p-3 text-sm text-neutral-600 dark:text-neutral-300">
+            <b>Welcome to Metamorphs.</b> Paste your poem or one stanza in a
+            single message. Then answer a few short questions.
+          </div>
+        ) : null}
         {!threadId ? (
           <p className="text-neutral-500">
             Create or select a chat to start messaging.
@@ -209,6 +225,60 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
             alert(json?.error || "Failed to send");
             return;
           }
+          // Drive interview flow after user message is stored
+          try {
+            if (phase === "welcome") {
+              const started = (await start.mutateAsync(value)) as {
+                phase: string;
+                nextQuestion: { id: string; prompt: string };
+              };
+              if (started?.nextQuestion?.prompt) {
+                await fetch(`/api/chat/${threadId}/messages`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    ...(accessToken
+                      ? { Authorization: `Bearer ${accessToken}` }
+                      : {}),
+                  },
+                  body: JSON.stringify({
+                    projectId,
+                    role: "system",
+                    content: started.nextQuestion.prompt,
+                  }),
+                });
+              }
+            } else if (phase === "interviewing" && nextQ) {
+              const answered = (await answer.mutateAsync({
+                questionId: nextQ.id,
+                answer: value,
+              })) as {
+                phase: string;
+                nextQuestion?: { id: string; prompt: string } | null;
+              };
+              if (answered?.nextQuestion?.prompt) {
+                await fetch(`/api/chat/${threadId}/messages`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    ...(accessToken
+                      ? { Authorization: `Bearer ${accessToken}` }
+                      : {}),
+                  },
+                  body: JSON.stringify({
+                    projectId,
+                    role: "system",
+                    content: answered.nextQuestion.prompt,
+                  }),
+                });
+              }
+              if (answered?.phase === "await_plan_confirm") {
+                setPlanOpen(true);
+              }
+            }
+          } catch (err) {
+            // ignore and proceed; errors surface via toasts elsewhere
+          }
           setText("");
           setCites([]);
           await refetch();
@@ -237,6 +307,17 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
           </button>
         </div>
       </form>
+      <PlanPreviewSheet
+        open={planOpen}
+        onOpenChange={setPlanOpen}
+        poem={String(snapshot.poem_excerpt || "")}
+        fields={snapshot.collected_fields || {}}
+        onLooksGood={async () => {
+          try {
+            await confirm.mutateAsync();
+          } catch {}
+        }}
+      />
     </div>
   );
 }
