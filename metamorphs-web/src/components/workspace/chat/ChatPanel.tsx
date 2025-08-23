@@ -41,7 +41,8 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
   const [cites, setCites] = React.useState<string[]>([]);
   const addVersion = useWorkspace((s) => s.addVersion);
   const threadId = useWorkspace((s) => s.threadId);
-  const { peek, start, answer, confirm } = useInterviewFlow(threadId);
+  const { peek, start, answer, confirm, enhancer, translate } =
+    useInterviewFlow(threadId);
   const phase = peek.data?.phase ?? "welcome";
   const nextQ = peek.data?.nextQuestion ?? null;
   const snapshot = peek.data?.snapshot ?? {
@@ -312,9 +313,36 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
         onOpenChange={setPlanOpen}
         poem={String(snapshot.poem_excerpt || "")}
         fields={snapshot.collected_fields || {}}
+        onBuildPlan={async () => {
+          if (process.env.NEXT_PUBLIC_FEATURE_ENHANCER === "1") {
+            try {
+              await enhancer.mutateAsync();
+            } catch {}
+          }
+        }}
         onLooksGood={async () => {
           try {
             await confirm.mutateAsync();
+            if (process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR === "1") {
+              const t = await translate.mutateAsync();
+              if (t?.result && !t.result.blocked) {
+                const { versionA, notes } = t.result;
+                const content = `${versionA}\n\nNOTES:\n${notes
+                  .map((n) => `- ${n}`)
+                  .join("\n")}`;
+                await fetch(`/api/chat/${threadId}/messages`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    projectId,
+                    role: "assistant",
+                    content,
+                  }),
+                });
+              }
+            }
           } catch {}
         }}
       />

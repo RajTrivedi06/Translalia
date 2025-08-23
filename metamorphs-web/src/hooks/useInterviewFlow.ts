@@ -80,5 +80,36 @@ export function useInterviewFlow(threadId?: string) {
       qc.invalidateQueries({ queryKey: ["flow_peek", threadId] }),
   });
 
-  return { peek, start, answer, confirm };
+  const enhancer = useMutation({
+    mutationFn: async () => {
+      const r = await fetch(`/api/enhancer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ threadId }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j?.error || "enhancer failed");
+      return j as { ok: boolean; plan: unknown };
+    },
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["flow_peek", threadId] }),
+  });
+
+  const translate = useMutation({
+    mutationFn: async () => {
+      const r = await fetch(`/api/translate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ threadId }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j?.error || "translate failed");
+      return j as {
+        ok: boolean;
+        result: { versionA: string; notes: string[]; blocked: boolean };
+      };
+    },
+  });
+
+  return { peek, start, answer, confirm, enhancer, translate };
 }

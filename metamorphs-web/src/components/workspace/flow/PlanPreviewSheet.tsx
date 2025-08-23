@@ -7,12 +7,16 @@ export function PlanPreviewSheet({
   poem,
   fields,
   onLooksGood,
+  plan,
+  onBuildPlan,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   poem: string;
   fields: Record<string, unknown>;
   onLooksGood: () => Promise<void>;
+  plan?: unknown;
+  onBuildPlan?: () => Promise<void>;
 }) {
   return (
     <div className={`fixed inset-0 z-50 ${open ? "" : "hidden"}`}>
@@ -66,6 +70,16 @@ export function PlanPreviewSheet({
           >
             Looks good
           </button>
+          {!plan && onBuildPlan ? (
+            <button
+              className="rounded-md border px-4 py-2"
+              onClick={async () => {
+                await onBuildPlan?.();
+              }}
+            >
+              Build plan
+            </button>
+          ) : null}
           <button
             className="rounded-md border px-4 py-2"
             onClick={() => onOpenChange(false)}
