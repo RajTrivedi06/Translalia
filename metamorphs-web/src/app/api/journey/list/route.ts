@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { headers } from "next/headers";
+import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { supabaseServer } from "@/lib/supabaseServer";
 
@@ -6,6 +8,9 @@ const Q = z.object({
   projectId: z.string().uuid(),
   limit: z.coerce.number().int().min(1).max(50).default(20),
 });
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 export async function GET(req: Request) {
   try {
@@ -22,7 +27,16 @@ export async function GET(req: Request) {
     }
     const { projectId, limit } = parsed.data;
 
-    const supabase = await supabaseServer();
+    // Prefer Bearer token from Authorization header, else fall back to cookie-based client
+    const hdrs = await headers();
+    const auth = hdrs.get("authorization") || "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : undefined;
+
+    const supabase = token
+      ? createClient(supabaseUrl, supabaseAnonKey, {
+          global: { headers: { Authorization: `Bearer ${token}` } },
+        })
+      : await supabaseServer();
     const { data, error } = await supabase
       .from("journey_items")
       .select("id, kind, summary, meta, created_at")
