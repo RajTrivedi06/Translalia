@@ -34,12 +34,14 @@ export function WorkspaceShell({
   React.useEffect(() => {
     if (!projectId) return;
     (async () => {
-      const [v, j, c] = await Promise.all([
-        supabase
-          .from("versions")
-          .select("id, title, lines, tags, meta, created_at")
-          .eq("project_id", projectId)
-          .order("created_at", { ascending: true }),
+      const [th, j, c] = await Promise.all([
+        threadId
+          ? supabase
+              .from("chat_threads")
+              .select("accepted_version_id")
+              .eq("id", threadId)
+              .single()
+          : Promise.resolve({ data: null, error: null }),
         supabase
           .from("journey_items")
           .select(
@@ -55,8 +57,33 @@ export function WorkspaceShell({
           .eq("project_id", projectId)
           .order("created_at", { ascending: true }),
       ]);
-      if (!v.error && Array.isArray(v.data))
-        setVersions(v.data as unknown as Version[]);
+
+      // Load versions: include all project versions for now, but ensure only one accepted draft node is present for the active thread
+      let versionsRows: Version[] = [];
+      {
+        const base = await supabase
+          .from("versions")
+          .select("id, title, lines, tags, meta, created_at")
+          .eq("project_id", projectId)
+          .order("created_at", { ascending: true });
+        if (!base.error && Array.isArray(base.data)) {
+          versionsRows = base.data as unknown as Version[];
+        }
+      }
+      const acceptedId = (th as any)?.data?.accepted_version_id as
+        | string
+        | null;
+      if (acceptedId) {
+        // Keep only the canonical accepted version node for this thread
+        versionsRows = versionsRows.filter((v) => {
+          if (v.id === acceptedId) return true;
+          // Drop other versions titled 'Accepted draft' to avoid duplicates across threads
+          if ((v.title || "").toLowerCase() === "accepted draft") return false;
+          return true;
+        });
+      }
+
+      setVersions(versionsRows);
       if (!j.error && Array.isArray(j.data))
         setJourney(j.data as unknown as JourneyItem[]);
       if (!c.error && Array.isArray(c.data)) {
@@ -80,7 +107,7 @@ export function WorkspaceShell({
         setCompares(mapped);
       }
     })();
-  }, [projectId, setVersions, setJourney, setCompares]);
+  }, [projectId, threadId, setVersions, setJourney, setCompares]);
 
   return (
     // Fill the <main> area completely; no card/chrome around the panels
