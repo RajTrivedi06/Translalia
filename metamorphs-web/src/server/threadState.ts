@@ -38,7 +38,19 @@ export async function getThreadState(threadId: string): Promise<SessionState> {
     .select("state")
     .eq("id", threadId)
     .single();
-  if (error) throw error;
+  if (error) {
+    const message = (error as { message?: string }).message || "Unknown error";
+    // Provide a clearer error when the DB schema is missing the expected column
+    if (
+      message.includes("column chat_threads.state does not exist") ||
+      message.includes("42703")
+    ) {
+      throw new Error(
+        "Database schema missing column 'chat_threads.state' (jsonb). Apply migration: ALTER TABLE public.chat_threads ADD COLUMN IF NOT EXISTS state jsonb NOT NULL DEFAULT '{}'::jsonb;"
+      );
+    }
+    throw error;
+  }
   const raw = (data?.state ?? {}) as unknown;
   const parsed = SessionStateSchema.safeParse(raw);
   if (!parsed.success) return SessionStateSchema.parse({}); // start clean if invalid

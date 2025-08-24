@@ -111,5 +111,51 @@ export function useInterviewFlow(threadId?: string) {
     },
   });
 
-  return { peek, start, answer, confirm, enhancer, translate };
+  const translatorPreview = useMutation({
+    mutationFn: async () => {
+      const r = await fetch(`/api/translator/preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ threadId }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j?.error || "preview failed");
+      return j as {
+        ok: boolean;
+        preview: {
+          lines: string[];
+          notes: string[];
+          line_policy: "line-preserving" | "free";
+        };
+      };
+    },
+  });
+
+  const acceptLines = useMutation({
+    mutationFn: async (sel: { index: number; text: string }[]) => {
+      const r = await fetch(`/api/translator/accept-lines`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ threadId, selections: sel }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j?.error || "accept-lines failed");
+      return j as { ok: boolean };
+    },
+    onSuccess: () => {
+      // Refresh activity (journey) after an accept
+      qc.invalidateQueries({ queryKey: ["journey"] });
+    },
+  });
+
+  return {
+    peek,
+    start,
+    answer,
+    confirm,
+    enhancer,
+    translate,
+    translatorPreview,
+    acceptLines,
+  };
 }

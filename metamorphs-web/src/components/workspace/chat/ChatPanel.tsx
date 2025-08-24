@@ -8,6 +8,9 @@ import { useThreadMessages } from "@/hooks/useThreadMessages";
 import { supabase } from "@/lib/supabaseClient";
 import { useInterviewFlow } from "@/hooks/useInterviewFlow";
 import { PlanPreviewSheet } from "../flow/PlanPreviewSheet";
+import { TranslatorPreview } from "../translate/TranslatorPreview";
+import { routeIntent } from "@/server/flow/intent";
+import { softReply } from "@/server/flow/softReplies";
 
 function renderContentWithCitations(
   content: string,
@@ -41,8 +44,16 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
   const [cites, setCites] = React.useState<string[]>([]);
   const addVersion = useWorkspace((s) => s.addVersion);
   const threadId = useWorkspace((s) => s.threadId);
-  const { peek, start, answer, confirm, enhancer, translate } =
-    useInterviewFlow(threadId);
+  const {
+    peek,
+    start,
+    answer,
+    confirm,
+    enhancer,
+    translate,
+    translatorPreview,
+    acceptLines,
+  } = useInterviewFlow(threadId);
   const phase = peek.data?.phase ?? "welcome";
   const nextQ = peek.data?.nextQuestion ?? null;
   const snapshot = peek.data?.snapshot ?? {
@@ -50,6 +61,14 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
     collected_fields: {} as Record<string, unknown>,
   };
   const [planOpen, setPlanOpen] = React.useState(false);
+  const [translatorOpen, setTranslatorOpen] = React.useState(false);
+  const [translatorData, setTranslatorData] = React.useState<{
+    lines: string[];
+    notes: string[];
+  } | null>(null);
+  const [translatorError, setTranslatorError] = React.useState<string | null>(
+    null
+  );
   const inputRef = React.useRef<HTMLInputElement | null>(null);
   const versions = useWorkspace((s) => s.versions);
   const setActiveVersionId = useWorkspace((s) => s.setActiveVersionId);
@@ -78,6 +97,30 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
   React.useEffect(() => {
     inputRef.current?.focus();
   }, [threadId]);
+
+  React.useEffect(() => {
+    (async () => {
+      if (
+        peek.data?.phase === "translating" &&
+        !translatorData &&
+        !translatorPreview.isPending &&
+        process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR === "1"
+      ) {
+        try {
+          const pv = await translatorPreview.mutateAsync();
+          setTranslatorData({
+            lines: pv.preview.lines,
+            notes: pv.preview.notes,
+          });
+          setTranslatorOpen(true);
+          setTranslatorError(null);
+        } catch (e) {
+          setTranslatorError("Preview failed. Please retry.");
+        }
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [peek.data?.phase]);
 
   function toggleCite(id: string) {
     setCites((prev) =>
@@ -118,6 +161,68 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
           ))
         )}
       </div>
+      {process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR === "1" &&
+        translatorOpen &&
+        translatorData && (
+          <div className="mb-3 rounded-lg border p-3 bg-neutral-50 dark:bg-neutral-900/40">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold">Translator preview</h3>
+              <button
+                className="text-xs underline"
+                onClick={() => setTranslatorOpen(false)}
+              >
+                Hide
+              </button>
+            </div>
+            {translatorError ? (
+              <div className="text-sm text-red-600 flex items-center gap-2">
+                <span>{translatorError}</span>
+                <button
+                  className="text-xs underline"
+                  onClick={async () => {
+                    try {
+                      const pv = await translatorPreview.mutateAsync();
+                      setTranslatorData({
+                        lines: pv.preview.lines,
+                        notes: pv.preview.notes,
+                      });
+                      setTranslatorError(null);
+                    } catch {
+                      setTranslatorError("Preview failed. Please retry.");
+                    }
+                  }}
+                >
+                  Retry
+                </button>
+              </div>
+            ) : null}
+            <TranslatorPreview
+              lines={translatorData.lines}
+              notes={translatorData.notes}
+              disabled={acceptLines.isPending}
+              onAccept={async (sel) => {
+                try {
+                  const before = sel.length;
+                  const res = await acceptLines.mutateAsync(sel);
+                  if (res?.ok) {
+                    // eslint-disable-next-line no-alert
+                    alert(`Accepted ${before} line(s)`);
+                    const pv = await translatorPreview.mutateAsync();
+                    setTranslatorData({
+                      lines: pv.preview.lines,
+                      notes: pv.preview.notes,
+                    });
+                  }
+                } catch (e) {
+                  // eslint-disable-next-line no-alert
+                  alert(
+                    "Could not accept lines (may be moderated). Please review and try again."
+                  );
+                }
+              }}
+            />
+          </div>
+        )}
       {threadId ? (
         <div className="flex flex-wrap gap-2 border-t p-2">
           <span className="text-xs text-neutral-500">Cite version:</span>
@@ -226,9 +331,26 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
             alert(json?.error || "Failed to send");
             return;
           }
-          // Drive interview flow after user message is stored
+          // Intent routing
           try {
-            if (phase === "welcome") {
+            const routed = routeIntent(value, phase);
+            let intent = routed.intent;
+            const confidence = routed.confidence;
+            if (
+              confidence === "low" &&
+              process.env.NEXT_PUBLIC_FEATURE_ROUTER === "1"
+            ) {
+              const r = await fetch(`/api/flow/intent`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message: value, phase }),
+              });
+              const j = await r.json().catch(() => ({}));
+              if (j?.intent && typeof j.intent === "string")
+                intent = j.intent as typeof intent;
+            }
+
+            if (intent === "poem_input" && phase === "welcome") {
               const started = (await start.mutateAsync(value)) as {
                 phase: string;
                 nextQuestion: { id: string; prompt: string };
@@ -249,7 +371,11 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
                   }),
                 });
               }
-            } else if (phase === "interviewing" && nextQ) {
+            } else if (
+              intent === "interview_answer" &&
+              phase === "interviewing" &&
+              nextQ
+            ) {
               const answered = (await answer.mutateAsync({
                 questionId: nextQ.id,
                 answer: value,
@@ -276,6 +402,29 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
               if (answered?.phase === "await_plan_confirm") {
                 setPlanOpen(true);
               }
+            } else if (
+              intent === "looks_good" &&
+              phase === "await_plan_confirm"
+            ) {
+              setPlanOpen(true);
+            } else {
+              const reply = softReply(intent, phase);
+              if (reply) {
+                await fetch(`/api/chat/${threadId}/messages`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    ...(accessToken
+                      ? { Authorization: `Bearer ${accessToken}` }
+                      : {}),
+                  },
+                  body: JSON.stringify({
+                    projectId,
+                    role: "assistant",
+                    content: reply,
+                  }),
+                });
+              }
             }
           } catch (err) {
             // ignore and proceed; errors surface via toasts elsewhere
@@ -298,6 +447,29 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
             ref={inputRef}
             disabled={!threadId}
           />
+          {process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR === "1" ? (
+            <button
+              type="button"
+              className="rounded-lg border px-2 py-1 text-xs"
+              onClick={async () => {
+                setTranslatorOpen(true);
+                if (!translatorData) {
+                  try {
+                    const pv = await translatorPreview.mutateAsync();
+                    setTranslatorData({
+                      lines: pv.preview.lines,
+                      notes: pv.preview.notes,
+                    });
+                    setTranslatorError(null);
+                  } catch {
+                    setTranslatorError("Preview failed. Please retry.");
+                  }
+                }
+              }}
+            >
+              Show translator
+            </button>
+          ) : null}
           <button
             type="submit"
             className="rounded-lg bg-neutral-900 px-3 py-1.5 text-white"
@@ -324,24 +496,13 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
           try {
             await confirm.mutateAsync();
             if (process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR === "1") {
-              const t = await translate.mutateAsync();
-              if (t?.result && !t.result.blocked) {
-                const { versionA, notes } = t.result;
-                const content = `${versionA}\n\nNOTES:\n${notes
-                  .map((n) => `- ${n}`)
-                  .join("\n")}`;
-                await fetch(`/api/chat/${threadId}/messages`, {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                  },
-                  body: JSON.stringify({
-                    projectId,
-                    role: "assistant",
-                    content,
-                  }),
-                });
-              }
+              const pv = await translatorPreview.mutateAsync();
+              setTranslatorData({
+                lines: pv.preview.lines,
+                notes: pv.preview.notes,
+              });
+              setTranslatorOpen(true);
+              setTranslatorError(null);
             }
           } catch {}
         }}

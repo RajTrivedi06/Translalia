@@ -13,6 +13,8 @@ import { VersionCardNode } from "./nodes/VersionCardNode";
 import { CompareCardNode } from "./nodes/CompareCardNode";
 import { useWorkspace } from "@/store/workspace";
 import { Wand2 } from "lucide-react";
+import { useJourney } from "@/hooks/useJourney";
+import { JourneyList } from "@/components/workspace/journey/JourneyList";
 import { supabase } from "@/lib/supabaseClient";
 
 export function VersionCanvas() {
@@ -30,6 +32,11 @@ export function VersionCanvas() {
   const setCompareOpen = useWorkspace((s) => s.setCompareOpen);
   const highlightVersionId = useWorkspace((s) => s.highlightVersionId);
   const rfRef = React.useRef<ReactFlowInstance | null>(null);
+  const {
+    data: journeyData,
+    isLoading: journeyLoading,
+    error: journeyError,
+  } = useJourney(projectId, 10);
 
   const [selectedVersionIds, setSelectedVersionIds] = React.useState<string[]>(
     []
@@ -207,6 +214,17 @@ export function VersionCanvas() {
         <Background />
         <Controls />
       </ReactFlow>
+      {/* Activity overlay (top-left) */}
+      <div className="absolute left-3 top-3 z-10 max-h-[40%] w-72 overflow-y-auto rounded-md border bg-white/90 p-2 shadow">
+        <div className="mb-1 text-xs font-semibold">Activity</div>
+        {journeyLoading ? (
+          <div className="text-xs">Loading…</div>
+        ) : journeyError ? (
+          <div className="text-xs text-red-600">Failed to load</div>
+        ) : (
+          <JourneyList items={journeyData?.items || []} />
+        )}
+      </div>
     </div>
   );
 }
