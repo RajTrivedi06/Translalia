@@ -8,3 +8,4 @@
   - enhancer: `enhancer:<stableHash({ poem, fields })>`; TTL 3600s.
   - translator preview: `translate_preview:<stableHash(threadId + snapshot)>`; TTL 3600s.
 - Budget attribution: per project_id where available; otherwise per user_id.
+- Journey Activity: no caching (RLS lists are user-specific and small; rely on query invalidations after actions).

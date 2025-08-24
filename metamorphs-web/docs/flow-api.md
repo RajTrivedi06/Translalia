@@ -41,3 +41,15 @@ curl -X POST http://localhost:3000/api/flow/confirm \
 - 404: { error: "Thread not found" }
 - 409: { error: "Not at plan gate" }
 - 500: { error }
+
+## Journey Activity (recent events)
+
+GET /api/journey/list?projectId=<PROJECT_UUID>&limit=20
+
+- Auth: supports Supabase auth cookies and `Authorization: Bearer <access_token>`.
+- 200: `{ ok: true, items: [{ id, kind, summary, meta, created_at }] }`
+- 400/500: `{ error }`
+
+Notes:
+
+- Items include `accept_line` per-line entries and a batch summary like “Accepted N line(s)”. The UI groups consecutive accepts from the same submit into one entry with a collapsible details section.
