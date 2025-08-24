@@ -18,3 +18,26 @@ curl -X POST http://localhost:3000/api/flow/answer \
 "questionId": "q1_target",
 "answer": "Moroccan Arabic, Casablanca urban register"
 }'
+
+## Peek (next question + phase)
+
+GET /api/flow/peek?threadId=<THREAD_UUID>
+
+- 200: { ok: true, phase, nextQuestion?: { id, prompt } | null, snapshot: { poem_excerpt, collected_fields } }
+- 400: { error: "threadId required" }
+- 404: { error: "Thread not found" }
+- 500: { error: string } (e.g., missing column guidance)
+
+## Confirm (move to translating)
+
+curl -X POST http://localhost:3000/api/flow/confirm \
+ -H "Content-Type: application/json" \
+ -d '{
+"threadId": "<THREAD_UUID>"
+}'
+
+- 200: { ok: true, phase: "translating" }
+- 400: { error }
+- 404: { error: "Thread not found" }
+- 409: { error: "Not at plan gate" }
+- 500: { error }

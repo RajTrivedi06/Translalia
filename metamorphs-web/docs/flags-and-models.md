@@ -17,3 +17,8 @@ This repo does not yet include a migrations directory; consider adopting the Sup
 - NEXT_PUBLIC_FEATURE_TRANSLATOR: 0/1
   Defaults (OpenAI-only): enhancer=gpt-4o-mini, translator=gpt-4o, embeddings=text-embedding-3-large.
   Keep flags OFF in prod until staging review passes.
+
+## API conventions
+
+- Error shape: `{ error: string | zodFlattened }` with appropriate HTTP status.
+- Auth: Accept Supabase cookies; prefer `Authorization: Bearer <access_token>` when available.
