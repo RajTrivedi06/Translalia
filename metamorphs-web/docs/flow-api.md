@@ -1,5 +1,7 @@
 # Flow API (dev smoke)
 
+Status: Phases 1–5 landed. Preview/instruct generate nodes with labels and Overview, nodes API is thread-scoped, sheet shows optimistic Overview, canvas renders from nodes API.
+
 ## Start
 
 curl -X POST http://localhost:3000/api/flow/start \
@@ -53,3 +55,31 @@ GET /api/journey/list?projectId=<PROJECT_UUID>&limit=20
 Notes:
 
 - Items include `accept_line` per-line entries and a batch summary like “Accepted N line(s)”. The UI groups consecutive accepts from the same submit into one entry with a collapsible details section.
+
+## Translator — Preview (Phase 2)
+
+POST /api/translator/preview
+
+- Auth: cookie and/or `Authorization: Bearer <access_token>`
+- Body: `{ threadId: uuid }`
+- Behavior:
+  - Allocates next label (A/B/C…)
+  - Inserts placeholder in `versions` with `project_id`, `meta.thread_id`, `meta.display_label`, `meta.status:"placeholder"`
+  - Calls LLM and updates row: `meta.status:"generated"`, `meta.overview:{ lines[], notes[] }`
+  - Returns `{ ok, versionId, displayLabel, preview }`
+- Failure hardening: returns 401 if unauthenticated; 500 with `UPDATE_FAILED_RLS` or `NO_OVERVIEW_PERSISTED` if RLS prevents update.
+
+## Translator — Instruct (Phase 4)
+
+POST /api/translator/instruct
+
+- Body: `{ threadId: uuid, instruction: string, citeVersionId?: uuid }`
+- Behavior: Like preview, but sets `meta.parent_version_id` and includes cited version text when provided.
+
+## Nodes API (Phase 2+)
+
+GET /api/versions/nodes?threadId=<THREAD_UUID>
+
+- Auth: cookie/Bearer
+- Response: `{ ok, threadIdEcho, count, nodes: [{ id, display_label, status, parent_version_id, overview, complete, created_at }] }`
+- DB filter: `filter("meta->>thread_id","eq",threadId)`

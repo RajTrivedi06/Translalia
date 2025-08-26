@@ -18,7 +18,14 @@ This repo does not yet include a migrations directory; consider adopting the Sup
   Defaults (OpenAI-only): enhancer=gpt-4o-mini, translator=gpt-4o, embeddings=text-embedding-3-large.
   Keep flags OFF in prod until staging review passes.
 
+## Phase flags (current)
+
+- Translator: ON in dev (`NEXT_PUBLIC_FEATURE_TRANSLATOR=1`)
+- Enhancer: optional (`NEXT_PUBLIC_FEATURE_ENHANCER=1`)
+- Preview and Instruct endpoints both require auth; routes accept Supabase cookies and Bearer.
+
 ## API conventions
 
 - Error shape: `{ error: string | zodFlattened }` with appropriate HTTP status.
 - Auth: Accept Supabase cookies; prefer `Authorization: Bearer <access_token>` when available.
+- RLS: `versions` insert/update requires `project_id`; thread scoping is enforced via `meta.thread_id`.

@@ -9,6 +9,8 @@ import { useWorkspace } from "@/store/workspace";
 import { supabase } from "@/lib/supabaseClient";
 import type { Version, JourneyItem } from "@/types/workspace";
 import { CompareSheet } from "./compare/CompareSheet";
+import { useThreadId } from "@/hooks/useThreadId";
+import { useQueryClient } from "@tanstack/react-query";
 
 export function WorkspaceShell({
   projectId,
@@ -17,29 +19,40 @@ export function WorkspaceShell({
   projectId?: string;
   threadId?: string;
 }) {
+  const urlThreadId = useThreadId();
+  const effectiveThreadId = urlThreadId || threadId;
+  const qc = useQueryClient();
   const setProjectId = useWorkspace((s) => s.setProjectId);
   const setThread = useWorkspace((s) => s.setThreadId);
   const setVersions = useWorkspace((s) => s.setVersions);
   const setJourney = useWorkspace((s) => s.setJourney);
   const setCompares = useWorkspace((s) => s.setCompares);
+  const setSelectedNodeId = useWorkspace((s) => s.setSelectedNodeId);
   const versions = useWorkspace((s) => s.versions);
   const compareOpen = useWorkspace((s) => s.compareOpen);
   const setCompareOpen = useWorkspace((s) => s.setCompareOpen);
   const active = useWorkspace((s) => s.activeCompare);
   React.useEffect(() => setProjectId(projectId), [projectId, setProjectId]);
   React.useEffect(() => {
-    if (threadId) setThread(threadId);
-  }, [threadId, setThread]);
+    if (effectiveThreadId) setThread(effectiveThreadId);
+  }, [effectiveThreadId, setThread]);
+
+  // On thread change: clear nodes cache and selection, and reset local versions to avoid bleed
+  React.useEffect(() => {
+    qc.removeQueries({ queryKey: ["nodes"], exact: false });
+    setSelectedNodeId(null);
+    setVersions([]);
+  }, [effectiveThreadId, qc, setSelectedNodeId, setVersions]);
 
   React.useEffect(() => {
     if (!projectId) return;
     (async () => {
       const [th, j, c] = await Promise.all([
-        threadId
+        effectiveThreadId
           ? supabase
               .from("chat_threads")
               .select("accepted_version_id")
-              .eq("id", threadId)
+              .eq("id", effectiveThreadId)
               .single()
           : Promise.resolve({ data: null, error: null }),
         supabase
@@ -107,7 +120,7 @@ export function WorkspaceShell({
         setCompares(mapped);
       }
     })();
-  }, [projectId, threadId, setVersions, setJourney, setCompares]);
+  }, [projectId, effectiveThreadId, setVersions, setJourney, setCompares]);
 
   return (
     // Fill the <main> area completely; no card/chrome around the panels
@@ -119,7 +132,12 @@ export function WorkspaceShell({
         </Panel>
         <PanelResizeHandle className="w-2 bg-neutral-200" />
         {/* Middle: Versions Canvas */}
-        <Panel defaultSize={52} minSize={40} className="min-h-0 border-r">
+        <Panel
+          key={effectiveThreadId || "no-thread"}
+          defaultSize={52}
+          minSize={40}
+          className="min-h-0 border-r"
+        >
           <VersionCanvas />
         </Panel>
         <PanelResizeHandle className="w-2 bg-neutral-200" />

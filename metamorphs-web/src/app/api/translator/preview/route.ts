@@ -7,6 +7,12 @@ import { stableHash, cacheGet, cacheSet } from "@/lib/ai/cache";
 import { rateLimit } from "@/lib/ai/ratelimit";
 import { buildTranslateBundle } from "@/server/translator/bundle";
 import { parseTranslatorOutput } from "@/server/translator/parse";
+import { supabaseServer } from "@/lib/supabaseServer";
+import {
+  createClient as createSupabaseClient,
+  type SupabaseClient,
+} from "@supabase/supabase-js";
+import { allocateDisplayLabel } from "@/server/labels/displayLabel";
 
 const Body = z.object({ threadId: z.string().uuid() });
 
@@ -43,15 +49,97 @@ export async function POST(req: Request) {
       { status: 400 }
     );
 
-  const key = "translator_preview:" + stableHash(bundle);
+  let sb: SupabaseClient = await supabaseServer();
+  let me = (await sb.auth.getUser()).data;
+  if (!me?.user) {
+    const authH = req.headers.get("authorization") || "";
+    const token = authH.toLowerCase().startsWith("bearer ")
+      ? authH.slice(7)
+      : null;
+    if (
+      token &&
+      process.env.NEXT_PUBLIC_SUPABASE_URL &&
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    ) {
+      sb = createSupabaseClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+        { global: { headers: { Authorization: `Bearer ${token}` } } }
+      );
+      me = (await sb.auth.getUser()).data;
+    }
+    if (!me?.user)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const { displayLabel, projectId } = await allocateDisplayLabel(threadId);
+
+  // Create placeholder node
+  const placeholderMeta = {
+    thread_id: threadId,
+    display_label: displayLabel,
+    status: "placeholder" as const,
+    parent_version_id: null as string | null,
+  };
+  const { data: inserted, error: insErr } = await sb
+    .from("versions")
+    .insert({
+      project_id: projectId,
+      title: displayLabel,
+      lines: [],
+      meta: placeholderMeta,
+      tags: ["translation"],
+    })
+    .select("id")
+    .single();
+  if (insErr || !inserted) {
+    return NextResponse.json(
+      { error: insErr?.message || "Failed to create placeholder" },
+      { status: 500 }
+    );
+  }
+  const placeholderId = inserted.id as string;
+
+  const key = "translator_preview:" + stableHash({ ...bundle, placeholderId });
   const cached = await cacheGet<unknown>(key);
-  if (cached)
+  if (cached) {
+    // Also flip placeholder to generated from cached value
+    const cachedPrev = cached as {
+      lines?: string[];
+      notes?: string[] | string;
+    };
+    const updatedMeta: Record<string, unknown> = {
+      ...placeholderMeta,
+      status: "generated" as const,
+      overview: {
+        lines: cachedPrev?.lines ?? [],
+        notes: cachedPrev?.notes ?? [],
+        line_policy: bundle.line_policy,
+      },
+    };
+    await sb
+      .from("versions")
+      .update({ meta: updatedMeta })
+      .eq("id", placeholderId);
+    const { data: latestAfterCache, error: selErrCached } = await sb
+      .from("versions")
+      .select("id, meta")
+      .eq("id", placeholderId)
+      .single();
+    if (selErrCached || !(latestAfterCache as any)?.meta?.overview) {
+      return NextResponse.json(
+        { ok: false, error: "NO_OVERVIEW_PERSISTED", placeholderId },
+        { status: 500 }
+      );
+    }
     return NextResponse.json({
       ok: true,
       preview: cached,
       cached: true,
       debug: bundle.debug,
+      versionId: placeholderId,
+      displayLabel,
     });
+  }
 
   const user = [
     `SOURCE_POEM (line_policy=${bundle.line_policy}):\n${bundle.poem}`,
@@ -88,7 +176,48 @@ export async function POST(req: Request) {
       line_policy: bundle.line_policy,
     };
     await cacheSet(key, preview, 3600);
-    return NextResponse.json({ ok: true, preview, debug: bundle.debug });
+    // Update node meta with overview + flip status
+    const updatedMeta: Record<string, unknown> = {
+      ...placeholderMeta,
+      status: "generated" as const,
+      overview: {
+        lines: parsedOut.lines,
+        notes: parsedOut.notes,
+      },
+    };
+    const { error: upErr2 } = await sb
+      .from("versions")
+      .update({ meta: updatedMeta })
+      .eq("id", placeholderId);
+    if (upErr2) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "UPDATE_FAILED_RLS",
+          details: upErr2.message,
+          placeholderId,
+        },
+        { status: 500 }
+      );
+    }
+    const { data: latest, error: selErr } = await sb
+      .from("versions")
+      .select("id, meta")
+      .eq("id", placeholderId)
+      .single();
+    if (selErr || !(latest as any)?.meta?.overview) {
+      return NextResponse.json(
+        { ok: false, error: "NO_OVERVIEW_PERSISTED", placeholderId },
+        { status: 500 }
+      );
+    }
+    return NextResponse.json({
+      ok: true,
+      preview,
+      debug: bundle.debug,
+      versionId: placeholderId,
+      displayLabel,
+    });
   } catch {
     return NextResponse.json(
       { error: "Translator output malformed", raw },
