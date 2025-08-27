@@ -1,5 +1,6 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabaseClient";
 
 export type NodeRow = {
   id: string;
@@ -15,10 +16,14 @@ export type NodeRow = {
 };
 
 async function fetchNodes(threadId: string): Promise<NodeRow[]> {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const accessToken = sessionData.session?.access_token;
   const res = await fetch(
     `/api/versions/nodes?threadId=${encodeURIComponent(threadId)}`,
     {
       credentials: "include",
+      cache: "no-store",
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
     }
   );
   if (!res.ok) throw new Error(`Failed to load nodes (${res.status})`);

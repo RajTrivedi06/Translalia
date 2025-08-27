@@ -47,14 +47,7 @@ export function WorkspaceShell({
   React.useEffect(() => {
     if (!projectId) return;
     (async () => {
-      const [th, j, c] = await Promise.all([
-        effectiveThreadId
-          ? supabase
-              .from("chat_threads")
-              .select("accepted_version_id")
-              .eq("id", effectiveThreadId)
-              .single()
-          : Promise.resolve({ data: null, error: null }),
+      const [j, c] = await Promise.all([
         supabase
           .from("journey_items")
           .select(
@@ -71,29 +64,18 @@ export function WorkspaceShell({
           .order("created_at", { ascending: true }),
       ]);
 
-      // Load versions: include all project versions for now, but ensure only one accepted draft node is present for the active thread
+      // Load versions for the active thread only
       let versionsRows: Version[] = [];
       {
         const base = await supabase
           .from("versions")
           .select("id, title, lines, tags, meta, created_at")
           .eq("project_id", projectId)
+          .filter("meta->>thread_id", "eq", effectiveThreadId)
           .order("created_at", { ascending: true });
         if (!base.error && Array.isArray(base.data)) {
           versionsRows = base.data as unknown as Version[];
         }
-      }
-      const acceptedId = (th as any)?.data?.accepted_version_id as
-        | string
-        | null;
-      if (acceptedId) {
-        // Keep only the canonical accepted version node for this thread
-        versionsRows = versionsRows.filter((v) => {
-          if (v.id === acceptedId) return true;
-          // Drop other versions titled 'Accepted draft' to avoid duplicates across threads
-          if ((v.title || "").toLowerCase() === "accepted draft") return false;
-          return true;
-        });
       }
 
       setVersions(versionsRows);

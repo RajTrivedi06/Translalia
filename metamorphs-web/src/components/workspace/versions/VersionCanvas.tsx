@@ -50,7 +50,11 @@ export function VersionCanvas() {
 
   // Nodes API (Phase 2+) — used for rendering version nodes with labels/overview
   const { data: nodesData } = useNodes(threadId);
-  const apiNodes: NodeRow[] = nodesData || [];
+  const apiNodes: NodeRow[] = React.useMemo(() => nodesData || [], [nodesData]);
+  const apiById = React.useMemo(
+    () => new Map(apiNodes.map((n) => [n.id, n])),
+    [apiNodes]
+  );
 
   const savePositions = React.useCallback(async () => {
     if (!projectId) return;
@@ -66,12 +70,26 @@ export function VersionCanvas() {
   }, [projectId, versions]);
 
   const nodes = React.useMemo<Node[]>(() => {
-    const versionNodes = versions.map((v, i) => ({
-      id: v.id,
-      type: "versionCard" as const,
-      position: v.pos ?? { x: 120, y: 40 + i * 200 },
-      data: { id: v.id, highlight: highlightVersionId === v.id },
-    }));
+    const versionNodes = versions.map((v, i) => {
+      const api = apiById.get(v.id);
+      const title = api?.display_label ?? v.title ?? "Version";
+      const status = (api?.status ?? "generated") as string;
+      const overviewLines: string[] =
+        (api?.overview?.lines as string[] | undefined) ?? v.lines ?? [];
+
+      return {
+        id: v.id,
+        type: "versionCard" as const,
+        position: v.pos ?? { x: 120, y: 40 + i * 200 },
+        data: {
+          id: v.id,
+          highlight: highlightVersionId === v.id,
+          title,
+          status,
+          overviewLines,
+        },
+      };
+    });
     const compareNodes = compares.map((c, i) => ({
       id: c.id,
       type: "compareCard" as const,
@@ -79,7 +97,7 @@ export function VersionCanvas() {
       data: { leftId: c.leftVersionId, rightId: c.rightVersionId },
     }));
     return [...versionNodes, ...compareNodes];
-  }, [versions, compares, highlightVersionId]);
+  }, [versions, compares, highlightVersionId, apiById]);
 
   const edges = React.useMemo<Edge[]>(
     () =>
@@ -263,7 +281,15 @@ export function VersionCanvas() {
         ) : journeyError ? (
           <div className="text-xs text-red-600">Failed to load</div>
         ) : (
-          <JourneyList items={journeyData?.items || []} />
+          <JourneyList
+            items={(journeyData?.items || []).map((it) => ({
+              id: it.id,
+              kind: it.kind,
+              summary: it.summary,
+              meta: (it.meta as Record<string, unknown>) ?? null,
+              created_at: it.created_at,
+            }))}
+          />
         )}
       </div>
     </div>

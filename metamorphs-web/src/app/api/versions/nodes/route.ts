@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseServer } from "@/lib/supabaseServer";
+import { requireUser } from "@/lib/apiGuard";
+
+export const revalidate = 0;
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -10,21 +14,35 @@ export async function GET(req: NextRequest) {
       { status: 400 }
     );
 
-  const supabase = await supabaseServer();
+  const guard = await requireUser(req);
+  if (guard.res) return guard.res;
+  const sb = guard.sb;
 
-  const { data: rows, error } = await supabase
+  const { data: th, error: thErr } = await sb
+    .from("chat_threads")
+    .select("id, project_id")
+    .eq("id", threadId)
+    .single();
+  if (thErr || !th) {
+    return NextResponse.json(
+      { ok: false, error: "FORBIDDEN_OR_NOT_FOUND" },
+      { status: 403 }
+    );
+  }
+
+  const { data, error } = await sb
     .from("versions")
-    .select("id, project_id, lines, meta, created_at")
+    .select("id, tags, meta, created_at")
+    .eq("project_id", th.project_id)
     .filter("meta->>thread_id", "eq", threadId)
     .order("created_at", { ascending: true });
-
   if (error)
     return NextResponse.json(
       { ok: false, error: error.message },
       { status: 500 }
     );
 
-  const list = (rows || []).map((r: any) => ({
+  const list = (data || []).map((r: any) => ({
     id: r.id as string,
     display_label: r.meta?.display_label ?? null,
     status: (r.meta?.status as "placeholder" | "generated") ?? "generated",
@@ -33,6 +51,14 @@ export async function GET(req: NextRequest) {
     complete: !!(r.meta?.complete as boolean | undefined),
     created_at: r.created_at as string,
   }));
+
+  // Temporary log for debugging
+  // eslint-disable-next-line no-console
+  console.log("[nodes]", {
+    threadId,
+    count: data?.length || 0,
+    user: guard.user?.id,
+  });
 
   return NextResponse.json({
     ok: true,
