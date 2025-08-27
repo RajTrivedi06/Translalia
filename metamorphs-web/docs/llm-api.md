@@ -1,6 +1,6 @@
 # LLM API smoke
 
-# Build plan (Enhancer)
+## Build plan (Enhancer)
 
 Feature flag: set `NEXT_PUBLIC_FEATURE_ENHANCER=1` to enable.
 
@@ -15,7 +15,23 @@ curl -X POST http://localhost:3000/api/enhancer \
 - 409: { error: "No poem excerpt in state" }
 - 500: { error }
 
-# Translate
+## Translator (legacy single-shot)
+
+## Translator — Preview (Phase 2)
+
+POST /api/translator/preview
+
+- Body: `{ threadId }`
+- Returns: `{ ok, versionId, displayLabel, preview }`
+- Notes: creates placeholder node then updates `meta.overview`; fails loudly if RLS blocks update.
+
+## Translator — Instruct (Phase 4)
+
+POST /api/translator/instruct
+
+- Body: `{ threadId, instruction, citeVersionId? }`
+- Returns: `{ ok, versionId, displayLabel }`
+- Notes: allocates label, sets `parent_version_id`, uses cited version full text when provided.
 
 curl -X POST http://localhost:3000/api/translate \
  -H "Content-Type: application/json" \

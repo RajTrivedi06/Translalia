@@ -11,6 +11,11 @@ type WorkspaceState = {
   journey: JourneyItem[];
   activeVersionId?: string;
   highlightVersionId?: string;
+  selectedNodeId?: string | null;
+  setSelectedNodeId: (id?: string | null) => void;
+  overview: any | null;
+  // TEMP alias for backward-compat (remove later)
+  preview?: any | null;
   setProjectId: (id?: string) => void;
   setThreadId: (id?: string) => void;
   setVersions: (vs: Version[]) => void;
@@ -54,6 +59,10 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
   journey: [],
   activeVersionId: undefined,
   highlightVersionId: undefined,
+  selectedNodeId: null,
+  setSelectedNodeId: (id) => set({ selectedNodeId: id ?? null }),
+  overview: null,
+  preview: null,
   setProjectId: (id) => set({ projectId: id }),
   setThreadId: (id) => set({ threadId: id }),
   setVersions: (vs) => set({ versions: vs }),

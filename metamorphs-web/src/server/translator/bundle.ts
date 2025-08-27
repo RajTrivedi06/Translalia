@@ -54,3 +54,8 @@ export async function buildTranslateBundle(
     debug,
   };
 }
+
+// NOTE (Phase 4): Whole-version citation is currently assembled inside
+// /api/translator/instruct by reading meta.overview.lines (preferred) or lines[]
+// for a cited version. If you later centralize prompt assembly here, add a
+// helper like `getVersionFullText(versionId)` and include it in the bundle.

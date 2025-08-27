@@ -12,6 +12,8 @@ import "reactflow/dist/style.css";
 import { VersionCardNode } from "./nodes/VersionCardNode";
 import { CompareCardNode } from "./nodes/CompareCardNode";
 import { useWorkspace } from "@/store/workspace";
+import { useNodes, type NodeRow } from "@/hooks/useNodes";
+import { useThreadId } from "@/hooks/useThreadId";
 import { Wand2 } from "lucide-react";
 import { useJourney } from "@/hooks/useJourney";
 import { JourneyList } from "@/components/workspace/journey/JourneyList";
@@ -27,9 +29,12 @@ export function VersionCanvas() {
   const setVersionPos = useWorkspace((s) => s.setVersionPos);
   const tidyPositions = useWorkspace((s) => s.tidyPositions);
   const projectId = useWorkspace((s) => s.projectId);
+  const threadIdFromStore = useWorkspace((s) => s.threadId);
+  const threadId = useThreadId() || threadIdFromStore || undefined;
   const addCompare = useWorkspace((s) => s.addCompare);
   const setActiveCompare = useWorkspace((s) => s.setActiveCompare);
   const setCompareOpen = useWorkspace((s) => s.setCompareOpen);
+  const setSelectedNodeId = useWorkspace((s) => s.setSelectedNodeId);
   const highlightVersionId = useWorkspace((s) => s.highlightVersionId);
   const rfRef = React.useRef<ReactFlowInstance | null>(null);
   const {
@@ -42,6 +47,14 @@ export function VersionCanvas() {
     []
   );
   const canCompare = selectedVersionIds.length === 2;
+
+  // Nodes API (Phase 2+) — used for rendering version nodes with labels/overview
+  const { data: nodesData } = useNodes(threadId);
+  const apiNodes: NodeRow[] = React.useMemo(() => nodesData || [], [nodesData]);
+  const apiById = React.useMemo(
+    () => new Map(apiNodes.map((n) => [n.id, n])),
+    [apiNodes]
+  );
 
   const savePositions = React.useCallback(async () => {
     if (!projectId) return;
@@ -57,12 +70,26 @@ export function VersionCanvas() {
   }, [projectId, versions]);
 
   const nodes = React.useMemo<Node[]>(() => {
-    const versionNodes = versions.map((v, i) => ({
-      id: v.id,
-      type: "versionCard" as const,
-      position: v.pos ?? { x: 120, y: 40 + i * 200 },
-      data: { id: v.id, highlight: highlightVersionId === v.id },
-    }));
+    const versionNodes = versions.map((v, i) => {
+      const api = apiById.get(v.id);
+      const title = api?.display_label ?? v.title ?? "Version";
+      const status = (api?.status ?? "generated") as string;
+      const overviewLines: string[] =
+        (api?.overview?.lines as string[] | undefined) ?? v.lines ?? [];
+
+      return {
+        id: v.id,
+        type: "versionCard" as const,
+        position: v.pos ?? { x: 120, y: 40 + i * 200 },
+        data: {
+          id: v.id,
+          highlight: highlightVersionId === v.id,
+          title,
+          status,
+          overviewLines,
+        },
+      };
+    });
     const compareNodes = compares.map((c, i) => ({
       id: c.id,
       type: "compareCard" as const,
@@ -70,7 +97,7 @@ export function VersionCanvas() {
       data: { leftId: c.leftVersionId, rightId: c.rightVersionId },
     }));
     return [...versionNodes, ...compareNodes];
-  }, [versions, compares, highlightVersionId]);
+  }, [versions, compares, highlightVersionId, apiById]);
 
   const edges = React.useMemo<Edge[]>(
     () =>
@@ -171,6 +198,38 @@ export function VersionCanvas() {
 
   return (
     <div className="relative h-full w-full overflow-hidden">
+      {/* Simple nodes list overlay (ensures we render API nodes and allow selection) */}
+      <div className="absolute left-3 bottom-3 z-10 max-h-[40%] w-80 overflow-y-auto rounded-md border bg-white/90 p-2 shadow">
+        <div className="mb-1 text-xs font-semibold">Nodes</div>
+        {!threadId ? (
+          <div className="text-xs text-neutral-500">No thread</div>
+        ) : apiNodes.length === 0 ? (
+          <div className="text-xs text-neutral-500">No nodes yet</div>
+        ) : (
+          <ul className="space-y-1">
+            {apiNodes.map((n) => (
+              <li key={n.id}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedNodeId(n.id)}
+                  className="w-full rounded border bg-white px-2 py-1 text-left hover:bg-neutral-50"
+                  title={n.display_label || n.id}
+                >
+                  <div className="text-xs font-medium">
+                    {n.display_label || "Version ?"}
+                  </div>
+                  <div className="mt-0.5 text-[10px] text-neutral-500">
+                    {n.status === "placeholder"
+                      ? `Creating ${n.display_label || "Version …"}…`
+                      : (n.overview?.lines || []).slice(0, 2).join("\n") ||
+                        "No overview yet"}
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
       <div className="absolute right-3 top-3 z-10 flex items-center gap-2">
         <button
           onClick={tidyPositions}
@@ -222,7 +281,15 @@ export function VersionCanvas() {
         ) : journeyError ? (
           <div className="text-xs text-red-600">Failed to load</div>
         ) : (
-          <JourneyList items={journeyData?.items || []} />
+          <JourneyList
+            items={(journeyData?.items || []).map((it) => ({
+              id: it.id,
+              kind: it.kind,
+              summary: it.summary,
+              meta: (it.meta as Record<string, unknown>) ?? null,
+              created_at: it.created_at,
+            }))}
+          />
         )}
       </div>
     </div>

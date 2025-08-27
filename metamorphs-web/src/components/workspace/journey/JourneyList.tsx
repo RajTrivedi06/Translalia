@@ -35,7 +35,11 @@ export function JourneyList({ items }: { items: JourneyItem[] }) {
                     key={c.id}
                     className="text-xs whitespace-pre-wrap text-neutral-600 border rounded p-1"
                   >
-                    {JSON.stringify({ summary: c.summary, meta: c.meta }, null, 2)}
+                    {JSON.stringify(
+                      { summary: c.summary, meta: c.meta },
+                      null,
+                      2
+                    )}
                   </pre>
                 ))}
               </div>

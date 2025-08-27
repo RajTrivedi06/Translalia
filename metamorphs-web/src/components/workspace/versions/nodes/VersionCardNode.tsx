@@ -5,12 +5,24 @@ import { Handle, Position, NodeProps } from "reactflow";
 import { useWorkspace } from "@/store/workspace";
 import { Pin } from "lucide-react";
 
+type VersionNodeData = {
+  id: string;
+  highlight?: boolean;
+  title?: string | null;
+  status?: string | null;
+  overviewLines?: string[];
+};
+
 export const VersionCardNode = React.memo(function VersionCardNode({
   data,
-}: NodeProps<{ id: string; highlight?: boolean }>) {
-  const v = useWorkspace((s) => s.versions.find((x) => x.id === data.id));
+}: NodeProps<VersionNodeData>) {
+  const stored = useWorkspace((s) => s.versions.find((x) => x.id === data.id));
   const pinJourney = useWorkspace((s) => s.pinJourney);
-  if (!v) return null;
+
+  const title = data.title ?? stored?.title ?? "Version";
+  const lines: string[] = data.overviewLines ?? stored?.lines ?? [];
+  const status = (data.status ?? "generated") as string;
+  const isRenderable = ["generated", "ready", "created"].includes(status);
 
   return (
     <div
@@ -19,15 +31,15 @@ export const VersionCardNode = React.memo(function VersionCardNode({
       }`}
     >
       <div className="border-b px-3 py-2 flex items-center justify-between">
-        <div className="font-semibold">{v.title}</div>
+        <div className="font-semibold">{title}</div>
         <button
           className="text-neutral-600 hover:text-neutral-900"
           aria-label="Pin to Journey"
           onClick={() =>
             pinJourney({
               id: `J-${Date.now()}`,
-              summary: `Pinned ${v.id}`,
-              toId: v.id,
+              summary: `Pinned ${title}`,
+              toId: data.id,
             })
           }
         >
@@ -35,9 +47,13 @@ export const VersionCardNode = React.memo(function VersionCardNode({
         </button>
       </div>
       <div className="p-3 text-sm text-neutral-700">
-        <div className="line-clamp-4 whitespace-pre-wrap">
-          {v.lines.join("\n")}
-        </div>
+        {isRenderable && lines.length > 0 ? (
+          <div className="line-clamp-4 whitespace-pre-wrap">
+            {lines.join("\n")}
+          </div>
+        ) : (
+          <div className="text-neutral-400">No overview yet</div>
+        )}
       </div>
       <Handle type="source" position={Position.Right} />
     </div>
