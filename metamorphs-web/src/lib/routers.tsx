@@ -7,9 +7,9 @@ export const routes = {
   workspaces: () => "/workspaces",
   workspaceChats: (projectId: string) => `/workspaces/${projectId}`,
   workspace: () => "/workspace",
-  project: (projectId: string) => `/workspace/${projectId}`,
+  project: (projectId: string) => `/workspaces/${projectId}`,
   projectWithThread: (projectId: string, threadId: string) =>
-    `/workspace/${projectId}?thread=${encodeURIComponent(threadId)}`,
+    `/workspaces/${projectId}/threads/${encodeURIComponent(threadId)}`,
   // lightweight compare via query; use a dedicated page later if you prefer
   compare: (projectId: string, leftId: string, rightId: string) =>
     `/workspace/${projectId}?compare=${leftId}:${rightId}`,

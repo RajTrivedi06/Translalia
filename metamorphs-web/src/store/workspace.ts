@@ -6,6 +6,7 @@ import { Version, CompareNode, JourneyItem } from "@/types/workspace";
 type WorkspaceState = {
   projectId?: string;
   threadId?: string;
+  workspaceName?: string | null;
   versions: Version[];
   compares: CompareNode[];
   journey: JourneyItem[];
@@ -17,6 +18,7 @@ type WorkspaceState = {
   // TEMP alias for backward-compat (remove later)
   preview?: any | null;
   setProjectId: (id?: string) => void;
+  setWorkspaceMeta: (id: string, name: string | null) => void;
   setThreadId: (id?: string) => void;
   setVersions: (vs: Version[]) => void;
   setJourney: (js: JourneyItem[]) => void;
@@ -27,6 +29,7 @@ type WorkspaceState = {
   setActiveCompare: (payload?: { leftId: string; rightId: string }) => void;
   compareOpen: boolean;
   setCompareOpen: (open: boolean) => void;
+  resetThreadEphemera: () => void;
   addVersion: (v: Version) => void;
   addCompare: (c: CompareNode) => void;
   pinJourney: (j: JourneyItem) => void;
@@ -37,6 +40,7 @@ type WorkspaceState = {
 export const useWorkspace = create<WorkspaceState>((set) => ({
   projectId: undefined,
   threadId: undefined,
+  workspaceName: null,
   versions: [
     { id: "A", title: "Version A", lines: ["…"], tags: ["literal"] },
     { id: "B", title: "Version B", lines: ["…"], tags: ["form:rhymed"] },
@@ -64,6 +68,7 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
   overview: null,
   preview: null,
   setProjectId: (id) => set({ projectId: id }),
+  setWorkspaceMeta: (id, name) => set({ projectId: id, workspaceName: name }),
   setThreadId: (id) => set({ threadId: id }),
   setVersions: (vs) => set({ versions: vs }),
   setJourney: (js) => set({ journey: js }),
@@ -74,6 +79,14 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
   setActiveCompare: (payload) => set({ activeCompare: payload }),
   compareOpen: false,
   setCompareOpen: (open) => set({ compareOpen: open }),
+  resetThreadEphemera: () =>
+    set({
+      selectedNodeId: null,
+      activeVersionId: undefined,
+      highlightVersionId: undefined,
+      activeCompare: undefined,
+      compareOpen: false,
+    }),
   addVersion: (v) => set((s) => ({ versions: [...s.versions, v] })),
   addCompare: (c) => set((s) => ({ compares: [...s.compares, c] })),
   pinJourney: (j) => set((s) => ({ journey: [j, ...s.journey] })),

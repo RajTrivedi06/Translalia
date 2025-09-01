@@ -49,7 +49,14 @@ export function VersionCanvas() {
   const canCompare = selectedVersionIds.length === 2;
 
   // Nodes API (Phase 2+) — used for rendering version nodes with labels/overview
-  const { data: nodesData } = useNodes(threadId);
+  const { data: nodesData } = useNodes(projectId, threadId);
+  // Temporary debug to verify thread-scoped rendering
+  // eslint-disable-next-line no-console
+  console.debug("[NodesRender]", {
+    projectId,
+    threadId,
+    count: (nodesData || []).length,
+  });
   const apiNodes: NodeRow[] = React.useMemo(() => nodesData || [], [nodesData]);
   const apiById = React.useMemo(
     () => new Map(apiNodes.map((n) => [n.id, n])),
@@ -197,7 +204,7 @@ export function VersionCanvas() {
   }
 
   return (
-    <div className="relative h-full w-full overflow-hidden">
+    <div className="relative h-full w-full overflow-hidden min-w-0">
       {/* Simple nodes list overlay (ensures we render API nodes and allow selection) */}
       <div className="absolute left-3 bottom-3 z-10 max-h-[40%] w-80 overflow-y-auto rounded-md border bg-white/90 p-2 shadow">
         <div className="mb-1 text-xs font-semibold">Nodes</div>

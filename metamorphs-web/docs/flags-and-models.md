@@ -29,3 +29,45 @@ This repo does not yet include a migrations directory; consider adopting the Sup
 - Error shape: `{ error: string | zodFlattened }` with appropriate HTTP status.
 - Auth: Accept Supabase cookies; prefer `Authorization: Bearer <access_token>` when available.
 - RLS: `versions` insert/update requires `project_id`; thread scoping is enforced via `meta.thread_id`.
+
+---
+
+## Feature Flags – Details
+
+Flags:
+
+- `NEXT_PUBLIC_FEATURE_TRANSLATOR` (default: off)
+- `NEXT_PUBLIC_FEATURE_ENHANCER` (default: off)
+- `NEXT_PUBLIC_FEATURE_ROUTER` (default: off)
+
+Usage:
+
+- UI and routes check flags to enable flows; disabled returns 403 in routes.
+- Treat flags as environment-scoped (dev/staging/prod); change via env vars and redeploy.
+
+Guide (LLM):
+
+- Gate new endpoints behind `NEXT_PUBLIC_FEATURE_*` and return 403 when off.
+- Avoid branching deep in business logic: return early in routes.
+
+---
+
+## Models – Selection & Fallback
+
+Env-based selection (see `lib/models.ts`):
+
+- `ENHANCER_MODEL` → enhancer (default `gpt-4o-mini`)
+- `TRANSLATOR_MODEL` → translator (default `gpt-4o`)
+- `EMBEDDINGS_MODEL` → embeddings (default `text-embedding-3-large`)
+
+Fallback strategy:
+
+- No automatic runtime failover; set envs to switch models.
+- Consider adding a secondary when `ANTHROPIC_API_KEY` is present.
+
+---
+
+## A/B and Env Config
+
+- For A/B, prefer top-level flags like `NEXT_PUBLIC_FEATURE_TRANSLATOR_B` and route to alternate prompts or models.
+- Keep per-env `.env.local` / project secrets in Vercel/Supabase config.

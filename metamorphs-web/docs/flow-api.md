@@ -83,3 +83,41 @@ GET /api/versions/nodes?threadId=<THREAD_UUID>
 - Auth: cookie/Bearer
 - Response: `{ ok, threadIdEcho, count, nodes: [{ id, display_label, status, parent_version_id, overview, complete, created_at }] }`
 - DB filter: `filter("meta->>thread_id","eq",threadId)`
+
+---
+
+## Flow State & Transitions
+
+- States: `welcome` → `interviewing` → `await_plan_confirm` → `translating` → `review` → `finalized`
+- Transitions:
+  - Start: set `phase:"interviewing"`, store `poem_excerpt`, reset collected fields
+  - Answer: merge into `collected_fields`; compute next question
+  - Confirm: requires `await_plan_confirm` → moves to `translating`
+  - Preview/Translate: allowed when `phase` is `translating` or `review`
+- Invalid transitions return 409 with an explanatory error
+
+## Validation & Errors
+
+- Zod schemas validate all flow endpoints; return 400 with `.flatten()`
+- 404 when thread not found; 409 for phase mismatches
+
+## Execution & Retry Patterns
+
+- Idempotent operations (e.g., preview) are safe to retry due to cache keys
+- For answer/confirm, rely on server-side `patchThreadState` for atomic merges
+
+## Monitoring & Logging
+
+- `journey_items` captures key events: interview_started, interview_answer, plan_confirmed, accept_line, compare
+- Use this for UIs and audits
+
+## Rollback/Compensation
+
+- For incorrect accepts, submit a new accept for the same line with corrected text (RPC overwrites)
+- For plan changes, re-run enhancer or revise collected fields and reconfirm
+
+## Flow Implementation Guide (LLM)
+
+- Validate inputs; gate by `phase` and return 409 if not ready
+- Append to `journey_items` after important steps
+- Keep prompts and state snapshots minimal and explicit

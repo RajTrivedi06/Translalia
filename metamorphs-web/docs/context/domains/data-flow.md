@@ -4,6 +4,7 @@
 
 - Server APIs live in `src/app/api/**/route.ts` and orchestrate DB access via Supabase.
 - Client fetches via React Query or direct `fetch()` to routes; some UI uses Supabase client for read-only queries.
+- Middleware (`src/middleware.ts`) primes Supabase session cookies for SSR and routes.
 
 ### Database → UI examples
 
@@ -57,6 +58,7 @@ await cacheSet(key, preview, 3600);
 ```
 
 - Client cache: React Query caches query results by `queryKey`.
+- Nodes list is polled frequently (`useNodes`) with `cache: "no-store"` on the route.
 
 ### Optimistic updates
 
@@ -104,3 +106,47 @@ const parsed = createThreadSchema.safeParse(await req.json());
 if (!parsed.success)
   return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 ```
+
+### API → DB flows (selected)
+
+1. Create thread
+
+```ts
+// /api/threads POST
+const { thread } = await sb
+  .from("chat_threads")
+  .insert({ project_id, title, created_by: user.id })
+  .select("id, title, created_at")
+  .single();
+```
+
+2. Flow start → state update
+
+```ts
+// /api/flow/start POST
+await patchThreadState(threadId, {
+  phase: "interviewing",
+  poem_excerpt: poem,
+  collected_fields: {},
+});
+```
+
+3. Translator preview → cache → persist overview to versions placeholder
+
+```ts
+// /api/translator/preview POST
+await cacheSet(key, preview, 3600);
+await sb
+  .from("versions")
+  .update({ meta: { ...meta, status: "generated", overview } })
+  .eq("id", placeholderId);
+```
+
+### Data invalidation
+
+- Invalidate React Query after mutations (e.g., `flow_peek`, `journey`).
+- Remove nodes cache on thread switch to avoid bleed (`WorkspaceShell`).
+
+### Real-time updates
+
+- No DB realtime at present; polling is used for nodes, React Query refetch for journey/messages.

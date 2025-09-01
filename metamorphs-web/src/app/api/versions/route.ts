@@ -15,7 +15,7 @@ import { createVersionSchema } from "@/lib/schemas";
  */
 export async function POST(req: NextRequest) {
   const guard = await requireUser(req);
-  if (guard.res) return guard.res;
+  if ("res" in guard) return guard.res;
   const parsed = createVersionSchema.safeParse(await req.json());
   if (!parsed.success) {
     return NextResponse.json(

@@ -4,7 +4,7 @@ import { createThreadSchema } from "@/lib/schemas";
 
 export async function POST(req: NextRequest) {
   const guard = await requireUser(req);
-  if (guard.res) return guard.res;
+  if ("res" in guard) return guard.res;
   const parsed = createThreadSchema.safeParse(await req.json());
   if (!parsed.success) {
     return NextResponse.json(
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   const guard = await requireUser(req);
-  if (guard.res) return guard.res;
+  if ("res" in guard) return guard.res;
 
   const { id, threadId } = await req.json().catch(() => ({ id: undefined }));
   const targetId = id || threadId;

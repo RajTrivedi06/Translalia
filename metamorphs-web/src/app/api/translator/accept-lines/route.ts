@@ -52,6 +52,8 @@ export async function POST(req: Request) {
       {
         ok: false,
         blocked: true,
+        flagged: true,
+        categories: mod.categories,
         error: "Selected lines flagged by moderation; not saved.",
       },
       { status: 400 }

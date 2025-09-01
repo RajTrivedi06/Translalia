@@ -31,11 +31,14 @@ async function fetchNodes(threadId: string): Promise<NodeRow[]> {
   return Array.isArray(j?.nodes) ? (j.nodes as NodeRow[]) : (j as NodeRow[]);
 }
 
-export function useNodes(threadId: string | undefined) {
+export function useNodes(
+  projectId: string | undefined,
+  threadId: string | undefined
+) {
   return useQuery({
-    queryKey: ["nodes", threadId],
+    queryKey: ["nodes", projectId, threadId],
     queryFn: () => fetchNodes(threadId!),
-    enabled: !!threadId,
+    enabled: !!projectId && !!threadId,
     staleTime: 0,
     refetchOnWindowFocus: true,
     refetchInterval: 1500,

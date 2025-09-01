@@ -131,6 +131,13 @@ Note: Tables and columns are inferred from code usage. Verify in your Supabase p
 - storage bucket: avatars
   - paths: `<userId>/<timestamp>_<filename>`
 
+### 1.1) Constraints and defaults (recommended)
+
+- Primary keys: `id uuid default gen_random_uuid()`
+- Timestamps: `created_at timestamptz default now()`
+- Foreign keys: `project_id`, `thread_id`, `created_by` with ON DELETE CASCADE where appropriate
+- `chat_threads.state`: `jsonb not null default '{}'::jsonb`
+
 ### 2) Relationships between tables
 
 - projects 1..\* chat_threads
@@ -147,6 +154,7 @@ Note: Tables and columns are inferred from code usage. Verify in your Supabase p
 ### 4) Database functions and triggers
 
 - RPC: `accept_line(p_thread_id uuid, p_line_index int, p_new_text text, p_actor uuid)` — updates thread draft/accepted lines and logs decisions. Called by `/api/translator/accept-lines`.
+- RPC: `get_accepted_version(p_thread_id uuid)` — returns an object with `{ lines: text[] }` used by `/api/translate` and translator preview bundling.
 
 ### 5) Indexes (recommended)
 
@@ -184,7 +192,167 @@ supabase
   .insert({ project_id, title, lines, tags, meta })
   .select("id, project_id, title, lines, tags, meta, created_at")
   .single();
+
+// List nodes for a thread (mirrors /api/versions/nodes)
+supabase
+  .from("versions")
+  .select("id, tags, meta, created_at")
+  .eq("project_id", projectId)
+  .filter("meta->>thread_id", "eq", threadId)
+  .order("created_at", { ascending: true });
+
+// Upsert node positions
+supabase
+  .from("versions")
+  .upsert([{ id: versionId, pos: { x: 120, y: 40 } }], { onConflict: "id" });
+
+// Journey items (latest N)
+supabase
+  .from("journey_items")
+  .select("id, kind, summary, meta, created_at")
+  .eq("project_id", projectId)
+  .order("created_at", { ascending: false })
+  .limit(20);
+
+// Accept a translated line via RPC
+supabase.rpc("accept_line", {
+  p_thread_id: threadId,
+  p_line_index: 3,
+  p_new_text: "updated line",
+  p_actor: userId,
+});
 ```
+
+### 7) Example CRUD SQL (seeding and sanity checks)
+
+```sql
+-- Project
+insert into projects (id, title, owner_id, src_lang, tgt_langs)
+values (gen_random_uuid(), 'Untitled Workspace', '00000000-0000-0000-0000-000000000000', 'en', array['ar']);
+
+-- Thread
+insert into chat_threads (id, project_id, title, created_by, state)
+values (
+  gen_random_uuid(),
+  (select id from projects order by created_at desc limit 1),
+  'Chat – seed',
+  '00000000-0000-0000-0000-000000000000',
+  '{}'::jsonb
+);
+
+-- Message
+insert into chat_messages (id, project_id, thread_id, role, content, meta, created_by)
+values (
+  gen_random_uuid(),
+  (select id from projects order by created_at desc limit 1),
+  (select id from chat_threads order by created_at desc limit 1),
+  'user',
+  'Hello world',
+  '{}'::jsonb,
+  '00000000-0000-0000-0000-000000000000'
+);
+
+-- Version
+insert into versions (id, project_id, title, lines, tags, meta)
+values (
+  gen_random_uuid(),
+  (select id from projects order by created_at desc limit 1),
+  'Seed Version',
+  array['line 1','line 2'],
+  array['translation'],
+  jsonb_build_object('thread_id', (select id from chat_threads order by created_at desc limit 1))
+);
+```
+
+### 8) TypeScript interfaces (DB-aligned)
+
+```ts
+export type DbProfile = {
+  id: string;
+  display_name: string | null;
+  username: string | null;
+  email: string | null;
+  avatar_url: string | null;
+  locale: string | null;
+  created_at: string;
+};
+
+export type DbProject = {
+  id: string;
+  title: string;
+  owner_id: string;
+  src_lang: string | null;
+  tgt_langs: string[] | null;
+  created_at: string;
+};
+
+export type DbChatThread = {
+  id: string;
+  project_id: string;
+  title: string | null;
+  state: import("@/types/sessionState").SessionState | Record<string, unknown>;
+  created_by: string;
+  created_at: string;
+};
+
+export type DbChatMessage = {
+  id: string;
+  project_id: string;
+  thread_id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  meta: Record<string, unknown> | null;
+  created_by: string | null;
+  created_at: string;
+};
+
+export type DbVersion = {
+  id: string;
+  project_id: string;
+  title: string;
+  lines: string[];
+  tags: string[];
+  meta: Record<string, unknown> | null;
+  pos?: { x: number; y: number } | null;
+  created_at: string;
+};
+
+export type DbCompare = {
+  id: string;
+  project_id: string;
+  left_version_id: string;
+  right_version_id: string;
+  lens: "meaning" | "form" | "tone" | "culture";
+  granularity: "line" | "phrase" | "char";
+  notes: string | null;
+  created_at: string;
+};
+
+export type DbJourneyItem = {
+  id: string;
+  project_id: string;
+  kind: string;
+  summary: string;
+  from_version_id: string | null;
+  to_version_id: string | null;
+  compare_id: string | null;
+  meta?: Record<string, unknown> | null;
+  created_at: string;
+};
+```
+
+### 9) Query Patterns
+
+- Thread-scope listing via `meta->>thread_id` on `versions` for node graph.
+- Append-only journaling into `journey_items` for activity timelines.
+- RPCs for write-heavy or policy-sensitive operations (`accept_line`, `get_accepted_version`).
+- Prefer SELECT lists to `*` to control payload size and stability.
+
+### 10) Conventions
+
+- Use `uuid` identifiers across entities; avoid integer serials.
+- Keep `meta jsonb` for extensibility; mirror key fields in typed columns when needed for indexes.
+- Capture creator via `created_by` where RLS needs actor binding.
 
 ### 7) Migration history
 

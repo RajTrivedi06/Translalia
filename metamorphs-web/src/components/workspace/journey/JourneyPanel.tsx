@@ -5,7 +5,7 @@ import { useWorkspace } from "@/store/workspace";
 export function JourneyPanel() {
   const journey = useWorkspace((s) => s.journey);
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 min-w-0 flex-col">
       <div className="px-4 py-3 font-semibold">
         Summary of the whole iteration
       </div>

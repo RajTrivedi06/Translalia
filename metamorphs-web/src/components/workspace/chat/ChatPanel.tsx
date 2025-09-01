@@ -69,6 +69,11 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
   const [translatorError, setTranslatorError] = React.useState<string | null>(
     null
   );
+  // Close any open citation state on thread change
+  React.useEffect(() => {
+    setCites([]);
+    setCiteVersionId("");
+  }, [threadId]);
   const inputRef = React.useRef<HTMLInputElement | null>(null);
   const versions = useWorkspace((s) => s.versions);
   const setActiveVersionId = useWorkspace((s) => s.setActiveVersionId);
@@ -79,7 +84,7 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
     refetch,
     isFetching,
   } = useThreadMessages(projectId, threadId);
-  const { data: nodes } = useNodes(threadId || undefined);
+  const { data: nodes } = useNodes(projectId, threadId || undefined);
   const inInstructionMode = (nodes?.length || 0) > 0;
   const [instruction, setInstruction] = React.useState("");
   const [citeVersionId, setCiteVersionId] = React.useState<string | "">("");
@@ -135,8 +140,8 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <ThreadsDrawer projectId={projectId} />
+    <div className="flex h-full min-h-0 min-w-0 flex-col">
+      {!threadId ? <ThreadsDrawer projectId={projectId} /> : null}
       <div className="border-b p-3 font-semibold">Chat</div>
       <div className="flex-1 overflow-auto p-2 space-y-2 text-sm">
         {phase === "welcome" ? (

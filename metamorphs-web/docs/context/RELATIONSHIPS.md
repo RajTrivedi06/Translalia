@@ -118,3 +118,108 @@ Notes:
 
 - Most protected routes use `src/lib/apiGuard.ts` to require a Supabase session.
 - Feature-flagged areas: translator preview/accept-lines, router, enhancer.
+
+---
+
+### 6) Module Dependency Overview
+
+```mermaid
+graph LR
+  subgraph UI
+    WS[WorkspaceShell] --> CP[ChatPanel]
+    WS --> VC[VersionCanvas]
+    WS --> JP[JourneyPanel]
+    CP --> TD[ThreadsDrawer]
+    CP --> PPS[PlanPreviewSheet]
+  end
+  subgraph Hooks
+    UTM[useThreadMessages]
+    UJ[useJourney]
+    UN[useNodes]
+    UIF[useInterviewFlow]
+  end
+  subgraph Server
+    TS[threadState]
+    Q[flow/questions]
+    JL[flow/journeyLog]
+    B[translator/bundle]
+    P[translator/parse]
+  end
+  subgraph API
+    A1[/flow/*/]
+    A2[/translator/*/]
+    A3[/versions/*/]
+    A4[/compares/]
+    A5[/projects|threads/]
+  end
+  CP --> UIF
+  VC --> UN
+  WS --> UJ
+  A1 --> TS
+  A1 --> Q
+  A2 --> B
+  A2 --> P
+  A3 --> TS
+```
+
+### 7) Component Relationships & Data Flow
+
+- Parent-child: `WorkspaceShell` → `ChatPanel`, `VersionCanvas`, `JourneyPanel`, `CompareSheet`
+- Data paths:
+  - `ChatPanel` → flow routes → `threadState` → UI prompts
+  - `VersionCanvas` → `useNodes` → `/api/versions/nodes` → labels/overview
+  - `JourneyPanel` → `useJourney` → `journey_items`
+
+Shared state:
+
+- `useWorkspace` store holds `projectId`, `threadId`, versions, compares, selection
+
+### 8) Service Relationships
+
+- OpenAI via `lib/ai/openai.ts` used by translator/enhancer routes
+- Moderation wraps text pre/post LLM calls
+- Cache and rate limiter used only by preview to date
+
+Error propagation:
+
+- API handlers map validation/moderation failures to 4xx; parse failures to 502; DB/RLS failures to 500
+
+Initialization order:
+
+- Middleware sets up Supabase session → route handlers call guards → server modules execute logic → responses shaped
+
+### 9) Database Relationships (business context)
+
+- `projects` own `chat_threads`, `versions`, `compares`, `journey_items`
+- `chat_threads.state` stores the flow; accepts updates via `threadState` helpers
+- `versions.meta` carries thread-scoped fields (`thread_id`, `display_label`, `parent_version_id`, `overview`, `status`)
+
+Consistency:
+
+- For preview/instruct, placeholder first, then update overview; UI tolerates eventual consistency via polling
+
+Transactions:
+
+- Individual inserts/updates are single-statement; RPCs encapsulate atomic accept-line writes
+
+### 10) Relationship Patterns (LLM)
+
+- Keep routes thin; move logic into `server/*` and reuse across handlers
+- Prefer thread-scoped filters (e.g., `meta->>thread_id`) to avoid cross-thread leakage
+- Validate inputs at boundaries; keep stores as projection layers only
+
+### 11) Integration Guidelines
+
+- Adding a new route: validate with Zod → `requireUser` (if writing) → call server modules → return typed JSON
+- Adding a new component: fetch via hooks; write via API; update store minimally; avoid duplicating server state
+
+### 12) Boundary Rules
+
+- UI never mutates DB directly; all writes through routes
+- Server modules avoid accessing browser-only APIs
+
+### 13) Change Impact Analysis
+
+- Changes in `threadState` shape affect: flow routes, enhancer/translator bundling, UI that snapshot state
+- Changes in `versions.meta` affect: nodes API, canvas rendering, instruct/preview
+- Adjusting rate limit/cache affects: user experience on preview and cost profile

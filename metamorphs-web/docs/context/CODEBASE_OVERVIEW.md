@@ -14,7 +14,8 @@ High-level guide to the structure, tech stack, and major flows in this repositor
 - Language: TypeScript
 - Styling: Tailwind CSS
 - Auth/DB: Supabase (client + server helpers)
-- AI: OpenAI-compatible clients, RAG helpers, caching, moderation
+- State: Zustand + TanStack React Query
+- AI: OpenAI client, in-memory cache + rate limit, moderation helper
 
 ### Key Directories (in `metamorphs-web/src`)
 
@@ -25,6 +26,7 @@ High-level guide to the structure, tech stack, and major flows in this repositor
 - `server/`: Server-side modules (LLM prompts/execution, translators, flow)
 - `store/`: Client-side state management store(s)
 - `types/`: Shared types across app and server
+  - `types/sessionState.ts`: schema for server-owned thread state
 
 ### Important Runtime Flows
 
@@ -32,6 +34,7 @@ High-level guide to the structure, tech stack, and major flows in this repositor
 - Flow/Intent: `app/api/flow/*` route handlers and `server/flow/*` logic
 - Translation: `app/api/translator/*` route handlers and `server/translator/*`
 - RAG: `lib/rag.ts` helpers and related server usage
+- Nodes listing: `app/api/versions/nodes` + `hooks/useNodes.ts` used by `VersionCanvas`
 
 ### Local Development
 
@@ -43,18 +46,21 @@ High-level guide to the structure, tech stack, and major flows in this repositor
 
 - Build: `next build`
 - Lint: ESLint config in `eslint.config.mjs`
+- Typecheck: `npm run typecheck`
 
 ### Conventions
 
 - Co-locate feature modules (components, hooks, server code) by domain where practical
 - Keep server-only logic in `server/` or `app/*/route.ts`
 - Put reusable helpers in `lib/` and shared types in `types/`
+- Validate API inputs with Zod schemas (`lib/schemas.ts` or route-local)
 
 ### Glossary
 
 - Thread: A chat conversation or unit of dialog
 - Flow: Guided intent discovery and response generation pipeline
 - Variant/Version: Alternative outputs and versions for comparisons
+- Node: A version card or compare card in the graph visualization
 
 ---
 
@@ -80,17 +86,19 @@ metamorphs/
           chat/route.ts
           compares/route.ts
           constraints/route.ts
+          debug/whoami/route.ts
           dev/thread-state/route.ts
           enhancer/route.ts
           flow/{start,answer,peek,confirm}/route.ts
           flow/intent/route.ts
+          journey/list/route.ts
           projects/route.ts
           rag/route.ts
           threads/route.ts
           translate/route.ts
           translator/{preview,accept-lines}/route.ts
           variants/route.ts
-          versions/{route.ts,positions/route.ts}
+          versions/{route.ts,nodes/route.ts,positions/route.ts}
       components/
         account/
         auth/
@@ -137,12 +145,15 @@ metamorphs/
 - zustand: lightweight global UI/workspace state
 - zod: input validation for APIs and state schemas
 - reactflow: versions graph UI
+- lucide-react: icons
 
 ### 4) Entry points (main files)
 
 - App shell: `src/app/layout.tsx`, `src/app/page.tsx`
 - Workspace pages: `src/app/(app)/workspace/*`, `src/app/(app)/workspaces/*`
 - API entry points: `src/app/api/**/route.ts`
+- Auth/session bootstrap: `src/middleware.ts`, `src/lib/supabaseServer.ts`
+- LLM clients/utilities: `src/lib/ai/*`
 
 ### 5) Build and deployment configuration
 
@@ -169,3 +180,17 @@ metamorphs/
 - Server-side Route Handlers for APIs; business logic in `src/server/*`
 - Client state via Zustand (`store/workspace.ts`) and React Query for data
 - Supabase for auth/DB; OpenAI for LLM; modular utilities under `src/lib/*`
+
+### 8) Entry Points for LLMs (Quick Start)
+
+- To understand flow state: see `src/server/threadState.ts` and `src/types/sessionState.ts`.
+- To see interview logic: `src/server/flow/questions.ts` and `src/app/api/flow/*`.
+- To see translation prompts/parsing: `src/lib/ai/prompts.ts`, `src/server/translator/parse.ts`, `src/app/api/translator/*`.
+- For nodes/canvas rendering: `src/hooks/useNodes.ts`, `src/components/workspace/versions/VersionCanvas.tsx`.
+- For chat message persistence: `src/app/api/chat/[threadId]/messages/route.ts`.
+
+### 9) Naming and organization
+
+- APIs are pluralized by resource (`/api/threads`, `/api/versions`, `/api/compares`).
+- Feature flags prefixed with `NEXT_PUBLIC_FEATURE_*` gate optional flows.
+- Files in `server/` are importable from routes and never from the browser.

@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { NodeRow } from "@/hooks/useNodes";
 import LineCitationDrawer from "@/components/workspace/translate/LineCitationDrawer";
 import { supabase } from "@/lib/supabaseClient";
+import { useWorkspace } from "@/store/workspace";
 
 type NodeCardProps = {
   node: NodeRow;
@@ -18,6 +19,7 @@ export default function NodeCard({
   onAccepted,
 }: NodeCardProps) {
   const qc = useQueryClient();
+  const projectId = useWorkspace((s) => s.projectId);
   const [openCite, setOpenCite] = React.useState(false);
   const [selected, setSelected] = React.useState<Set<number>>(new Set());
   const lines = node.overview?.lines || [];
@@ -52,11 +54,32 @@ export default function NodeCard({
       setSelected(new Set());
       // Refresh activity/journey and nodes list
       qc.invalidateQueries({ queryKey: ["journey"] }).catch(() => {});
-      qc.invalidateQueries({ queryKey: ["nodes"] }).catch(() => {});
+      if (projectId) {
+        qc.invalidateQueries({ queryKey: ["nodes", projectId] }).catch(
+          () => {}
+        );
+      } else {
+        qc.invalidateQueries({ queryKey: ["nodes"] }).catch(() => {});
+      }
       onAccepted?.();
     } else {
+      let details: { error?: string; categories?: Record<string, unknown> } =
+        {};
+      try {
+        details = (await res.json()) as typeof details;
+      } catch {}
+      const cats = details?.categories
+        ? Object.entries(details.categories)
+            .filter(([, v]) => v)
+            .map(([k]) => k)
+            .join(", ")
+        : "";
       // eslint-disable-next-line no-alert
-      alert("Accept failed. Please retry.");
+      alert(
+        details?.error
+          ? `${details.error}${cats ? ` (categories: ${cats})` : ""}`
+          : "Accept failed. Please retry."
+      );
     }
   }
 
@@ -76,11 +99,21 @@ export default function NodeCard({
         .update({ meta: nextMeta })
         .eq("id", node.id);
       if (e2) throw e2;
-      await qc.invalidateQueries({ queryKey: ["nodes"] });
+      if (projectId) {
+        await qc.invalidateQueries({ queryKey: ["nodes", projectId] });
+      } else {
+        await qc.invalidateQueries({ queryKey: ["nodes"] });
+      }
     } finally {
       setSavingComplete(false);
     }
   }
+
+  // Guard: close citation UI and clear selections on thread or node change
+  React.useEffect(() => {
+    setOpenCite(false);
+    setSelected(new Set());
+  }, [threadId, node.id]);
 
   return (
     <div className="space-y-4">

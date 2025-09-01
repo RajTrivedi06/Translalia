@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { NodeRow, useNodes } from "@/hooks/useNodes";
+import { useWorkspace } from "@/store/workspace";
 import { supabase } from "@/lib/supabaseClient";
 
 type Props = {
@@ -23,7 +24,15 @@ export default function LineCitationDrawer({
   node,
   threadId,
 }: Props) {
-  const { data: nodes } = useNodes(threadId);
+  const projectId = useWorkspace((s) => s.projectId);
+  const { data: nodes } = useNodes(projectId, threadId);
+  // Temporary debug to verify thread-scoped citation source list
+  // eslint-disable-next-line no-console
+  console.debug("[CitationsRender]", {
+    projectId,
+    threadId,
+    count: (nodes || []).length,
+  });
   const [targetIdx, setTargetIdx] = React.useState<number | null>(null);
   const [sourceVersionId, setSourceVersionId] = React.useState<string | null>(
     null

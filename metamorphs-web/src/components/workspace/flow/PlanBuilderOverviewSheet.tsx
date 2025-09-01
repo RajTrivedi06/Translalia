@@ -6,6 +6,7 @@ import { useNodes } from "@/hooks/useNodes";
 import { useQueryClient } from "@tanstack/react-query";
 import NodeCard from "@/components/workspace/translate/NodeCard";
 import FullPoemOverview from "@/components/workspace/translate/FullPoemOverview";
+import { extractTL } from "@/lib/i18n/targetLanguage";
 import { useWorkspace } from "@/store/workspace";
 import { supabase } from "@/lib/supabaseClient";
 import { supabase as supa } from "@/lib/supabaseClient";
@@ -30,7 +31,8 @@ export default function PlanBuilderOverviewSheet(
   const [editMode, setEditMode] = React.useState(false);
   const selectedNodeId = useWorkspace((s) => s.selectedNodeId);
   const setSelectedNodeId = useWorkspace((s) => s.setSelectedNodeId);
-  const { data: nodes } = useNodes(threadId);
+  const projectId = useWorkspace((s) => s.projectId);
+  const { data: nodes } = useNodes(projectId, threadId);
   const selectedNode = (nodes || []).find(
     (n: { id: string }) => n.id === selectedNodeId
   );
@@ -44,6 +46,8 @@ export default function PlanBuilderOverviewSheet(
 
   const [poem, setPoem] = React.useState("");
   const [fields, setFields] = React.useState<CollectedFields>({});
+  const tl = extractTL(fields);
+  const [forceTranslate, setForceTranslate] = React.useState(false);
 
   React.useEffect(() => {
     if (!open) return;
@@ -87,38 +91,77 @@ export default function PlanBuilderOverviewSheet(
     }
   }, [threadId, poem, fields]);
 
-  const generateOverview = React.useCallback(async () => {
-    setLoading(true);
-    try {
-      const { data: sessionData } = await supa.auth.getSession();
-      const accessToken = sessionData.session?.access_token;
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
-      const res = await fetch("/api/translator/preview", {
-        method: "POST",
-        headers,
-        credentials: "include",
-        body: JSON.stringify({ threadId }),
-      });
-      const payload = await res.json().catch(() => null);
-      if (res.ok && payload?.versionId) {
-        if (payload.displayLabel && payload.preview) {
-          setOptimisticNode({
-            id: payload.versionId,
-            display_label: payload.displayLabel,
-            status: "generated",
-            overview: payload.preview,
-          });
+  const generateOverview = React.useCallback(
+    async (force?: boolean) => {
+      setLoading(true);
+      try {
+        const { data: sessionData } = await supa.auth.getSession();
+        const accessToken = sessionData.session?.access_token;
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+        if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+        const res = await fetch("/api/translator/preview", {
+          method: "POST",
+          headers,
+          credentials: "include",
+          body: JSON.stringify({ threadId, forceTranslate: !!force }),
+        });
+        const payload = await res.json().catch(() => null);
+        if (res.status === 409 && payload?.code === "PREVIEW_ECHOED_SOURCE") {
+          const okay = window.confirm(
+            "Model echoed source text. Retry with stronger non-echo enforcement?"
+          );
+          if (okay) {
+            await generateOverview(true);
+          }
+          return;
         }
-        await qc.invalidateQueries({ queryKey: ["nodes", threadId] });
-        setSelectedNodeId(payload.versionId);
+        if (res.ok && payload?.versionId) {
+          if (payload.displayLabel && payload.preview) {
+            setOptimisticNode({
+              id: payload.versionId,
+              display_label: payload.displayLabel,
+              status: "generated",
+              overview: payload.preview,
+            });
+          }
+          await qc.invalidateQueries({ queryKey: ["nodes"] });
+          setSelectedNodeId(payload.versionId);
+          // Wait for thread-scoped nodes to include the new version before closing
+          const start = Date.now();
+          let found = false;
+          while (Date.now() - start < 8000) {
+            const q = qc.getQueryData<any>(["nodes", projectId, threadId]);
+            const list = Array.isArray(q)
+              ? q
+              : Array.isArray(q?.nodes)
+              ? q.nodes
+              : [];
+            if (list.find((n: any) => n?.id === payload.versionId)) {
+              found = true;
+              break;
+            }
+            // eslint-disable-next-line no-await-in-loop
+            await new Promise((r) => setTimeout(r, 250));
+            // eslint-disable-next-line no-await-in-loop
+            await qc.invalidateQueries({
+              queryKey: ["nodes", projectId, threadId],
+            });
+          }
+          if (found) onOpenChange(true); // keep open if not found; caller may retry
+        }
+        if (!res.ok) {
+          const code = payload?.code || payload?.error || "PREVIEW_FAILED";
+          // eslint-disable-next-line no-alert
+          alert(`Preview failed: ${code}`);
+        }
+      } finally {
+        setLoading(false);
       }
-    } finally {
-      setLoading(false);
-    }
-  }, [threadId, setSelectedNodeId, qc]);
+    },
+    [threadId, setSelectedNodeId, qc]
+  );
 
   return (
     <div className={`fixed inset-0 z-50 ${open ? "" : "hidden"}`}>
@@ -135,6 +178,25 @@ export default function PlanBuilderOverviewSheet(
             <p className="text-sm text-neutral-500">
               Review interview answers and poem. Accept to generate Version A.
             </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+              <span className="rounded border px-2 py-1">
+                Target: <span className="font-medium">{tl.target}</span>
+                {tl.dialect ? (
+                  <>
+                    {" "}
+                    — Dialect: <span className="font-medium">{tl.dialect}</span>
+                  </>
+                ) : null}
+              </span>
+              <span className="rounded border px-2 py-1">
+                Non-echo enforcement active
+              </span>
+              {tl.translanguaging ? (
+                <span className="rounded border px-2 py-1">
+                  Translanguaging allowed
+                </span>
+              ) : null}
+            </div>
           </header>
           <Separator />
           <div className="flex-1 overflow-y-auto p-5 space-y-5">
@@ -219,13 +281,23 @@ export default function PlanBuilderOverviewSheet(
                 >
                   Edit
                 </button>
-                <button
-                  className="rounded-md bg-neutral-900 text-white px-3 py-2 text-sm disabled:opacity-60"
-                  disabled={loading}
-                  onClick={generateOverview}
-                >
-                  {loading ? "Generating…" : "Accept & Generate Version A"}
-                </button>
+                <div className="ml-auto flex items-center gap-3">
+                  <label className="flex items-center gap-2 text-xs text-neutral-600">
+                    <input
+                      type="checkbox"
+                      checked={forceTranslate}
+                      onChange={(e) => setForceTranslate(e.target.checked)}
+                    />
+                    Force translate (avoid echo)
+                  </label>
+                  <button
+                    className="rounded-md bg-neutral-900 text-white px-3 py-2 text-sm disabled:opacity-60"
+                    disabled={loading}
+                    onClick={() => generateOverview(forceTranslate)}
+                  >
+                    {loading ? "Generating…" : "Accept & Generate Version A"}
+                  </button>
+                </div>
               </>
             ) : (
               <div className="flex gap-2 ml-auto">

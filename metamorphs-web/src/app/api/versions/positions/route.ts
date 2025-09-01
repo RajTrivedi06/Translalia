@@ -16,7 +16,7 @@ const schema = z.object({
 
 export async function PATCH(req: NextRequest) {
   const guard = await requireUser(req);
-  if (guard.res) return guard.res;
+  if ("res" in guard) return guard.res;
   const body = schema.safeParse(await req.json());
   if (!body.success) {
     return NextResponse.json({ error: body.error.flatten() }, { status: 400 });

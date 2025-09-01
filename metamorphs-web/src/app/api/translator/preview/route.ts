@@ -13,8 +13,12 @@ import {
   type SupabaseClient,
 } from "@supabase/supabase-js";
 import { allocateDisplayLabel } from "@/server/labels/displayLabel";
+import { looksLikeEcho } from "@/lib/text/similarity";
 
-const Body = z.object({ threadId: z.string().uuid() });
+const Body = z.object({
+  threadId: z.string().uuid(),
+  forceTranslate: z.boolean().optional(),
+});
 
 export async function POST(req: Request) {
   if (process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR !== "1") {
@@ -27,7 +31,7 @@ export async function POST(req: Request) {
       { error: parsed.error.flatten() },
       { status: 400 }
     );
-  const { threadId } = parsed.data;
+  const { threadId, forceTranslate } = parsed.data;
 
   const rl = rateLimit(`preview:${threadId}`, 30, 60_000);
   if (!rl.ok)
@@ -93,7 +97,10 @@ export async function POST(req: Request) {
     .single();
   if (insErr || !inserted) {
     return NextResponse.json(
-      { error: insErr?.message || "Failed to create placeholder" },
+      {
+        error: insErr?.message || "Failed to create placeholder",
+        code: "INSERT_FAILED_RLS",
+      },
       { status: 500 }
     );
   }
@@ -127,7 +134,12 @@ export async function POST(req: Request) {
       .single();
     if (selErrCached || !(latestAfterCache as any)?.meta?.overview) {
       return NextResponse.json(
-        { ok: false, error: "NO_OVERVIEW_PERSISTED", placeholderId },
+        {
+          ok: false,
+          error: "NO_OVERVIEW_PERSISTED",
+          code: "NO_OVERVIEW_PERSISTED",
+          placeholderId,
+        },
         { status: 500 }
       );
     }
@@ -141,21 +153,25 @@ export async function POST(req: Request) {
     });
   }
 
-  const user = [
-    `SOURCE_POEM (line_policy=${bundle.line_policy}):\n${bundle.poem}`,
-    `ENHANCED_REQUEST (JSON):\n${JSON.stringify(bundle.enhanced)}`,
-    bundle.acceptedLines.length
-      ? `ACCEPTED_DRAFT_LINES:\n${bundle.acceptedLines.join("\n")}`
-      : "",
-    bundle.ledgerNotes.length
-      ? `DECISIONS (last):\n${bundle.ledgerNotes
-          .map((n) => `- ${n}`)
-          .join("\n")}`
-      : "",
-    bundle.summary ? `SUMMARY:\n${bundle.summary}` : "",
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+  const force = forceTranslate
+    ? "\n\nHARD REQUIREMENT: Output must be in the target language; do NOT echo the source lines verbatim or near-verbatim.\n"
+    : "";
+  const user =
+    [
+      `SOURCE_POEM (line_policy=${bundle.line_policy}):\n${bundle.poem}`,
+      `ENHANCED_REQUEST (JSON):\n${JSON.stringify(bundle.enhanced)}`,
+      bundle.acceptedLines.length
+        ? `ACCEPTED_DRAFT_LINES:\n${bundle.acceptedLines.join("\n")}`
+        : "",
+      bundle.ledgerNotes.length
+        ? `DECISIONS (last):\n${bundle.ledgerNotes
+            .map((n) => `- ${n}`)
+            .join("\n")}`
+        : "",
+      bundle.summary ? `SUMMARY:\n${bundle.summary}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n") + force;
 
   const openai = getOpenAI();
   const resp = await openai.chat.completions.create({
@@ -175,6 +191,19 @@ export async function POST(req: Request) {
       modelUsage: resp.usage,
       line_policy: bundle.line_policy,
     };
+    // Server-side anti-echo guard: if output is too similar to source, block with 409
+    const sourceLines = String(bundle.poem).split(/\r?\n/).filter(Boolean);
+    const outLines = Array.isArray(parsedOut.lines) ? parsedOut.lines : [];
+    if (!forceTranslate && looksLikeEcho(sourceLines, outLines)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "PREVIEW_ECHOED_SOURCE",
+          error: "Model echoed source text.",
+        },
+        { status: 409 }
+      );
+    }
     await cacheSet(key, preview, 3600);
     // Update node meta with overview + flip status
     const updatedMeta: Record<string, unknown> = {
@@ -194,6 +223,7 @@ export async function POST(req: Request) {
         {
           ok: false,
           error: "UPDATE_FAILED_RLS",
+          code: "UPDATE_FAILED_RLS",
           details: upErr2.message,
           placeholderId,
         },
@@ -207,7 +237,12 @@ export async function POST(req: Request) {
       .single();
     if (selErr || !(latest as any)?.meta?.overview) {
       return NextResponse.json(
-        { ok: false, error: "NO_OVERVIEW_PERSISTED", placeholderId },
+        {
+          ok: false,
+          error: "NO_OVERVIEW_PERSISTED",
+          code: "NO_OVERVIEW_PERSISTED",
+          placeholderId,
+        },
         { status: 500 }
       );
     }

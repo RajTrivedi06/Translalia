@@ -11,6 +11,8 @@ import type { Version, JourneyItem } from "@/types/workspace";
 import { CompareSheet } from "./compare/CompareSheet";
 import { useThreadId } from "@/hooks/useThreadId";
 import { useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
+import { routes } from "@/lib/routers";
 
 export function WorkspaceShell({
   projectId,
@@ -27,7 +29,7 @@ export function WorkspaceShell({
   const setVersions = useWorkspace((s) => s.setVersions);
   const setJourney = useWorkspace((s) => s.setJourney);
   const setCompares = useWorkspace((s) => s.setCompares);
-  const setSelectedNodeId = useWorkspace((s) => s.setSelectedNodeId);
+  const resetThreadEphemera = useWorkspace((s) => s.resetThreadEphemera);
   const versions = useWorkspace((s) => s.versions);
   const compareOpen = useWorkspace((s) => s.compareOpen);
   const setCompareOpen = useWorkspace((s) => s.setCompareOpen);
@@ -37,12 +39,42 @@ export function WorkspaceShell({
     if (effectiveThreadId) setThread(effectiveThreadId);
   }, [effectiveThreadId, setThread]);
 
+  // Guard: if thread is not accessible, show small reason and redirect; do not bounce on 5xx
+  React.useEffect(() => {
+    if (!projectId || !effectiveThreadId) return;
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/flow/peek?threadId=${effectiveThreadId}`,
+          {
+            credentials: "include",
+          }
+        );
+        if (res.status === 404 || res.status === 403 || res.status === 401) {
+          let code = String(res.status);
+          try {
+            const json = await res.json();
+            code = json?.code || code;
+          } catch {}
+          alert(`Chat not accessible (${code}). Returning to Chats.`);
+          window.location.href = routes.workspaceChats(projectId);
+        }
+        // For 5xx, stay put; normal UI will surface errors and allow retry
+      } catch {
+        // ignore network errors; normal UI will handle
+      }
+    })();
+  }, [projectId, effectiveThreadId]);
+
   // On thread change: clear nodes cache and selection, and reset local versions to avoid bleed
   React.useEffect(() => {
-    qc.removeQueries({ queryKey: ["nodes"], exact: false });
-    setSelectedNodeId(null);
+    if (projectId) {
+      qc.invalidateQueries({ queryKey: ["nodes", projectId] });
+      qc.invalidateQueries({ queryKey: ["citations", projectId] });
+    }
+    resetThreadEphemera();
     setVersions([]);
-  }, [effectiveThreadId, qc, setSelectedNodeId, setVersions]);
+  }, [effectiveThreadId, qc, projectId, resetThreadEphemera, setVersions]);
 
   React.useEffect(() => {
     if (!projectId) return;
@@ -105,26 +137,54 @@ export function WorkspaceShell({
   }, [projectId, effectiveThreadId, setVersions, setJourney, setCompares]);
 
   return (
-    // Fill the <main> area completely; no card/chrome around the panels
-    <div className="h-full w-full">
-      <PanelGroup direction="horizontal" className="h-full">
+    // Fill the <main> area completely; use flex column so the panel group gets remaining height
+    <div className="h-full w-full flex flex-col">
+      {/* Thread topbar navigation */}
+      <div className="sticky top-0 z-30 flex items-center justify-between border-b bg-white/80 dark:bg-neutral-950/80 backdrop-blur px-4 py-2">
+        <div className="flex items-center gap-3">
+          <div className="text-sm font-semibold">
+            {useWorkspace.getState().workspaceName || "Workspace"}
+          </div>
+          <span className="text-xs text-neutral-500">/</span>
+          {projectId ? (
+            <Link
+              href={routes.workspaceChats(projectId)}
+              className="text-sm underline"
+            >
+              Chats
+            </Link>
+          ) : null}
+        </div>
+        {projectId ? (
+          <Link href={routes.workspaceChats(projectId)} className="text-xs">
+            <span className="inline-flex items-center rounded-md border px-2 py-1">
+              Back to Chats
+            </span>
+          </Link>
+        ) : null}
+      </div>
+      <PanelGroup direction="horizontal" className="flex-1 min-h-0">
         {/* Left: Chat */}
-        <Panel defaultSize={24} minSize={18} className="min-h-0 border-r">
+        <Panel
+          defaultSize={24}
+          minSize={18}
+          className="min-h-0 min-w-0 border-r"
+        >
           <ChatPanel projectId={projectId} />
         </Panel>
         <PanelResizeHandle className="w-2 bg-neutral-200" />
         {/* Middle: Versions Canvas */}
         <Panel
-          key={effectiveThreadId || "no-thread"}
+          key={`${projectId || "no-project"}:${effectiveThreadId || "pending"}`}
           defaultSize={52}
           minSize={40}
-          className="min-h-0 border-r"
+          className="min-h-0 min-w-0 border-r"
         >
           <VersionCanvas />
         </Panel>
         <PanelResizeHandle className="w-2 bg-neutral-200" />
         {/* Right: Journey / Summary */}
-        <Panel defaultSize={24} minSize={18} className="min-h-0">
+        <Panel defaultSize={24} minSize={18} className="min-h-0 min-w-0">
           <JourneyPanel />
         </Panel>
       </PanelGroup>
