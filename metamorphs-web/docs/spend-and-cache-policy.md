@@ -1,49 +1,226 @@
-# Spend & Cache Policy (current)
+Purpose: Token/cost patterns, caching keys/TTL, and rate/quotas with headers.
+Updated: 2025-09-16
 
-- Rate limit (preview): 30 req/min per user.
-- Soft daily budget (per project): $2 (block when exceeded).
-- Cache identical previews by stable hash for 1 hour.
-- Privacy: log usage only (provider, model, tokens, latency, cost, status, prompt hash). No raw prompts/outputs.
-- Cache keys:
-  - enhancer: `enhancer:<stableHash({ poem, fields })>`; TTL 3600s.
-  - translator preview: `translator_preview:<stableHash(bundle)>`; TTL 3600s.
-- Budget attribution: per project_id where available; otherwise per user_id.
-- Journey Activity: no caching (RLS lists are user-specific and small; rely on query invalidations after actions).
+### [Last Updated: 2025-09-13]
 
-Notes:
+# Spend & Cache Policy (2025-09-16)
 
-- Preview route verifies persistence (fails loudly if RLS blocks update) and still returns `preview` for optimistic UI.
-- Nodes API is thread-scoped; clients invalidate `['nodes', threadId]` after mutations.
+## Cost Shape (by surface)
 
----
+- Translator: single `responses.create` call at `temperature ≈ 0.6`.
 
-## Invalidation & TTLs
+```98:104:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts
+const reqPayload = {
+  model: TRANSLATOR_MODEL,
+  temperature: 0.6,
+  messages: [
+```
 
-- Enhancer and preview caches use fixed TTL of 3600s. Invalidate by changing inputs (poem, fields, accepted lines, ledger notes).
-- Do not cache journey or nodes responses; these are time-sensitive and scoped by thread/project.
+- Prismatic mode (when enabled) remains a single call; sections A/B/C parsed server-side.
 
-## Cost Optimization Patterns
+```216:219:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+const sections =
+  isPrismaticEnabled() && effectiveMode === "prismatic"
+    ? parsePrismatic(raw)
+    : undefined;
+```
 
-- Prefer cached previews; avoid re-calling LLMs for identical inputs.
-- Choose lower-cost models for planning steps (enhancer) and reserve higher-quality models for final generation.
-- Limit prompt sizes: trim summaries and ledger notes to the most recent items.
+- Enhancer (planner): single call with JSON output; may retry once with stricter system prompt.
 
-## Alerts & Notifications (future)
+```38:45:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/enhance.ts
+const base = {
+  model: ENHANCER_MODEL,
+  temperature: 0.2,
+  response_format: { type: "json_object" } as const,
+};
+```
 
-- Add server-side counters per project/day; emit alerts at 50%, 75%, 100% of budget.
-- Disable expensive endpoints when budget exceeded; return 402/403 with guidance.
+```58:66:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/enhance.ts
+const r2 = await openai.responses.create({
+  ...base,
+  temperature: 0.1,
+  messages: [
+    { role: "system", content: ENHANCER_SYSTEM + "\nReturn STRICT valid JSON. If unsure, set warnings." },
+```
 
-## Cache Warming & Preloading (suggested)
+- Verifier / Back-translate: user-initiated JSON calls (`temperature ≈ 0.2` / `0.3`).
 
-- After plan confirm, pre-warm translator preview for better UX when phase flips to translating.
+```41:47:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/verify.ts
+const r = await openai.responses.create({
+  model: VERIFIER_MODEL,
+  temperature: 0.2,
+  response_format: { type: "json_object" },
+```
 
-## Cost Management Implementation Guide (LLM)
+```83:90:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/verify.ts
+const r = await openai.responses.create({
+  model: BACKTRANSLATE_MODEL,
+  temperature: 0.3,
+  response_format: { type: "json_object" },
+```
 
-- Wrap LLM calls with `stableHash` and `cacheGet/cacheSet`.
-- Surface token `usage` in API responses where possible; aggregate per project.
-- Enforce per-thread or per-project rate limits on hot endpoints.
+## Prompt Hash & Caching
 
-## Reporting & Monitoring (future)
+- Prompt hash inputs: `{ route, model, system, user, schema? }`.
 
-- Track per-project spend approximations using token usage and published model pricing.
-- Build dashboards for cache hit rate, average latency, and error distribution.
+```11:20:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/promptHash.ts
+export function buildPromptHash(args: {
+  route: string;
+  model: string;
+  system: string;
+  user: string;
+  schema?: string;
+}) {
+  const { route, model, system, user, schema } = args;
+  return stableHash({ route, model, system, user, schema });
+}
+```
+
+- Cache keys: stable hash of inputs; process memory Map with TTL seconds.
+
+```5:11:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/cache.ts
+export function stableHash(obj: unknown): string {
+  const json = JSON.stringify(
+    obj,
+    Object.keys(obj as Record<string, unknown>).sort()
+  );
+  return crypto.createHash("sha256").update(json).digest("hex");
+}
+```
+
+```23:29:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/cache.ts
+export async function cacheSet<T>(
+  key: string,
+  value: T,
+  ttlSec = 3600
+): Promise<void> {
+  mem.set(key, { expires: Date.now() + ttlSec * 1000, value });
+}
+```
+
+- Example usage (preview):
+
+```101:109:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+const key = "translator_preview:" + stableHash({ ...bundle, placeholderId });
+const cached = await cacheGet<unknown>(key);
+if (cached) {
+  // ...update node meta and return cached preview
+}
+```
+
+- Example usage (translate):
+
+```74:79:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts
+const key = "translate:" + stableHash(bundle);
+const cached = await cacheGet<unknown>(key);
+if (cached)
+  return NextResponse.json({ ok: true, result: cached, cached: true });
+```
+
+## Rate Limiting & Quotas
+
+- Minute bucket (preview): in-memory token bucket keyed by thread; returns 429 JSON when exceeded.
+
+```3:12:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/ratelimit.ts
+export function rateLimit(key: string, limit = 30, windowMs = 60_000) {
+  // ... in-memory bucket
+  if (b.count >= limit) return { ok: false, remaining: 0 } as const;
+}
+```
+
+```49:52:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+const rl = rateLimit(`preview:${threadId}`, 30, 60_000);
+if (!rl.ok)
+  return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+```
+
+- Daily quotas (verify/backtranslate): Upstash Redis sliding window with 429 JSON on exceed.
+
+```1:7:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ratelimit/redis.ts
+import { Ratelimit } from "@upstash/ratelimit";
+import { Redis } from "@upstash/redis";
+```
+
+```18:21:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/verify/route.ts
+const rl = await checkDailyLimit(user.id, "verify", VERIFY_DAILY_LIMIT);
+if (!rl.allowed)
+  return NextResponse.json(
+    { error: "Daily verification limit reached" },
+    { status: 429 }
+  );
+```
+
+## Retry-After headers
+
+- Policy intent: include `Retry-After` for local minute bucket (60s) and daily quotas (86400s). Current routes return 429 JSON without explicit headers; upstream LLM 429s preserve headers.
+
+```3:10:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/http/errors.ts
+/** Convert LLM client errors to concise HTTP responses, preserving Retry-After on 429. */
+const res = NextResponse.json(body, { status });
+if (retryAfter) res.headers.set("Retry-After", String(retryAfter));
+```
+
+## Cache Table
+
+| Cache Key Prefix      | Inputs (hashed)                                                     | TTL (sec) | Eviction         | Anchor                                                             |
+| --------------------- | ------------------------------------------------------------------- | --------- | ---------------- | ------------------------------------------------------------------ |
+| `translator_preview:` | bundle (poem, enhanced, glossary, summary, accepted, placeholderId) | 3600      | TTL expiry (mem) | `metamorphs-web/src/app/api/translator/preview/route.ts:L153–L156` |
+| `translate:`          | poem, enhanced, summary, ledger, accepted, glossary                 | 3600      | TTL expiry (mem) | `metamorphs-web/src/app/api/translate/route.ts:L89–L93`            |
+| `enhancer:`           | poem, fields                                                        | 3600      | TTL expiry (mem) | `metamorphs-web/src/app/api/enhancer/route.ts:L52–L56`             |
+
+Implementation
+
+```13:21:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/cache.ts
+export async function cacheGet<T>(key: string): Promise<T | null> {
+  const item = mem.get(key);
+  if (!item) return null;
+  if (Date.now() > item.expires) {
+    mem.delete(key);
+    return null;
+  }
+  return item.value as T;
+}
+```
+
+```23:29:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/cache.ts
+export async function cacheSet<T>(
+  key: string,
+  value: T,
+  ttlSec = 3600
+): Promise<void> {
+  mem.set(key, { expires: Date.now() + ttlSec * 1000, value });
+}
+```
+
+## Rate-limit Rules
+
+- Preview minute bucket: 30 requests per 60 seconds per `threadId`.
+
+```55:58:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+const rl = rateLimit(`preview:${threadId}`, 30, 60_000);
+if (!rl.ok)
+  return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+```
+
+- Token bucket helper (in-memory):
+
+```3:12:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/ratelimit.ts
+export function rateLimit(key: string, limit = 30, windowMs = 60_000) {
+  const now = Date.now();
+  const b = buckets.get(key);
+  if (!b || now > b.until) {
+    buckets.set(key, { count: 1, until: now + windowMs });
+    return { ok: true, remaining: limit - 1 } as const;
+  }
+  if (b.count >= limit) return { ok: false, remaining: 0 } as const;
+  b.count += 1;
+  return { ok: true, remaining: limit - b.count } as const;
+}
+```
+
+- Daily quotas (verify/backtranslate): service-backed (Upstash) helper.
+
+```1:7:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ratelimit/redis.ts
+import { Ratelimit } from "@upstash/ratelimit";
+import { Redis } from "@upstash/redis";
+```

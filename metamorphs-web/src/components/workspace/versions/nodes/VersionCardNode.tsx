@@ -26,10 +26,18 @@ export const VersionCardNode = React.memo(function VersionCardNode({
 
   return (
     <div
-      className={`w-[260px] rounded-xl border bg-white shadow-sm ${
+      className={`w-[360px] md:w-[420px] rounded-xl border bg-white shadow-sm ${
         data.highlight ? "ring-2 ring-amber-400 animate-pulse" : ""
       }`}
     >
+      {/* incoming lineage edge arrives at the TOP */}
+      <Handle
+        id="top"
+        type="target"
+        position={Position.Top}
+        className="!w-0 !h-0 !bg-transparent"
+        style={{ border: "none" }}
+      />
       <div className="border-b px-3 py-2 flex items-center justify-between">
         <div className="font-semibold">{title}</div>
         <button
@@ -48,14 +56,21 @@ export const VersionCardNode = React.memo(function VersionCardNode({
       </div>
       <div className="p-3 text-sm text-neutral-700">
         {isRenderable && lines.length > 0 ? (
-          <div className="line-clamp-4 whitespace-pre-wrap">
+          <div className="line-clamp-10 md:line-clamp-12 whitespace-pre-wrap">
             {lines.join("\n")}
           </div>
         ) : (
           <div className="text-neutral-400">No overview yet</div>
         )}
       </div>
-      <Handle type="source" position={Position.Right} />
+      {/* outgoing lineage edge leaves from the BOTTOM */}
+      <Handle
+        id="bottom"
+        type="source"
+        position={Position.Bottom}
+        className="!w-0 !h-0 !bg-transparent"
+        style={{ border: "none" }}
+      />
     </div>
   );
 });

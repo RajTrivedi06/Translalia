@@ -1,3 +1,5 @@
+### [Last Updated: 2025-09-16]
+
 ## State Management
 
 ### Overview
@@ -27,6 +29,23 @@ Client-side state focuses on workspace, threads, and UI sheets. This document ou
 - Co-locate feature state near UI that consumes it
 - Prefer React Query for async server data; Zustand for cross-pane UI/session state
 
+### Thread-Scoped Query Keys
+
+We use TanStack Query keys like `["nodes", projectId, threadId]` for thread-scoped remote reads. Zustand holds UI/session state to avoid stale canvas divergence.
+
+| Query Key             | Params                  | Reader(s)                             | Writer(s) / Invalidators                          | Anchors                                        |
+| --------------------- | ----------------------- | ------------------------------------- | ------------------------------------------------- | ---------------------------------------------- |
+| `["nodes", pId, tId]` | `projectId`, `threadId` | `useNodes(projectId, threadId)` in UI | API writes update `versions` then polling refresh | `metamorphs-web/src/hooks/useNodes.ts:L38–L45` |
+
+```38:45:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/hooks/useNodes.ts
+return useQuery({
+  queryKey: ["nodes", projectId, threadId],
+  queryFn: () => fetchNodes(threadId!),
+  enabled: !!projectId && !!threadId,
+  refetchInterval: 1500,
+});
+```
+
 ### Side Effects
 
 - Network calls centralized in hooks or `server/*` modules
@@ -49,16 +68,19 @@ Client-side state focuses on workspace, threads, and UI sheets. This document ou
 type WorkspaceState = {
   projectId?: string;
   threadId?: string;
+  workspaceName?: string | null;
   versions: Version[];
   compares: CompareNode[];
   journey: JourneyItem[];
   activeVersionId?: string;
   highlightVersionId?: string;
   selectedNodeId?: string | null;
+  setSelectedNodeId(id?: string | null): void;
   overview: any | null;
   preview?: any | null;
   activeCompare?: { leftId: string; rightId: string };
   compareOpen: boolean;
+  setWorkspaceMeta(id: string, name: string | null): void;
   setProjectId(id?: string): void;
   setThreadId(id?: string): void;
   setVersions(vs: Version[]): void;
@@ -74,7 +96,19 @@ type WorkspaceState = {
   pinJourney(j: JourneyItem): void;
   setVersionPos(id: string, pos: { x: number; y: number }): void;
   tidyPositions(): void;
+  resetThreadEphemera(): void;
 };
+```
+
+Anchors:
+
+```40:49:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/store/workspace.ts
+export const useWorkspace = create<WorkspaceState>((set) => ({
+  projectId: undefined,
+  threadId: undefined,
+  workspaceName: null,
+  versions: [
+    { id: "A", title: "Version A", lines: ["…"], tags: ["literal"] },
 ```
 
 ### 3) Actions/reducers/stores
@@ -97,6 +131,7 @@ type WorkspaceState = {
 
 - Auth state: `useSupabaseUser` subscribes to Supabase `onAuthStateChange`
 - No DB realtime listeners are currently implemented; React Query refetches as needed
+- `WorkspaceShell` invalidates `nodes` and `citations` query keys on thread change
 
 ### 7) State Update Patterns (LLM)
 

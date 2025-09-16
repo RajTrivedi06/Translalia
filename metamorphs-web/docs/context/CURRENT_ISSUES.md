@@ -1,161 +1,118 @@
-## Current Issues (as of YYYY-MM-DD)
-
-### Issue: Dev-only debug route exposed
-
-- Severity: Low
-- Effort: <0.5 day
-- Impact: `GET /api/debug/whoami` and `GET /api/dev/thread-state` exist; `whoami` has a TEMP DEBUG comment
-- Workaround: Ensure production checks guard access (`dev/thread-state` already blocks in prod)
-- Root Cause: Temporary diagnostics left in repo
-- LLM Note: Do not rely on debug endpoints in production code
-
-### Issue: In-memory cache and rate limit not distributed
-
-- Severity: Medium
-- Effort: 1–2 days
-- Impact: Cache and token buckets reset on deploy and do not share across instances
-- Workaround: None; acceptable for single-instance dev/staging
-- Root Cause: MVP implementation in `lib/ai/cache.ts` and `lib/ai/ratelimit.ts`
-- LLM Note: Avoid assuming global cache; idempotent design required
-
-### Issue: Soft budget and per-user per-minute are placeholders
-
-- Severity: Medium
-- Effort: 1–2 days
-- Impact: Policy constants in `lib/policy.ts` marked "wire later" are not enforced globally
-- Workaround: Preview endpoint has its own limiter; others rely on UX
-- Root Cause: Budget controls not implemented yet
-- LLM Note: Do not add costly loops; reuse caches and keep payloads minimal
-
-### Issue: Missing formal migrations directory
-
-- Severity: Medium
-- Effort: 1 day
-- Impact: Schema drift risk; `chat_threads.state` column required by code
-- Workaround: Manual SQL provided in docs (`flags-and-models.md`)
-- Root Cause: Supabase CLI migrations not yet adopted
-- LLM Note: When introducing new tables/columns, include SQL/migration notes
-
-### Issue: RLS policies assumed but not present in repo
-
-- Severity: High
-- Effort: 2–3 days
-- Impact: Security relies on DB-side RLS; policies must be provisioned in environments
-- Workaround: None in code; must configure in Supabase
-- Root Cause: Policies are environment config, not versioned here
-- LLM Note: Never bypass `requireUser`; scope queries by `project_id`/`thread_id`
-
-### Issue: Nodes polling frequency vs. DB load
-
-- Severity: Low
-- Effort: 0.5–1 day
-- Impact: `useNodes` polls every 1.5s; may be chatty for many users
-- Workaround: Keep polling for MVP; consider Realtime or backoff
-- Root Cause: Simplicity-first polling
-- LLM Note: Keep poll intervals configurable and avoid tight loops
-
-### Issue: Enhancer/Translator model output drift
-
-- Severity: Medium
-- Effort: 1–2 days
-- Impact: Non-conforming outputs cause 502; recoverability via retries
-- Workaround: Structured prompts + Zod; return `raw` for diagnostics
-- Root Cause: Model variance
-- LLM Note: Always validate; handle 502 with user-facing guidance
-
----
-
-## Known Limitations
-
-- No distributed cache/ratelimit; multi-instance requires Redis or equivalent
-- No DB realtime; nodes/journey rely on polling/refetch
-- Budget enforcement is not global; soft policy only
-- RBAC/RLS defined externally; missing from repo
-- Schema migrations not tracked in-repo; manual steps required
-
-Performance/scalability:
-
-- Nodes polling at 1.5s; consider exponential backoff or user-driven refresh
-- Translator preview cost depends on poem length; cache hit rate is critical
-
-Browser/platform:
-
-- Requires localStorage/cookies for Supabase auth; standard modern browsers supported
-
----
-
-## Planned Improvements
-
-- Adopt Supabase CLI migrations and version RLS policies
-- Introduce Redis-backed cache and rate limiting
-- Add per-project daily spend enforcement with alerting
-- Optional DB realtime for nodes/journey updates
-- Admin tools for moderation review and system health
-
-Roadmap (tentative):
-
-- Q1: Migrations + RLS policy scripts; cache/ratelimit via Redis
-- Q2: Spend enforcement + alerts; realtime updates
-
-Breaking changes ahead:
-
-- Nodes API response shape may expand with additional metadata
-- Flow phases may add `editing` between `translating` and `review`
-
-Migration strategies:
-
-- Keep backward-compatible fields; feature-flag new behaviors; offer dual-read paths
-
----
-
-## Issue Context for Code Generation
-
-- Use `requireUser` on write routes; return 401/403 properly
-- Cache and rate limit LLM endpoints; use stable hash keys
-- Validate all LLM outputs with Zod and fail fast with 502
-- Avoid tight polling; prefer refetch on important actions
-
-### Temporary Workarounds
-
-- Use manual SQL for `chat_threads.state` when setting up environments
-- Keep preview limiter at 30/min/thread; avoid adding more hot paths
-
-### Testing Requirements
-
-- Verify 4xx/5xx handling for all LLM routes (400/401/403/409/429/502)
-- Ensure nodes list updates after preview/instruct and accept-lines
-- Confirm unauthorized access is blocked on protected routes
-
-### Code Patterns to Avoid
-
-- Bypassing `requireUser` and using client tokens directly server-side
-- Persisting unvalidated LLM outputs
-- Creating new long-pollers; use existing hooks and intervals
+### [Last Updated: 2025-09-16]
 
 ## Current Issues
 
-Use this list to track known issues, tech debt, and active investigations.
+### A) Preview may persist first-pass echo instead of retry result
 
-### Open Items
+- Symptoms: Occasionally, preview nodes show echoed lines even when the server retries with stricter instructions.
+- Evidence:
 
-- Clarify DB schema source of truth and add migrations if missing
-- Normalize API error shapes across `app/api/*`
-- Document environment variable requirements for local development
+```360:369:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+await cacheSet(key, preview, 3600);
+// Update node meta with overview + flip status
+const updatedMeta: Record<string, unknown> = {
+  ...placeholderMeta,
+  status: "generated" as const,
+  overview: {
+    lines: preview.lines,
+    notes: preview.notes,
+  },
+};
+```
 
-### Recently Fixed
+```345:353:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+return NextResponse.json(
+  {
+    ok: false,
+    code: "PREVIEW_ECHOED_SOURCE",
+    error: "Model echoed/left source language after retry.",
+  },
+  { status: 409 }
+);
+```
 
-- Placeholder for recent fixes with links to PRs/commits
+- Suspected Cause: The cache key is computed before retry, and the first-pass `preview` object may be used for persistence if retry succeeds but code paths diverge, or logs suggest we persist `preview` without re-binding after retry in some branches.
+- Suggested Fix (doc-only): After a successful retry, ensure `preview` is the retried output before `cacheSet` and persistence; add explicit test asserting echoed-first-pass does not persist when retry succeeds.
 
-### Monitoring & Alerts
+### B) 403 on /nodes with stale threadId
 
-- Define minimal logging and error tracking policy for API routes
+- Symptoms: Canvas occasionally shows 403 FORBIDDEN_OR_NOT_FOUND after thread switch until a manual refresh.
+- Evidence:
 
----
+```38:45:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/hooks/useNodes.ts
+return useQuery({
+  queryKey: ["nodes", projectId, threadId],
+  queryFn: () => fetchNodes(threadId!),
+  enabled: !!projectId && !!threadId,
+  staleTime: 0,
+  refetchOnWindowFocus: true,
+  refetchInterval: 1500,
+});
+```
 
-## CURRENT_ISSUES
+```21:30:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/nodes/route.ts
+const { data: th, error: thErr } = await sb
+  .from("chat_threads")
+  .select("id, project_id")
+  .eq("id", threadId)
+  .single();
+if (thErr || !th) {
+  return NextResponse.json(
+    { ok: false, error: "FORBIDDEN_OR_NOT_FOUND" },
+    { status: 403 }
+  );
+}
+```
 
-- Validate inferred DB schema vs Supabase project; add migrations if not tracked
-- Consider adding DB realtime or server-sent events for live updates
-- Standardize API error shapes across all routes
-- Centralize env var validation on startup
-- Add logging/observability for API route errors
+- Suspected Cause: Client-side access token and `threadId` switching are slightly out of sync during rapid thread changes; the server guard checks the thread before the token-bearing request is established.
+- Suggested Fix (doc-only): On thread change, briefly pause polling and invalidate queries after `useWorkspace().setThreadId`; debounce re-enable; optionally add `retryDelay` jitter in `useNodes` and handle 403 by refetching with a small backoff.
+
+### C) Version A overview sometimes not visible until reopen
+
+- Symptoms: After Accept & Generate Version A, the drawer closes but the overview may not be visible on first open.
+- Evidence (drawer close after detecting generated node; polling loop):
+
+```221:251:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/flow/PlanBuilderOverviewSheet.tsx
+// Wait for thread-scoped nodes to include the new version before closing
+const start = Date.now();
+let found = false;
+while (Date.now() - start < 8000) {
+  const q = qc.getQueryData<NodeRow[]>(["nodes", projectId, threadId]);
+  const list = Array.isArray(q) ? q : [];
+  if (
+    list.find(
+      (n) =>
+        n.id === payload.versionId &&
+        n.status === "generated" &&
+        Array.isArray(n.overview?.lines) &&
+        (n.overview?.lines?.length ?? 0) > 0
+    )
+  ) {
+    found = true;
+    break;
+  }
+  await new Promise((r) => setTimeout(r, 250));
+  await qc.invalidateQueries({ queryKey: ["nodes", projectId, threadId] });
+}
+if (found && payload?.versionId && threadId) {
+  onOpenChange(false);
+}
+```
+
+- Evidence (preview persists overview into `meta.overview`):
+
+```438:447:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+const updatedMeta: Record<string, unknown> = {
+  ...placeholderMeta,
+  status: "generated" as const,
+  overview: {
+    lines: preview.lines,
+    notes: preview.notes,
+    line_policy: bundle.line_policy,
+  },
+};
+```
+
+- Status: open
+- Suspected Cause: race between nodes query invalidation and meta update persistence. The loop mitigates but may miss first render.
+- Suggestion: consider optimistic UI or event-driven update; increase wait or show a loading state before closing.

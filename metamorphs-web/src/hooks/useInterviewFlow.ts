@@ -1,6 +1,9 @@
-"use client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+// import { create } from "zustand";
 
+// Clarifier store and LLM next-question removed; Interview is the single source of truth
+
+// Preserve legacy hook shape used by ChatPanel
 export function useInterviewFlow(threadId?: string) {
   const qc = useQueryClient();
 
@@ -112,11 +115,14 @@ export function useInterviewFlow(threadId?: string) {
   });
 
   const translatorPreview = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (params?: { forceTranslate?: boolean }) => {
       const r = await fetch(`/api/translator/preview`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ threadId }),
+        body: JSON.stringify({
+          threadId,
+          forceTranslate: params?.forceTranslate ?? true,
+        }),
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j?.error || "preview failed");

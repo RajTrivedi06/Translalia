@@ -1,41 +1,36 @@
+### [Last Updated: 2025-09-16]
+
 ## User Management
 
-### Profile structure
+### Profiles
 
-Path: `src/hooks/useProfile.ts`
+- Stored in Supabase table `profiles` keyed by `id` (user id).
 
-```ts
-export type Profile = {
-  id: string;
-  display_name: string | null;
-  username: string | null;
-  email: string | null;
-  avatar_url: string | null;
-  locale: string | null;
-  created_at: string | null;
-};
-```
+| Field          | Source            | Reads (anchors)                                                 | Writes (anchors)                                                  |
+| -------------- | ----------------- | --------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `display_name` | user input/UI     | `metamorphs-web/src/hooks/useProfile.ts:L29–L36`                | `metamorphs-web/src/hooks/useProfile.ts:L45–L55`                  |
+| `username`     | user input/UI     | `metamorphs-web/src/hooks/useProfile.ts:L29–L36`                | `metamorphs-web/src/hooks/useProfile.ts:L45–L55`                  |
+| `email`        | Supabase session  | `metamorphs-web/src/hooks/useProfile.ts:L29–L36`                | —                                                                 |
+| `avatar_url`   | upload to storage | `metamorphs-web/src/components/account/ProfileForm.tsx:L63–L70` | `metamorphs-web/src/components/account/ProfileForm.tsx:L107–L114` |
+| `locale`       | user input/UI     | `metamorphs-web/src/hooks/useProfile.ts:L29–L36`                | `metamorphs-web/src/hooks/useProfile.ts:L45–L55`                  |
+| `created_at`   | database default  | `metamorphs-web/src/hooks/useProfile.ts:L31–L36`                | —                                                                 |
 
-### CRUD operations
+### Auth → Profile flow
 
-- Read profile:
+- On sign-in or profile open, `useProfile(user)` selects `profiles` by `id` and shows editable fields; on save, it upserts the row.
 
-```ts
-// src/hooks/useProfile.ts
-supabase
+```29:36:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/hooks/useProfile.ts
+const { data } = await supabase
   .from("profiles")
   .select("id, display_name, username, email, avatar_url, locale, created_at")
   .eq("id", user.id)
   .single();
 ```
 
-- Upsert profile:
-
-```ts
-// src/hooks/useProfile.ts
-supabase
+```48:55:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/hooks/useProfile.ts
+const { data } = await supabase
   .from("profiles")
-  .upsert({ id: user.id, ...input })
+  .upsert(payload)
   .select()
   .single();
 ```
@@ -46,19 +41,10 @@ supabase
 
 ### User lifecycle
 
-- Registration: `supabase.auth.signUp({ email, password })` (email provider must be enabled; confirm-email can be disabled for immediate access).
-- Activation: if email confirmations are enabled, users complete via emailed link. Otherwise, immediate session.
-- Deactivation: set application-level flags on `profiles` (e.g., `active boolean`) or revoke access in Supabase.
-- Deletion: delete `profiles` row and cascade application data per policy; ensure storage assets are removed.
-
-### User settings
-
-- Part of `profiles` table: `locale`, `display_name`, `username`.
-- Extend with additional columns as needed.
-
-### Preferences
-
-- Store lightweight preferences in `profiles` (`locale`); for complex settings, create a `user_settings` table keyed by `id uuid` (fk to profiles).
+- Registration: quick account flow generates a password and upserts to `profiles`.
+- Activation: depends on email confirmations.
+- Deactivation: app-level flag or revoke access in Supabase.
+- Deletion: delete `profiles` row and cascade per policy.
 
 ### Profile image handling
 
@@ -72,31 +58,10 @@ const { data } = supabase.storage.from("avatars").getPublicUrl(path);
 setAvatarUrl(data.publicUrl);
 ```
 
-### Surfacing in UI
-
-Paths: `src/components/auth/AuthButton.tsx`, `src/components/auth/AuthNav.tsx`
-
-```tsx
-// Display initials or avatar
-const initials =
-  profile?.display_name?.trim()?.slice(0, 1).toUpperCase() ??
-  user?.email?.[0]?.toUpperCase() ??
-  "?";
-```
-
-### Privacy and data export
-
-- Allow users to view, download, or delete their data upon request.
-- Keep PII minimal in `profiles`; avoid storing secrets in `meta` fields.
-
 ### Integration points
 
-- Authentication: `useSupabaseUser`, `AuthNav`, account pages.
+- Authentication: `useSupabaseUser`, `AuthNav`, `AuthSheet` (quick account), account pages.
 - Storage: `avatars` bucket for profile images.
 - Workspace: `owner_id` on `projects` ties resources to the user.
 
-### Extension guidelines (LLM)
-
-- Add new profile fields via migrations; update `useProfile` select/upsert.
-- For organizations/teams, introduce `teams` and `team_members` tables and gate access via RLS.
-- Add notification prefs in a dedicated table; send emails via a server function or third-party service.
+Cross-links: See Database Schema for `projects` ownership and threads; see Security Guidelines for auth patterns.

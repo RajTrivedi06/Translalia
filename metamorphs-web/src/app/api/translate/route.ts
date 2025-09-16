@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getOpenAI } from "@/lib/ai/openai";
+import { responsesCall } from "@/lib/ai/openai";
 import { moderateText } from "@/lib/ai/moderation";
 import { stableHash, cacheGet, cacheSet } from "@/lib/ai/cache";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { getThreadState } from "@/server/threadState";
 import { TranslatorOutputSchema } from "@/types/llm";
+import { TRANSLATOR_SYSTEM } from "@/lib/ai/prompts";
+import { TRANSLATOR_MODEL } from "@/lib/models";
+import { respondLLMError } from "@/lib/http/errors";
 
 const Body = z.object({ threadId: z.string().uuid() });
 
@@ -42,7 +45,32 @@ export async function POST(req: Request) {
 
   const poem = (state.poem_excerpt ?? "").trim();
   const enhanced = state.enhanced_request ?? {};
+  // Enforce target variety collected via Interview
+  const hasTarget = Boolean(
+    (enhanced as { target?: unknown } | undefined)?.target ||
+      (
+        state.collected_fields as
+          | { target_lang_or_variety?: unknown }
+          | undefined
+      )?.target_lang_or_variety
+  );
+  if (!hasTarget) {
+    return NextResponse.json(
+      { error: "MISSING_TARGET_VARIETY", code: "MISSING_TARGET_VARIETY" },
+      { status: 422 }
+    );
+  }
   const summary = state.summary ?? "";
+  const glossaryRaw = (state as unknown as { glossary_terms?: unknown })
+    .glossary_terms;
+  const glossary = Array.isArray(glossaryRaw)
+    ? (glossaryRaw as Array<{
+        term: string;
+        origin?: string;
+        dialect_marker?: string;
+        source?: string;
+      }>)
+    : [];
   const ledger = (state.decisions_ledger ?? []).slice(-5);
 
   const { data: accepted } = await supabase.rpc("get_accepted_version", {
@@ -58,31 +86,18 @@ export async function POST(req: Request) {
     );
   }
 
-  const bundle = { poem, enhanced, summary, ledger, acceptedLines };
+  const bundle = { poem, enhanced, summary, ledger, acceptedLines, glossary };
   const key = "translate:" + stableHash(bundle);
   const cached = await cacheGet<unknown>(key);
   if (cached)
     return NextResponse.json({ ok: true, result: cached, cached: true });
 
-  const system = [
-    "You are a decolonial poetry translator.",
-    "Priorities:",
-    "1) Preserve core meaning and key images.",
-    "2) Honor requested dialect/variety; allow translanguaging; do NOT standardize unless asked.",
-    "3) Satisfy poetic constraints when specified; otherwise focus on musicality and cadence.",
-    "4) Keep formatting when 'line-preserving'.",
-    "Process:",
-    "A) Read SOURCE_POEM and ENHANCED_REQUEST. If constraints conflict, explain trade-offs briefly.",
-    "B) Output exactly:",
-    "---VERSION A---",
-    "<poem>",
-    "---NOTES---",
-    "- 2–5 bullets: key choices, risky shifts, cultural decisions.",
-  ].join("\n");
+  const system = TRANSLATOR_SYSTEM;
 
   const user = [
     "SOURCE_POEM:\n" + poem,
     "ENHANCED_REQUEST (JSON):\n" + JSON.stringify(enhanced, null, 2),
+    glossary.length ? "GLOSSARY:\n" + JSON.stringify(glossary) : "",
     acceptedLines.length
       ? "ACCEPTED_DRAFT_LINES:\n" + acceptedLines.join("\n")
       : "",
@@ -94,43 +109,49 @@ export async function POST(req: Request) {
     .filter(Boolean)
     .join("\n\n");
 
-  const openai = getOpenAI();
-  const resp = await openai.chat.completions.create({
-    model: process.env.TRANSLATOR_MODEL || "gpt-4o",
-    temperature: 0.6,
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: user },
-    ],
-  });
+  try {
+    const respUnknown: unknown = await responsesCall({
+      model: TRANSLATOR_MODEL,
+      system,
+      user,
+      temperature: 0.6,
+    });
+    type RespLike = { output_text?: string; usage?: unknown };
+    const resp = respUnknown as RespLike;
+    const out = resp.output_text ?? "";
+    const [, afterA] = out.split(/---VERSION A---/i);
+    const [poemOutRaw, notesRawSection] = (afterA || "").split(/---NOTES---/i);
+    const poemOut = (poemOutRaw || "").trim();
+    const notesList = (notesRawSection || "")
+      .split("\n")
+      .map((l: string) => l.replace(/^\s*[-•]\s?/, "").trim())
+      .filter(Boolean)
+      .slice(0, 10);
 
-  const out = resp.choices[0]?.message?.content ?? "";
-  const [, afterA] = out.split(/---VERSION A---/i);
-  const [poemOutRaw, notesRawSection] = (afterA || "").split(/---NOTES---/i);
-  const poemOut = (poemOutRaw || "").trim();
-  const notesList = (notesRawSection || "")
-    .split("\n")
-    .map((l) => l.replace(/^\s*[-•]\s?/, "").trim())
-    .filter(Boolean)
-    .slice(0, 10);
+    const parsedOut = TranslatorOutputSchema.safeParse({
+      versionA: poemOut,
+      notes: notesList,
+    });
+    if (!parsedOut.success) {
+      return NextResponse.json(
+        { error: "Translator output invalid", raw: out },
+        { status: 502 }
+      );
+    }
 
-  const parsedOut = TranslatorOutputSchema.safeParse({
-    versionA: poemOut,
-    notes: notesList,
-  });
-  if (!parsedOut.success) {
-    return NextResponse.json(
-      { error: "Translator output invalid", raw: out },
-      { status: 502 }
+    const post = await moderateText(
+      parsedOut.data.versionA + "\n" + parsedOut.data.notes.join("\n")
     );
+    const blocked = post.flagged;
+
+    const result = { ...parsedOut.data, blocked };
+    await cacheSet(key, result, 3600);
+    return NextResponse.json({
+      ok: true,
+      result,
+      usage: resp.usage,
+    });
+  } catch (e) {
+    return respondLLMError(e);
   }
-
-  const post = await moderateText(
-    parsedOut.data.versionA + "\n" + parsedOut.data.notes.join("\n")
-  );
-  const blocked = post.flagged;
-
-  const result = { ...parsedOut.data, blocked };
-  await cacheSet(key, result, 3600);
-  return NextResponse.json({ ok: true, result, usage: resp.usage });
 }

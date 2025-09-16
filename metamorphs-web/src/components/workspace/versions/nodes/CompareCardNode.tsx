@@ -25,10 +25,10 @@ export const CompareCardNode = React.memo(function CompareCardNode({
           Comparing {left.id} & {right.id}
         </div>
         <div className="grid grid-cols-2 gap-2 p-3">
-          <div className="h-20 rounded-lg bg-neutral-100 p-2 text-xs text-neutral-600 line-clamp-5 whitespace-pre-wrap">
+          <div className="h-28 rounded-lg bg-neutral-100 p-2 text-xs text-neutral-600 line-clamp-8 whitespace-pre-wrap">
             {left.lines.slice(0, 3).join("\n")}
           </div>
-          <div className="h-20 rounded-lg bg-neutral-100 p-2 text-xs text-neutral-600 line-clamp-5 whitespace-pre-wrap">
+          <div className="h-28 rounded-lg bg-neutral-100 p-2 text-xs text-neutral-600 line-clamp-8 whitespace-pre-wrap">
             {right.lines.slice(0, 3).join("\n")}
           </div>
         </div>

@@ -1,123 +1,331 @@
-# Flow API (dev smoke)
+Purpose: Contracts and behaviors for flow-related API endpoints, with flags and errors.
+Updated: 2025-09-16
 
-Status: Phases 1–5 landed. Preview/instruct generate nodes with labels and Overview, nodes API is thread-scoped, sheet shows optimistic Overview, canvas renders from nodes API.
+### [Last Updated: 2025-09-16]
 
-## Start
+# Flow API (2025-09-16)
 
-curl -X POST http://localhost:3000/api/flow/start \
- -H "Content-Type: application/json" \
- -d '{
-"threadId": "<THREAD_UUID>",
-"poem": "Salt wind \n broken oar"
-}'
+All endpoints are thread-scoped (`projectId`, `threadId`) and auth-guarded unless stated.
 
-## Answer (advance one step)
+## Translator (Preview)
 
-curl -X POST http://localhost:3000/api/flow/answer \
- -H "Content-Type: application/json" \
- -d '{
-"threadId": "<THREAD_UUID>",
-"questionId": "q1_target",
-"answer": "Moroccan Arabic, Casablanca urban register"
-}'
+`POST /api/translator/preview`
 
-## Peek (next question + phase)
+- Flags: `NEXT_PUBLIC_FEATURE_TRANSLATOR` (OFF → 403)
 
-GET /api/flow/peek?threadId=<THREAD_UUID>
+```28:30:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+if (process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR !== "1") {
+  return new NextResponse("Feature disabled", { status: 403 });
+}
+```
 
-- 200: { ok: true, phase, nextQuestion?: { id, prompt } | null, snapshot: { poem_excerpt, collected_fields } }
-- 400: { error: "threadId required" }
-- 404: { error: "Thread not found" }
-- 500: { error: string } (e.g., missing column guidance)
+- Body: `{ threadId: uuid, forceTranslate?: boolean, mode?: 'balanced'|'creative'|'prismatic' }`
+- Returns: `{ ok, preview, sections?, mode, versionId, displayLabel, prompt_hash }`
+- Errors: `400` invalid, `401` unauthenticated, `403` feature-off, `409` echo guard, `429` rate limit, `500` DB errors, `502` LLM contract
 
-## Confirm (move to translating)
+```49:52:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+if (!rl.ok)
+  return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+```
 
-curl -X POST http://localhost:3000/api/flow/confirm \
- -H "Content-Type: application/json" \
- -d '{
-"threadId": "<THREAD_UUID>"
-}'
+```220:231:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+if (!forceTranslate && looksLikeEcho(sourceLines, outLines)) {
+  return NextResponse.json({ ok: false, code: "PREVIEW_ECHOED_SOURCE", error: "Model echoed source text." }, { status: 409 });
+}
+```
 
-- 200: { ok: true, phase: "translating" }
-- 400: { error }
-- 404: { error: "Thread not found" }
-- 409: { error: "Not at plan gate" }
-- 500: { error }
+- Placeholder node behavior: inserts `versions` row with `status: "placeholder"`, updates to `generated` with `overview` upon success; if cache hit, flips status from cached preview.
 
-## Journey Activity (recent events)
+```124:141:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+const { data: inserted, error: insErr } = await sb
+  .from("versions")
+  .insert({
+    project_id: projectId,
+    title: displayLabel,
+    lines: [],
+    meta: placeholderMeta,
+    tags: ["translation"],
+  })
+  .select("id")
+  .single();
+```
 
-GET /api/journey/list?projectId=<PROJECT_UUID>&limit=20
+```161:169:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+const updatedMeta: Record<string, unknown> = {
+  ...placeholderMeta,
+  status: "generated" as const,
+  overview: {
+    lines: cachedPrev?.lines ?? [],
+    notes: cachedPrev?.notes ?? [],
+  },
+};
+```
 
-- Auth: supports Supabase auth cookies and `Authorization: Bearer <access_token>`.
-- 200: `{ ok: true, items: [{ id, kind, summary, meta, created_at }] }`
-- 400/500: `{ error }`
+## Translator (Instruct)
 
-Notes:
+`POST /api/translator/instruct`
 
-- Items include `accept_line` per-line entries and a batch summary like “Accepted N line(s)”. The UI groups consecutive accepts from the same submit into one entry with a collapsible details section.
+- Flags: `NEXT_PUBLIC_FEATURE_TRANSLATOR` (OFF → 403)
+- Auth: uses `requireUser()` (401 on missing)
+- Creates placeholder node; updates on success
 
-## Translator — Preview (Phase 2)
+```22:24:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+if (process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR !== "1") {
+  return new NextResponse("Feature disabled", { status: 403 });
+}
+```
 
-POST /api/translator/preview
+```43:45:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+if (!me?.user) {
+  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+}
+```
 
-- Auth: cookie and/or `Authorization: Bearer <access_token>`
-- Body: `{ threadId: uuid }`
-- Behavior:
-  - Allocates next label (A/B/C…)
-  - Inserts placeholder in `versions` with `project_id`, `meta.thread_id`, `meta.display_label`, `meta.status:"placeholder"`
-  - Calls LLM and updates row: `meta.status:"generated"`, `meta.overview:{ lines[], notes[] }`
-  - Returns `{ ok, versionId, displayLabel, preview }`
-- Failure hardening: returns 401 if unauthenticated; 500 with `UPDATE_FAILED_RLS` or `NO_OVERVIEW_PERSISTED` if RLS prevents update.
+```252:266:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+const updatedMeta: Record<string, unknown> = {
+  ...placeholderMeta,
+  status: "generated" as const,
+  overview: {
+    lines: parsedOut.lines,
+    notes: parsedOut.notes,
+  },
+};
+const { error: upErr } = await supabase
+  .from("versions")
+  .update({ meta: updatedMeta })
+  .eq("id", newVersionId);
+if (upErr)
+  return NextResponse.json({ error: upErr.message }, { status: 500 });
+```
 
-## Translator — Instruct (Phase 4)
+## Translate (Full)
 
-POST /api/translator/instruct
+`POST /api/translate`
 
-- Body: `{ threadId: uuid, instruction: string, citeVersionId?: uuid }`
-- Behavior: Like preview, but sets `meta.parent_version_id` and includes cited version text when provided.
+- Flags: `NEXT_PUBLIC_FEATURE_TRANSLATOR` (OFF → 403)
+- Requires thread phase readiness; else 409
 
-## Nodes API (Phase 2+)
+```16:18:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts
+if (process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR !== "1") {
+  return new NextResponse("Feature disabled", { status: 403 });
+}
+```
 
-GET /api/versions/nodes?threadId=<THREAD_UUID>
+```41:43:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts
+return NextResponse.json(
+  { error: "Not ready to translate" },
+  { status: 409 }
+);
+```
 
-- Auth: cookie/Bearer
-- Response: `{ ok, threadIdEcho, count, nodes: [{ id, display_label, status, parent_version_id, overview, complete, created_at }] }`
-- DB filter: `filter("meta->>thread_id","eq",threadId)`
+## Enhancer (Planner)
 
----
+`POST /api/enhancer`
 
-## Flow State & Transitions
+- Flags: `NEXT_PUBLIC_FEATURE_ENHANCER` (OFF → 403)
+- Returns: `{ ok, plan, prompt_hash }` or `{ error, prompt_hash }`
 
-- States: `welcome` → `interviewing` → `await_plan_confirm` → `translating` → `review` → `finalized`
-- Transitions:
-  - Start: set `phase:"interviewing"`, store `poem_excerpt`, reset collected fields
-  - Answer: merge into `collected_fields`; compute next question
-  - Confirm: requires `await_plan_confirm` → moves to `translating`
-  - Preview/Translate: allowed when `phase` is `translating` or `review`
-- Invalid transitions return 409 with an explanatory error
+```14:16:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/enhancer/route.ts
+if (process.env.NEXT_PUBLIC_FEATURE_ENHANCER !== "1") {
+  return new NextResponse("Feature disabled", { status: 403 });
+}
+```
 
-## Validation & Errors
+```70:76:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/enhancer/route.ts
+if (!r.ok) {
+  return NextResponse.json(
+    { error: r.error, prompt_hash: r.prompt_hash },
+    { status: 502 }
+  );
+}
+```
 
-- Zod schemas validate all flow endpoints; return 400 with `.flatten()`
-- 404 when thread not found; 409 for phase mismatches
+## Verify (Optional)
 
-## Execution & Retry Patterns
+`POST /api/translator/verify`
 
-- Idempotent operations (e.g., preview) are safe to retry due to cache keys
-- For answer/confirm, rely on server-side `patchThreadState` for atomic merges
+- Flags: `NEXT_PUBLIC_FEATURE_VERIFY` (OFF → 404 implementation)
+- Daily limit with 429 on exceed
 
-## Monitoring & Logging
+```10:12:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/verify/route.ts
+if (!isVerifyEnabled())
+  return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
+```
 
-- `journey_items` captures key events: interview_started, interview_answer, plan_confirmed, accept_line, compare
-- Use this for UIs and audits
+```18:23:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/verify/route.ts
+const rl = await checkDailyLimit(user.id, "verify", VERIFY_DAILY_LIMIT);
+if (!rl.allowed)
+  return NextResponse.json(
+    { error: "Daily verification limit reached" },
+    { status: 429 }
+  );
+```
 
-## Rollback/Compensation
+## Back-translate (Optional)
 
-- For incorrect accepts, submit a new accept for the same line with corrected text (RPC overwrites)
-- For plan changes, re-run enhancer or revise collected fields and reconfirm
+`POST /api/translator/backtranslate`
 
-## Flow Implementation Guide (LLM)
+- Flags: `NEXT_PUBLIC_FEATURE_BACKTRANSLATE` (OFF → 404 implementation)
+- Daily limit with 429 on exceed
 
-- Validate inputs; gate by `phase` and return 409 if not ready
-- Append to `journey_items` after important steps
-- Keep prompts and state snapshots minimal and explicit
+```13:15:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/backtranslate/route.ts
+if (!isBacktranslateEnabled())
+  return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
+```
+
+```21:29:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/backtranslate/route.ts
+const rl = await checkDailyLimit(
+  user.id,
+  "backtranslate",
+  BACKTRANSLATE_DAILY_LIMIT
+);
+if (!rl.allowed)
+  return NextResponse.json(
+    { error: "Daily back-translation limit reached" },
+    { status: 429 }
+  );
+```
+
+## Interview Clarifier
+
+Deprecated. Interview itself (Q1) collects the target variety; the clarifier LLM endpoint is unused by the client.
+
+## Stepwise Chaining (A → B → C → D)
+
+- Preview produces Version A; `meta.parent_version_id = null`.
+
+```129:135:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+const placeholderMeta = {
+  thread_id: threadId,
+  display_label: displayLabel,
+  status: "placeholder" as const,
+  parent_version_id: null as string | null,
+};
+```
+
+- Instruct determines `parent_version_id` as:
+  - If `citeVersionId` provided, use that.
+  - Else use latest version in the same `thread_id` (most recent by `created_at`).
+
+```60:72:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+let parentVersionId: string | null = null;
+if (citeVersionId) {
+  parentVersionId = citeVersionId;
+} else {
+  const { data: latestForThread } = await supabase
+    .from("versions")
+    .select("id, lines, meta, created_at")
+    .eq("project_id", projectId)
+    .filter("meta->>thread_id", "eq", threadId)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  parentVersionId = latestForThread?.[0]?.id ?? null;
+}
+```
+
+- When a cited or implicit parent exists, Instruct includes a whole‑text block to evolve from the prior version.
+
+```125:142:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+if (cited) {
+  const m = ((cited.meta ?? null) as Record<string, unknown>) || {};
+  const ov = (m["overview"] as { lines?: string[] } | null) || null;
+  const ovLines: string[] = Array.isArray(ov?.lines)
+    ? (ov!.lines as string[])
+    : [];
+  const lnLines: string[] = Array.isArray(cited.lines)
+    ? (cited.lines as string[])
+    : [];
+  const arr = ovLines.length ? ovLines : lnLines;
+  citedText = arr.join("\n");
+}
+```
+
+- Preview and Instruct append JOURNEY context into prompts.
+
+```228:234:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+bundle.journeySummaries?.length
+  ? "JOURNEY (most recent → older):\n" +
+    bundle.journeySummaries.map((s) => `- ${s}`).join("\n")
+  : "",
+```
+
+```194:201:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+bundle.journeySummaries?.length
+  ? "JOURNEY (most recent → older):\n" +
+    bundle.journeySummaries.map((s) => `- ${s}`).join("\n")
+  : "",
+```
+
+### Fields written on success
+
+- Both routes write:
+  - `meta.overview.lines`
+  - `meta.overview.notes`
+  - `meta.overview.line_policy` (preview)
+  - `meta.status = "generated"`
+
+```438:447:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+const updatedMeta: Record<string, unknown> = {
+  ...placeholderMeta,
+  status: "generated" as const,
+  overview: {
+    lines: preview.lines,
+    notes: preview.notes,
+    line_policy: bundle.line_policy,
+  },
+};
+```
+
+```428:436:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+const updatedMeta: Record<string, unknown> = {
+  ...placeholderMeta,
+  status: "generated" as const,
+  overview: {
+    lines: parsedOut.lines,
+    notes: parsedOut.notes,
+    line_policy: (bundle as unknown as { line_policy?: unknown })?.line_policy,
+  },
+};
+```
+
+### Error codes (Instruct)
+
+| Code                          | HTTP | Meaning                                    |
+| ----------------------------- | ---- | ------------------------------------------ |
+| INSTRUCT_ECHO_OR_UNTRANSLATED | 409  | Echo or wrong language even after retry    |
+| INSTRUCT_RETRY_EMPTY          | 502  | Retry returned empty output                |
+| INSTRUCT_PARSE_RETRY_FAILED   | 502  | Retry output could not be parsed           |
+| REQUIRED_TOKENS_MISSING       | 409  | Tokens still missing after must_keep retry |
+
+```332:346:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+return NextResponse.json(
+  { ok: false, code: "INSTRUCT_ECHO_OR_UNTRANSLATED", retryable: true },
+  { status: 409 }
+);
+```
+
+```283:297:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+return NextResponse.json(
+  { ok: false, code: "INSTRUCT_RETRY_EMPTY", retryable: true },
+  { status: 502 }
+);
+```
+
+```304:317:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+return NextResponse.json(
+  { ok: false, code: "INSTRUCT_PARSE_RETRY_FAILED", retryable: true },
+  { status: 502 }
+);
+```
+
+```399:409:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+return NextResponse.json(
+  {
+    ok: false,
+    code: "REQUIRED_TOKENS_MISSING",
+    retryable: true,
+    missing: missing2,
+  },
+  { status: 409 }
+);
+```

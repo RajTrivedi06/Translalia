@@ -1,3 +1,97 @@
+Updated: 2025-09-16
+
+### App Router (server-first)
+
+- Use Next.js App Router API routes for server handlers and SSR helpers.
+
+```4:10:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/auth/route.ts
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+export async function POST(req: NextRequest) {
+```
+
+### Supabase + RLS (SSR cookie + Bearer fallback)
+
+- Prefer cookie-bound SSR via helper; fall back to Authorization Bearer when present.
+
+```4:12:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/supabaseServer.ts
+export function supabaseServer() {
+  const cookieStore = cookies() as any;
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+```
+
+```35:50:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/apiGuard.ts
+  if (authH.toLowerCase().startsWith("bearer ")) {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+    const sbBearer = createSupabaseClient(url, anon, {
+      global: { headers: { Authorization: authH } },
+    }) as unknown as SupabaseClient;
+    const { data: u2, error: e2 } = await sbBearer.auth.getUser();
+```
+
+### Cache and rate limits
+
+- In-memory per-process cache for LLM previews; simple token-bucket rate limiting.
+
+```23:29:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/cache.ts
+export async function cacheSet<
+  key: string,
+  value: T,
+  ttlSec = 3600
+): Promise<void> {
+  mem.set(key, { expires: Date.now() + ttlSec * 1000, value });
+}
+```
+
+```3:10:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/ratelimit.ts
+export function rateLimit(key: string, limit = 30, windowMs = 60_000) {
+  const now = Date.now();
+  const b = buckets.get(key);
+  if (!b || now > b.until) {
+```
+
+### Server-owned conversational state
+
+- Thread `state` JSONB merged and persisted server-side; ledger cadence support.
+
+```60:71:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/server/threadState.ts
+export async function patchThreadState(
+  threadId: string,
+  patch: Partial<SessionState>
+): Promise<SessionState> {
+  const supabase = await supabaseServer();
+  const current = await getThreadState(threadId);
+  const merged = deepMerge(
+    current as Record<string, unknown>,
+    patch as Partial<Record<string, unknown>>
+  );
+```
+
+### Feature flags
+
+- Public flags `NEXT_PUBLIC_FEATURE_*` gate routes; off defaults to 403/404.
+
+```33:36:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+export async function POST(req: Request) {
+  if (process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR !== "1") {
+    return new NextResponse("Feature disabled", { status: 403 });
+  }
+```
+
+```1:4:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/flags/verify.ts
+export const isVerifyEnabled = () =>
+  process.env.NEXT_PUBLIC_FEATURE_VERIFY === "1";
+export const isBacktranslateEnabled = () =>
+  process.env.NEXT_PUBLIC_FEATURE_BACKTRANSLATE === "1";
+```
+
+Last updated: 2025-09-11 by CursorDoc-Editor
+
 ## Architecture Decisions (ADRs)
 
 Keep a concise record of significant technical decisions and their context.
@@ -16,6 +110,13 @@ Keep a concise record of significant technical decisions and their context.
 3. OpenAI-compatible client abstraction in `lib/ai/openai.ts` — Status: Accepted
 4. Cache and rate-limit LLM interactions in-memory (MVP) — Status: Accepted
 5. Server-owned conversational state in `chat_threads.state` (jsonb) — Status: Accepted
+6. Auth cookie synchronization via route handler — Status: Accepted
+7. ADR-Canvas-001: Single source of truth for nodes — Status: Accepted
+8. ADR-PlanBuilder-CTA-002: Post-create labeling & action — Status: Accepted
+9. ADR-Drawer-003: Close on success — Status: Accepted
+10. ADR-Flags-004: Force Translate gating — Status: Accepted
+11. ADR-Readability-005: Node card width & clamp — Status: Accepted
+12. ADR-009: Single-Call Prismatic & On-Demand Verification — Status: Accepted
 
 ### Notes
 
@@ -124,6 +225,12 @@ await patchThreadState(threadId, { phase: "translating" });
 
 9. LLM IO Contracts via Schemas
 
+- 10. Auth Cookie Synchronization via App Router
+
+- Decision: Use `src/app/api/auth/route.ts` to set/clear Supabase auth cookies on client auth events; `middleware.ts` ensures session presence for protected paths.
+- Consequences: Reliable server session alignment with client; minimal coupling to UI via a small `Providers` effect.
+- Status: Accepted
+
 - Problem: Unstructured LLM output is brittle to parse.
 - Decision: Wrap inputs/outputs with schemas (`types/llm.ts`) and validate.
 - Rationale: Early failure surfaces bad prompts or model regressions.
@@ -146,3 +253,54 @@ if (!parsed.success)
 - Don't Do:
   - Proceed with unvalidated outputs.
   - Swallow parse errors silently.
+
+---
+
+### ADR-Canvas-001: Single source of truth for nodes
+
+- Context: Canvas nodes were previously read from a Zustand `versions` slice, creating drift with API results and causing delayed renders after Accept actions.
+- Decision: Canvas uses React Query `useNodes(projectId, threadId)` as the single source of truth.
+- Consequences: Invalidation of `["nodes", projectId, threadId]` updates canvas instantly; no store refresh needed.
+- Status: Accepted
+
+### ADR-PlanBuilder-CTA-002: Post-create labeling & action
+
+- Context: CTA label remained in pre-create state, confusing users after a version existed.
+- Decision: Switch label to "Accept" after a version exists (optimistic or confirmed via query). Clicking closes the drawer and does not re-generate.
+- Consequences: Clear user intent; prevents duplicate creation calls.
+- Status: Accepted
+
+### ADR-Drawer-003: Close on success
+
+- Context: Drawer remained open after successful Accept, requiring manual dismissal.
+- Decision: Drawer closes after node detection via nodes query; handoff to canvas.
+- Consequences: Smoother flow and immediate focus on new version node.
+- Status: Accepted
+
+### ADR-Flags-004: Force Translate gating
+
+- Context: The "Force translate (avoid echo)" control should be limited to specific environments.
+- Decision: Checkbox is hidden unless `NEXT_PUBLIC_SHOW_FORCE_TRANSLATE=true`.
+- Consequences: Reduces cognitive load; allows controlled exposure for testing.
+- Status: Accepted
+
+### ADR-Readability-005: Node card width & clamp
+
+- Context: Version nodes were too narrow and clamped, harming poem readability.
+- Decision: Widen node card and relax text clamp, or provide expand affordance.
+- Consequences: Improved readability; monitor long poems for layout impact.
+- Status: Accepted
+
+---
+
+#### Changelog
+
+- 2025-09-09: Added ADRs for canvas source-of-truth, CTA label behavior, drawer close, Force Translate gating, and node readability. (CursorDoc-Editor)
+- 2025-09-11: Added ADR-009 for single-call prismatic and on-demand verification. (CursorDoc-Editor)
+
+## ADR-009: Single-Call Prismatic & On-Demand Verification
+
+- Context: We need multiple candidate variants without multiplying cost, and verification/back-translation tooling should not silently increase spend.
+- Decision: Generate A/B/C multi-variant within one LLM call; expose verification and back-translation as user-initiated tools only.
+- Consequences: Predictable budget, clearer UX; puts the human in the loop for quality evaluation.
+- Status: Accepted

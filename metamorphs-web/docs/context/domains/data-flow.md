@@ -1,152 +1,66 @@
-## Data Flow
+### [Last Updated: 2025-09-16]
 
-### Overview: DB → API → Client
+## Domain: Data Flow
 
-- Server APIs live in `src/app/api/**/route.ts` and orchestrate DB access via Supabase.
-- Client fetches via React Query or direct `fetch()` to routes; some UI uses Supabase client for read-only queries.
-- Middleware (`src/middleware.ts`) primes Supabase session cookies for SSR and routes.
+End-to-end: Interview → Plan → Preview → Accept → Canvas
 
-### Database → UI examples
+### Pipeline (textual diagram with anchors)
 
-1. Chat messages list
+1. Interview (collect fields in `chat_threads.state`)
 
-```ts
-// src/hooks/useThreadMessages.ts
-supabase
-  .from("chat_messages")
-  .select("id, role, content, meta, created_at, created_by")
-  .eq("project_id", projectId!)
-  .eq("thread_id", threadId!)
-  .order("created_at", { ascending: true });
+```60:71:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/flow/peek/route.ts
+const phase = state.phase || (has_poem ? "interviewing" : "welcome");
+if (phase === "interviewing") {
+  const q = computeNextQuestion({ ...state, collected_fields: state.collected_fields || {} });
+}
 ```
 
-2. Workspace bootstrap (versions, journey, compares)
+2. Plan (confirm gate → translating)
 
-```ts
-// src/components/workspace/WorkspaceShell.tsx
-const [v, j, c] = await Promise.all([
-  supabase
-    .from("versions")
-    .select("id, title, lines, tags, meta, created_at")
-    .eq("project_id", projectId),
-  supabase
-    .from("journey_items")
-    .select(
-      "id, kind, summary, from_version_id, to_version_id, compare_id, created_at"
-    )
-    .eq("project_id", projectId),
-  supabase
-    .from("compares")
-    .select(
-      "id, left_version_id, right_version_id, lens, granularity, created_at"
-    )
-    .eq("project_id", projectId),
-]);
+```28:34:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/flow/confirm/route.ts
+if (state.phase !== "await_plan_confirm") {
+  return NextResponse.json({ error: "Not at plan gate" }, { status: 409 });
+}
+await patchThreadState(threadId, { phase: "translating" });
 ```
 
-### Caching strategy
+3. Preview (LLM + anti-echo + cache; placeholder node → generated)
 
-- API-level cache: translator preview uses in-memory cache (`lib/ai/cache.ts`) keyed by stable hash of inputs.
+```55:58:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+const rl = rateLimit(`preview:${threadId}`, 30, 60_000);
+if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+```
 
-```ts
-// src/app/api/translator/preview/route.ts
-const key = "translator_preview:" + stableHash(bundle);
-const cached = await cacheGet(key);
-if (cached)
-  return NextResponse.json({ ok: true, preview: cached, cached: true });
+```124:134:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+const { data: inserted } = await sb.from("versions").insert({ project_id: projectId, title: displayLabel, lines: [], meta: placeholderMeta, tags: ["translation"] }).select("id").single();
+```
+
+```361:396:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
 await cacheSet(key, preview, 3600);
+const { error: upErr2 } = await sb.from("versions").update({ meta: updatedMeta }).eq("id", placeholderId);
 ```
 
-- Client cache: React Query caches query results by `queryKey`.
-- Nodes list is polled frequently (`useNodes`) with `cache: "no-store"` on the route.
+4. Accept (merge lines via RPC and append ledger)
 
-### Optimistic updates
-
-- Versions are appended locally after `/api/variants` + `/api/versions` create.
-
-```tsx
-// src/components/workspace/chat/ChatPanel.tsx
-addVersion({
-  id: saved.version.id,
-  title: saved.version.title,
-  lines: saved.version.lines,
-  tags: saved.version.tags ?? [],
-});
+```63:71:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/accept-lines/route.ts
+for (const s of selections) { await supabase.rpc("accept_line", { p_thread_id: threadId, p_line_index: s.index + 1, p_new_text: s.text, p_actor: userId }); }
 ```
 
-### Error boundaries and handling
-
-- API returns typed JSON with appropriate HTTP codes (400/401/404/409/429/502).
-- UI shows inline error messages or toasts. Example:
-
-```ts
-// translator preview
-return NextResponse.json(
-  { error: "Translator output malformed", raw },
-  { status: 502 }
-);
+```72:76:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/accept-lines/route.ts
+await appendLedger(threadId, { ts, kind: "accept", note: `Accepted ${selections.length} line(s)` });
 ```
 
-### Loading states
+5. Canvas (React Query lists nodes by thread)
 
-- React Query `isFetching`/mutation pending used in UI for spinners and disabled buttons.
-
-```tsx
-// src/hooks/useInterviewFlow.ts & consumer components
-const { isFetching } = useThreadMessages(projectId, threadId);
+```33:38:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/nodes/route.ts
+.from("versions").select("id, tags, meta, created_at").eq("project_id", th.project_id).filter("meta->>thread_id", "eq", threadId)
 ```
 
-### Data validation pipeline
+### Notes
 
-- Zod validates inputs in API routes (`lib/schemas.ts` or local schemas).
+- Target variety is enforced before translate/preview.
 
-```ts
-// src/app/api/threads/route.ts
-const parsed = createThreadSchema.safeParse(await req.json());
-if (!parsed.success)
-  return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+```103:121:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts
+const hasTarget = Boolean(state.collected_fields?.target_lang_or_variety || enhanced?.target);
+if (!hasTarget) return NextResponse.json({ error: "MISSING_TARGET_VARIETY" }, { status: 422 });
 ```
-
-### API → DB flows (selected)
-
-1. Create thread
-
-```ts
-// /api/threads POST
-const { thread } = await sb
-  .from("chat_threads")
-  .insert({ project_id, title, created_by: user.id })
-  .select("id, title, created_at")
-  .single();
-```
-
-2. Flow start → state update
-
-```ts
-// /api/flow/start POST
-await patchThreadState(threadId, {
-  phase: "interviewing",
-  poem_excerpt: poem,
-  collected_fields: {},
-});
-```
-
-3. Translator preview → cache → persist overview to versions placeholder
-
-```ts
-// /api/translator/preview POST
-await cacheSet(key, preview, 3600);
-await sb
-  .from("versions")
-  .update({ meta: { ...meta, status: "generated", overview } })
-  .eq("id", placeholderId);
-```
-
-### Data invalidation
-
-- Invalidate React Query after mutations (e.g., `flow_peek`, `journey`).
-- Remove nodes cache on thread switch to avoid bleed (`WorkspaceShell`).
-
-### Real-time updates
-
-- No DB realtime at present; polling is used for nodes, React Query refetch for journey/messages.

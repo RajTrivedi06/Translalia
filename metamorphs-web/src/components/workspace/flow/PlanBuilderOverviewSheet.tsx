@@ -3,13 +3,19 @@
 import * as React from "react";
 import { Separator } from "@/components/ui/separator";
 import { useNodes } from "@/hooks/useNodes";
+import type { NodeRow } from "@/hooks/useNodes";
 import { useQueryClient } from "@tanstack/react-query";
 import NodeCard from "@/components/workspace/translate/NodeCard";
 import FullPoemOverview from "@/components/workspace/translate/FullPoemOverview";
 import { extractTL } from "@/lib/i18n/targetLanguage";
+import { flags } from "@/lib/flags";
 import { useWorkspace } from "@/store/workspace";
 import { supabase } from "@/lib/supabaseClient";
 import { supabase as supa } from "@/lib/supabaseClient";
+import { isPrismaticEnabled } from "@/lib/flags/prismatic";
+import { isVerifyEnabled, isBacktranslateEnabled } from "@/lib/flags/verify";
+import { useVerifyTranslation, useBackTranslate } from "@/hooks/useVerifier";
+// NOTE(cursor): minimal UI components; using native tabs to avoid new deps
 
 type PlanBuilderOverviewSheetProps = {
   threadId: string;
@@ -44,10 +50,29 @@ export default function PlanBuilderOverviewSheet(
     overview: { lines: string[]; notes?: string[] | string };
   }>(null);
 
+  const hasVersionNow = React.useMemo(
+    () => Boolean(optimisticNode?.id) || (nodes?.length ?? 0) > 0,
+    [optimisticNode, nodes]
+  );
+
   const [poem, setPoem] = React.useState("");
   const [fields, setFields] = React.useState<CollectedFields>({});
   const tl = extractTL(fields);
   const [forceTranslate, setForceTranslate] = React.useState(false);
+  const [mode, setMode] = React.useState<"balanced" | "creative" | "prismatic">(
+    "balanced"
+  );
+  const [prismaticSections, setPrismaticSections] = React.useState<null | {
+    A?: string;
+    B?: string;
+    C?: string;
+    NOTES?: string;
+  }>(null);
+  const [activeSection, setActiveSection] = React.useState<
+    "A" | "B" | "C" | "NOTES"
+  >("A");
+  const verify = useVerifyTranslation();
+  const backtx = useBackTranslate();
 
   React.useEffect(() => {
     if (!open) return;
@@ -94,6 +119,30 @@ export default function PlanBuilderOverviewSheet(
   const generateOverview = React.useCallback(
     async (force?: boolean) => {
       setLoading(true);
+      // Add phase confirmation before generating
+      try {
+        // First, check if we need to confirm the plan
+        const peekRes = await fetch(`/api/flow/peek?threadId=${threadId}`);
+        const peekData = await peekRes.json();
+
+        if (peekData.phase === "await_plan_confirm") {
+          // Confirm the plan to transition to translating phase
+          const confirmRes = await fetch("/api/flow/confirm", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ threadId }),
+          });
+
+          if (!confirmRes.ok) {
+            alert("Failed to confirm plan. Please try again.");
+            setLoading(false);
+            return;
+          }
+        }
+      } catch (err) {
+        console.error("Failed to check/confirm phase:", err);
+      }
       try {
         const { data: sessionData } = await supa.auth.getSession();
         const accessToken = sessionData.session?.access_token;
@@ -101,21 +150,60 @@ export default function PlanBuilderOverviewSheet(
           "Content-Type": "application/json",
         };
         if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+        // Normalize and include canonical targetVariety in payload
+        const targetVarietyForPayload = String(
+          (fields as Record<string, unknown>)["target_lang_or_variety"] ||
+            (fields as Record<string, unknown>)["target_language"] ||
+            ""
+        ).trim();
+
         const res = await fetch("/api/translator/preview", {
           method: "POST",
           headers,
           credentials: "include",
-          body: JSON.stringify({ threadId, forceTranslate: !!force }),
+          body: JSON.stringify({
+            threadId,
+            forceTranslate: !!force,
+            mode,
+            bundle: {
+              collected_fields: {
+                targetVariety: targetVarietyForPayload,
+              },
+            },
+          }),
         });
         const payload = await res.json().catch(() => null);
-        if (res.status === 409 && payload?.code === "PREVIEW_ECHOED_SOURCE") {
-          const okay = window.confirm(
-            "Model echoed source text. Retry with stronger non-echo enforcement?"
+        if (
+          payload?.sections &&
+          (payload.sections.A ||
+            payload.sections.B ||
+            payload.sections.C ||
+            payload.sections.NOTES)
+        ) {
+          setPrismaticSections(payload.sections);
+          // Prefer A by default
+          setActiveSection(
+            (payload.sections.A
+              ? "A"
+              : payload.sections.B
+              ? "B"
+              : payload.sections.C
+              ? "C"
+              : "NOTES") as "A" | "B" | "C" | "NOTES"
           );
-          if (okay) {
-            await generateOverview(true);
+        } else {
+          setPrismaticSections(null);
+        }
+        if (res.status === 409 && payload?.code === "PREVIEW_ECHOED_SOURCE") {
+          if (payload?.retryable) {
+            const okay = window.confirm(
+              "Model echoed source text. Retry with stronger non-echo enforcement?"
+            );
+            if (okay) {
+              await generateOverview(true);
+            }
+            return;
           }
-          return;
         }
         if (res.ok && payload?.versionId) {
           if (payload.displayLabel && payload.preview) {
@@ -126,41 +214,50 @@ export default function PlanBuilderOverviewSheet(
               overview: payload.preview,
             });
           }
-          await qc.invalidateQueries({ queryKey: ["nodes"] });
+          await qc.invalidateQueries({
+            queryKey: ["nodes", projectId, threadId],
+          });
           setSelectedNodeId(payload.versionId);
           // Wait for thread-scoped nodes to include the new version before closing
           const start = Date.now();
           let found = false;
           while (Date.now() - start < 8000) {
-            const q = qc.getQueryData<any>(["nodes", projectId, threadId]);
-            const list = Array.isArray(q)
-              ? q
-              : Array.isArray(q?.nodes)
-              ? q.nodes
-              : [];
-            if (list.find((n: any) => n?.id === payload.versionId)) {
+            const q = qc.getQueryData<NodeRow[]>([
+              "nodes",
+              projectId,
+              threadId,
+            ]);
+            const list = Array.isArray(q) ? q : [];
+            if (
+              list.find(
+                (n) =>
+                  n.id === payload.versionId &&
+                  n.status === "generated" &&
+                  Array.isArray(n.overview?.lines) &&
+                  (n.overview?.lines?.length ?? 0) > 0
+              )
+            ) {
               found = true;
               break;
             }
-            // eslint-disable-next-line no-await-in-loop
             await new Promise((r) => setTimeout(r, 250));
-            // eslint-disable-next-line no-await-in-loop
             await qc.invalidateQueries({
               queryKey: ["nodes", projectId, threadId],
             });
           }
-          if (found) onOpenChange(true); // keep open if not found; caller may retry
+          if (found && payload?.versionId && threadId) {
+            onOpenChange(false); // close drawer on successful detection for this thread
+          }
         }
         if (!res.ok) {
           const code = payload?.code || payload?.error || "PREVIEW_FAILED";
-          // eslint-disable-next-line no-alert
           alert(`Preview failed: ${code}`);
         }
       } finally {
         setLoading(false);
       }
     },
-    [threadId, setSelectedNodeId, qc]
+    [threadId, setSelectedNodeId, qc, onOpenChange, projectId, mode, fields]
   );
 
   return (
@@ -194,6 +291,27 @@ export default function PlanBuilderOverviewSheet(
               {tl.translanguaging ? (
                 <span className="rounded border px-2 py-1">
                   Translanguaging allowed
+                </span>
+              ) : null}
+              {isPrismaticEnabled() ? (
+                <span className="ml-auto inline-flex items-center gap-2">
+                  <label htmlFor="mode" className="text-neutral-500">
+                    Mode
+                  </label>
+                  <select
+                    id="mode"
+                    className="rounded border px-2 py-1"
+                    value={mode}
+                    onChange={(e) =>
+                      setMode(
+                        e.target.value as "balanced" | "creative" | "prismatic"
+                      )
+                    }
+                  >
+                    <option value="balanced">Balanced</option>
+                    <option value="creative">Creative</option>
+                    <option value="prismatic">Prismatic (A/B/C)</option>
+                  </select>
                 </span>
               ) : null}
             </div>
@@ -240,6 +358,174 @@ export default function PlanBuilderOverviewSheet(
                         ? optimisticNode.display_label
                         : "Version ?")) + " — Overview"}
                   </h3>
+                  {prismaticSections &&
+                  (prismaticSections.A ||
+                    prismaticSections.B ||
+                    prismaticSections.C ||
+                    prismaticSections.NOTES) ? (
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        {prismaticSections.A ? (
+                          <button
+                            type="button"
+                            className={`rounded border px-2 py-1 ${
+                              activeSection === "A"
+                                ? "bg-neutral-900 text-white"
+                                : ""
+                            }`}
+                            onClick={() => setActiveSection("A")}
+                          >
+                            A · Faithful
+                          </button>
+                        ) : null}
+                        {prismaticSections.B ? (
+                          <button
+                            type="button"
+                            className={`rounded border px-2 py-1 ${
+                              activeSection === "B"
+                                ? "bg-neutral-900 text-white"
+                                : ""
+                            }`}
+                            onClick={() => setActiveSection("B")}
+                          >
+                            B · Idiomatic
+                          </button>
+                        ) : null}
+                        {prismaticSections.C ? (
+                          <button
+                            type="button"
+                            className={`rounded border px-2 py-1 ${
+                              activeSection === "C"
+                                ? "bg-neutral-900 text-white"
+                                : ""
+                            }`}
+                            onClick={() => setActiveSection("C")}
+                          >
+                            C · Creative
+                          </button>
+                        ) : null}
+                        {prismaticSections.NOTES ? (
+                          <button
+                            type="button"
+                            className={`rounded border px-2 py-1 ${
+                              activeSection === "NOTES"
+                                ? "bg-neutral-900 text-white"
+                                : ""
+                            }`}
+                            onClick={() => setActiveSection("NOTES")}
+                          >
+                            Notes
+                          </button>
+                        ) : null}
+                      </div>
+                      <div className="flex gap-2">
+                        {isVerifyEnabled() ? (
+                          <button
+                            type="button"
+                            className="rounded-md bg-neutral-900 text-white px-2 py-1 text-xs disabled:opacity-60"
+                            disabled={verify.isPending}
+                            onClick={() => {
+                              verify.mutate({
+                                projectId: projectId || "",
+                                threadId,
+                                source: poem,
+                                candidate:
+                                  (activeSection === "A" &&
+                                    prismaticSections.A) ||
+                                  (activeSection === "B" &&
+                                    prismaticSections.B) ||
+                                  (activeSection === "C" &&
+                                    prismaticSections.C) ||
+                                  "",
+                              });
+                            }}
+                          >
+                            {verify.isPending ? "Verifying…" : "Verify quality"}
+                          </button>
+                        ) : null}
+                        {isBacktranslateEnabled() ? (
+                          <button
+                            type="button"
+                            className="rounded-md border px-2 py-1 text-xs disabled:opacity-60"
+                            disabled={backtx.isPending}
+                            onClick={() => {
+                              backtx.mutate({
+                                projectId: projectId || "",
+                                threadId,
+                                candidate:
+                                  (activeSection === "A" &&
+                                    prismaticSections.A) ||
+                                  (activeSection === "B" &&
+                                    prismaticSections.B) ||
+                                  (activeSection === "C" &&
+                                    prismaticSections.C) ||
+                                  "",
+                              });
+                            }}
+                          >
+                            {backtx.isPending
+                              ? "Translating…"
+                              : "Back-translate"}
+                          </button>
+                        ) : null}
+                      </div>
+                      {verify.data ? (
+                        <div className="mt-2 rounded-xl border p-3 text-sm">
+                          <div className="font-medium">Quality scores</div>
+                          <div className="mt-1 grid grid-cols-3 gap-2">
+                            {Object.entries(verify.data.data.scores).map(
+                              ([k, v]) => (
+                                <div key={k} className="rounded-md border p-2">
+                                  <div className="uppercase text-[10px] opacity-70">
+                                    {k}
+                                  </div>
+                                  <div className="text-base">
+                                    {(v * 100).toFixed(0)}%
+                                  </div>
+                                </div>
+                              )
+                            )}
+                          </div>
+                          <div className="mt-2 italic opacity-80">
+                            {verify.data.data.advice}
+                          </div>
+                        </div>
+                      ) : null}
+                      {backtx.data ? (
+                        <div className="mt-2 rounded-xl border p-3 text-sm">
+                          <div className="font-medium">Back-translation</div>
+                          <pre className="whitespace-pre-wrap">
+                            {backtx.data.data.back_translation}
+                          </pre>
+                          <div className="mt-1 text-xs opacity-70">
+                            Drift: {backtx.data.data.drift}
+                          </div>
+                          {backtx.data.data.notes ? (
+                            <div className="text-xs opacity-70">
+                              {backtx.data.data.notes}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      <div className="rounded-md border p-3 text-sm whitespace-pre-wrap">
+                        {activeSection === "A" && prismaticSections.A
+                          ? prismaticSections.A
+                          : null}
+                        {activeSection === "B" && prismaticSections.B
+                          ? prismaticSections.B
+                          : null}
+                        {activeSection === "C" && prismaticSections.C
+                          ? prismaticSections.C
+                          : null}
+                        {activeSection === "NOTES" &&
+                        prismaticSections.NOTES ? (
+                          <span className="opacity-80">
+                            {prismaticSections.NOTES}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
                   {!selectedNode || selectedNode.status === "placeholder" ? (
                     <div className="text-sm text-neutral-500">
                       Creating{" "}
@@ -282,20 +568,33 @@ export default function PlanBuilderOverviewSheet(
                   Edit
                 </button>
                 <div className="ml-auto flex items-center gap-3">
-                  <label className="flex items-center gap-2 text-xs text-neutral-600">
-                    <input
-                      type="checkbox"
-                      checked={forceTranslate}
-                      onChange={(e) => setForceTranslate(e.target.checked)}
-                    />
-                    Force translate (avoid echo)
-                  </label>
+                  {flags.showForceTranslate && (
+                    <label className="flex items-center gap-2 text-xs text-neutral-600">
+                      <input
+                        type="checkbox"
+                        checked={forceTranslate}
+                        onChange={(e) => setForceTranslate(e.target.checked)}
+                      />
+                      Force translate (avoid echo)
+                    </label>
+                  )}
                   <button
                     className="rounded-md bg-neutral-900 text-white px-3 py-2 text-sm disabled:opacity-60"
                     disabled={loading}
-                    onClick={() => generateOverview(forceTranslate)}
+                    onClick={() => {
+                      if (loading) return;
+                      if (hasVersionNow) {
+                        onOpenChange(false);
+                      } else {
+                        void generateOverview(forceTranslate);
+                      }
+                    }}
                   >
-                    {loading ? "Generating…" : "Accept & Generate Version A"}
+                    {loading
+                      ? "Generating…"
+                      : hasVersionNow
+                      ? "Accept"
+                      : "Accept & Generate Version A"}
                   </button>
                 </div>
               </>

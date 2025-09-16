@@ -1,10 +1,12 @@
+### [Last Updated: 2025-09-16]
+
 ## Deployment Guide
 
 ### LLM Quick Reference
 
 - Env vars: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `OPENAI_API_KEY`, feature flags (`NEXT_PUBLIC_FEATURE_*`), model envs (`TRANSLATOR_MODEL`, `ENHANCER_MODEL`, `EMBEDDINGS_MODEL`).
 - Build: `npm run build`; Start: `npm run start`.
-- Middleware sets Supabase session for SSR; routes rely on it.
+- Middleware sets Supabase session for SSR; routes rely on it. Auth cookies are synchronized via `/api/auth` handler when client auth state changes.
 
 ### Context Boundaries
 
@@ -18,6 +20,7 @@
   - `OPENAI_API_KEY`
   - Optional: `TRANSLATOR_MODEL`, `ENHANCER_MODEL`, `EMBEDDINGS_MODEL`
   - Feature flags: `NEXT_PUBLIC_FEATURE_TRANSLATOR`, `NEXT_PUBLIC_FEATURE_ENHANCER`, `NEXT_PUBLIC_FEATURE_ROUTER`
+  - Optional flags: `NEXT_PUBLIC_FEATURE_PRISMATIC`, `NEXT_PUBLIC_FEATURE_VERIFY`, `NEXT_PUBLIC_FEATURE_BACKTRANSLATE`
 
 ### Build & Run
 
@@ -31,6 +34,7 @@
 - Next.js Node runtime; SSR + Route Handlers.
 - Scaling: Prefer a shared cache/ratelimit (Redis) for multi-instance deployments.
 - Health: add a simple health route (e.g., `/api/debug/whoami` for auth health in non-prod; production health should not expose user info).
+- Middleware matcher excludes static assets and images (see `middleware.ts`).
 
 ### Database & Migrations
 
@@ -46,6 +50,7 @@
 
 - Do not expose debug routes in production.
 - Restrict env visibility; keep `OPENAI_API_KEY` server-only.
+- Ensure `middleware.ts` enforces auth on `/workspaces`, `/api/threads`, `/api/flow`, `/api/versions` when no Supabase cookies present (redirects to sign-in with redirect param).
 
 ### Code Generation Templates
 

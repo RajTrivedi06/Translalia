@@ -1,40 +1,124 @@
-## Error Handling
+Purpose: Error taxonomy, status usage, Retry-After policy vs implementation.
+Updated: 2025-09-16
 
-### LLM Quick Reference
+### [Last Updated: 2025-09-16]
 
-- Use Zod for request validation; return 400 with `.flatten()`.
-- Auth failures: 401; feature-off: 403; state conflicts: 409; rate limit: 429; parse errors: 502.
+# Error Handling (2025-09-16)
 
-### Context Boundaries
+## Status codes (observed in code)
 
-- Focuses on patterns and status codes; see API docs for routes.
+- `401` unauthenticated
 
-### Classification
+```43:45:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+if (!me?.user) {
+  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+}
+```
 
-- 4xx: client errors (validation, auth, feature flags, state)
-- 5xx: server/infra errors (DB, unexpected, LLM parse when non-recoverable → 502)
+- `403` forbidden/feature-off (policy); used for translator/enhancer feature gates and access guards
 
-### Patterns
+```28:30:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+if (process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR !== "1") {
+  return new NextResponse("Feature disabled", { status: 403 });
+}
+```
 
-- Guard early: `requireUser` for protected routes
-- Validate body/query with Zod; include helpful messages
-- Never leak DB internals in messages
+```50:52:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/flow/peek/route.ts
+return NextResponse.json(
+  { ok: false, code: "FORBIDDEN_THREAD" },
+  { status: 403 }
+);
+```
 
-### Logging & Monitoring
+- `404` not found or feature-off (implementation choice for verify/backtranslate/interview)
 
-- Capture status codes and latencies; include token usage where relevant
-- Avoid storing PII/raw prompts; prefer hashed inputs
+```10:15:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/verify/route.ts
+if (!isVerifyEnabled())
+  return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
+```
 
-### User-Facing Messages
+- `409` invalid phase or conflicting state
 
-- Short, actionable errors; suggest next steps
+```41:43:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts
+return NextResponse.json(
+  { error: "Not ready to translate" },
+  { status: 409 }
+);
+```
 
-### Recovery
+- `429` rate limit exceeded (minute or daily)
 
-- Cache and rate-limit to reduce failure surfaces
-- Retry idempotent endpoints (preview) on transient errors
+```49:52:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+if (!rl.ok)
+  return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+```
 
-### Related Files
+```18:23:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/verify/route.ts
+const rl = await checkDailyLimit(user.id, "verify", VERIFY_DAILY_LIMIT);
+if (!rl.allowed)
+  return NextResponse.json(
+    { error: "Daily verification limit reached" },
+    { status: 429 }
+  );
+```
 
-- docs/llm-api.md
-- docs/flow-api.md
+- `500` unexpected server error
+
+```95:97:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+return NextResponse.json(
+  {
+    error: insErr?.message || "Failed to create placeholder",
+  },
+  { status: 500 }
+);
+```
+
+- `502` LLM contract invalid / upstream issues
+
+```205:207:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+return NextResponse.json(
+  { error: "LLM returned empty output" },
+  { status: 502 }
+);
+```
+
+## Retry-After (policy vs implementation)
+
+- Policy intent:
+  - Local minute bucket (preview) should include `Retry-After: 60`.
+  - Daily quotas (verify/backtranslate) should include `Retry-After: 86400`.
+- Implementation: current route handlers return 429 JSON bodies without explicit headers; add headers in future.
+
+```3:10:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/http/errors.ts
+/** Convert LLM client errors to concise HTTP responses, preserving Retry-After on 429. */
+export function respondLLMError(e: any) {
+  const status = e?.status ?? e?.response?.status ?? 502;
+  const retryAfter = e?.response?.headers?.get?.("retry-after");
+  const res = NextResponse.json({ error: e?.message ?? "LLM error" }, { status });
+  if (retryAfter) res.headers.set("Retry-After", String(retryAfter));
+  return res;
+}
+```
+
+## Observability
+
+- `prompt_hash` is attached to JSON responses where LLM calls are proxied.
+
+```70:87:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/enhancer/route.ts
+if (!r.ok) {
+  return NextResponse.json(
+    { error: r.error, prompt_hash: r.prompt_hash },
+    { status: 502 }
+  );
+}
+...
+return NextResponse.json({ ok: true, plan, prompt_hash: r.prompt_hash });
+```
+
+- Redacted previews are logged only when `DEBUG_PROMPTS` or `NEXT_PUBLIC_DEBUG_PROMPTS` is `1`.
+
+```30:33:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/promptHash.ts
+const DEBUG =
+  process.env.DEBUG_PROMPTS === "1" ||
+  process.env.NEXT_PUBLIC_DEBUG_PROMPTS === "1";
+```

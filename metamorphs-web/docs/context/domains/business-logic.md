@@ -1,146 +1,66 @@
+### [Last Updated: 2025-09-16]
+
 ## Business Logic
 
-### Core business rules
+### Overview
 
-- Threads capture conversation context and a JSON `state` that drives the translation workflow.
-- Interview questions collect constraints; plan is confirmed before translation preview.
-- Enhancer (if enabled) produces a normalized `enhanced_request` and `plain_english_summary` stored in thread state.
-- Translator preview requires `phase` to be `translating` or `review`; moderation gates both enhancer and translator.
+- Pipeline: Interview → Plan → Preview → Accept → Canvas
 
-### Workflow processes
+### Translator Output (NOTES rubric)
 
-1. Start interview
+- We expect a poem and a NOTES section (up to 10 items).
 
-```ts
-// src/app/api/flow/start/route.ts
-await patchThreadState(threadId, {
-  phase: "interviewing",
-  poem_excerpt: poem,
-  collected_fields: {},
-});
-return NextResponse.json({
-  ok: true,
-  phase: "interviewing",
-  nextQuestion: { id: q.id, prompt: q.prompt },
-});
+```10:18:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/server/translator/parse.ts
+export function parseTranslatorOutput(raw: string): TranslatorParsed {
+  const afterA = text.split(/---VERSION A---/i)[1] ?? "";
+  const [poemRaw, notesRaw] = afterA.split(/---NOTES---/i);
+}
 ```
 
-2. Answer questions → compute next
+### Anti-echo policy
 
-```ts
-// src/app/api/flow/answer/route.ts
-const updated = processAnswer(questionId as QuestionId, answer, state);
-await patchThreadState(threadId, updated);
-const nextQ = computeNextQuestion(updated);
+- Preview returns 409 when output echoes the source beyond thresholds; one retry may be issued server-side with stricter wording.
+
+```289:296:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+const echoish = looksLikeEcho(sourceLines, outLines);
+const untranslated = looksUntranslatedToEnglish(targetVariety, outLines);
+if (!forceTranslate && (echoish || untranslated)) {
+  // retry path then PREVIEW_ECHOED_SOURCE 409 on failure
+}
 ```
 
-3. Confirm plan
+### Prismatic mode
 
-```ts
-// src/app/api/flow/confirm/route.ts
-await patchThreadState(threadId, { phase: "translating" });
+- Prismatic (A/B/C) is enabled only when the flag is on; sections parsed from a single call.
+
+```1:3:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/flags/prismatic.ts
+export function isPrismaticEnabled() {
+  return process.env.NEXT_PUBLIC_FEATURE_PRISMATIC === "1";
+}
 ```
 
-4. Translator preview
-
-```ts
-// src/app/api/translator/preview/route.ts
-const resp = await openai.chat.completions.create({ model, messages });
-const preview = parseTranslatorOutput(resp.choices[0]?.message?.content ?? "");
+```281:285:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+const sections =
+  isPrismaticEnabled() && effectiveMode === "prismatic"
+    ? parsePrismatic(raw)
+    : undefined;
 ```
 
-5. Accept translated lines
+### Accept-lines
 
-```ts
-// src/app/api/translator/accept-lines/route.ts
+- Moderation guards selected lines; writes via RPC `accept_line` and appends ledger entries.
+
+```48:60:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/accept-lines/route.ts
+const mod = await moderateText(combined);
+if (mod.flagged) return NextResponse.json({ ok: false, flagged: true }, { status: 400 });
+```
+
+```63:71:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/accept-lines/route.ts
 for (const s of selections) {
-  await supabase.rpc("accept_line", {
-    p_thread_id: threadId,
-    p_line_index: s.index + 1,
-    p_new_text: s.text,
-    p_actor: userId,
-  });
+  await supabase.rpc("accept_line", { p_thread_id: threadId, p_line_index: s.index + 1, p_new_text: s.text, p_actor: userId });
 }
 ```
 
-### Calculation algorithms
-
-- `computeNextQuestion` determines progression through an ordered set of interview questions.
-- `processAnswer` merges user answers into `state.collected_fields` with guardrails.
-  Path: `src/server/flow/questions.ts`
-
-### Organization patterns
-
-- Route handlers are thin orchestrators using Zod for validation and `server/*` modules for logic.
-- Cross-cutting: moderation (`lib/ai/moderation.ts`), caching (`lib/ai/cache.ts`), rate limits (`lib/ai/ratelimit.ts`).
-- LLM IO is schema-validated (`types/llm.ts`, `server/translator/parse.ts`).
-
-### Data transformations
-
-- `server/threadState.ts` deep-merges partial updates into `chat_threads.state` safely.
-
-```ts
-// src/server/threadState.ts
-function deepMerge(base, patch) {
-  /* shallow-for-objects deep merge */
-}
+```72:76:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/accept-lines/route.ts
+await appendLedger(threadId, { ts: new Date().toISOString(), kind: "accept", note: `Accepted ${selections.length} line(s)` });
 ```
-
-### Business validations
-
-- Moderation on preview and accept-lines to block unsafe content.
-
-```ts
-// src/app/api/translator/preview/route.ts
-const pre = await moderateText(
-  bundle.poem + "\n" + JSON.stringify(bundle.enhanced).slice(0, 4000)
-);
-if (pre.flagged)
-  return NextResponse.json(
-    { error: "Content flagged by moderation; cannot preview." },
-    { status: 400 }
-  );
-```
-
-- Zod schemas enforce payload shape for create/update endpoints (`lib/schemas.ts`).
-
-### Business Rule Implementation Guide (LLM)
-
-- Validate request bodies with Zod; return 400 on `.flatten()` errors.
-- Use `requireUser` for any operation that writes DB rows.
-- Persist important steps to `journey_items` for auditability.
-- When calling LLMs, use cache+rate limit; parse outputs with Zod and return 502 on failure.
-- Keep `state.phase` transitions explicit; return 409 for invalid transitions.
-
-### Examples (key operations)
-
-```ts
-// Enhancer: compute plan and persist into thread state
-const plan = EnhancerPayloadSchema.parse(modelJson);
-await patchThreadState(threadId, {
-  enhanced_request: plan.enhanced_request,
-  plain_english_summary: plan.plain_english_summary,
-});
-
-// Compare: create compare and log journey
-const { data: c } = await sb
-  .from("compares")
-  .insert({
-    project_id,
-    left_version_id: leftId,
-    right_version_id: rightId,
-    lens,
-    granularity,
-  })
-  .select("id")
-  .single();
-await sb
-  .from("journey_items")
-  .insert({ project_id, kind: "compare", summary, compare_id: c.id });
-```
-
-### Testing patterns
-
-- Unit test pure logic (`server/flow/questions.ts`, `server/translator/parse.ts`).
-- Contract test route handlers with mocked Supabase/LLM clients.
-- Verify Zod validation and HTTP codes for edge cases.

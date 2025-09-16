@@ -1,3 +1,5 @@
+### [Last Updated: 2025-09-16]
+
 ## Relationships Map
 
 ### 1) Component → Component Imports
@@ -5,7 +7,7 @@
 - `src/components/workspace/WorkspaceShell.tsx`
   - imports: `./chat/ChatPanel`, `./versions/VersionCanvas`, `./journey/JourneyPanel`, `./compare/CompareSheet`, `@/store/workspace`, `@/lib/supabaseClient`
 - `src/components/workspace/chat/ChatPanel.tsx`
-  - imports: `./ThreadsDrawer`, `../flow/PlanPreviewSheet`, `../translate/TranslatorPreview`, `@/store/workspace`, `@/hooks/useThreadMessages`, `@/hooks/useInterviewFlow`, `@/lib/supabaseClient`, `@/server/flow/intent`, `@/server/flow/softReplies`
+  - imports: `./ThreadsDrawer`, `../flow/PlanBuilderOverviewSheet`, `../translate/TranslatorPreview`, `@/store/workspace`, `@/hooks/useThreadMessages`, `@/hooks/useInterviewFlow`, `@/lib/supabaseClient`, `@/server/flow/intent`, `@/server/flow/softReplies`
 - `src/components/workspace/chat/ThreadsDrawer.tsx`
   - imports: `@/lib/supabaseClient`, `@/store/workspace`, `@tanstack/react-query`
 - `src/components/workspace/flow/PlanPreviewSheet.tsx`
@@ -45,7 +47,7 @@
   - `/api/variants` (POST), then `/api/versions` (POST)
   - `/api/flow/start` (POST), `/api/flow/answer` (POST), `/api/flow/confirm` (POST)
   - `/api/flow/intent` (POST) [feature flagged]
-  - `/api/translator/preview` (POST), `/api/translator/accept-lines` (POST) [flagged]
+  - `/api/translator/preview` (POST), `/api/translator/accept-lines` (POST), `/api/translator/instruct` (POST) [flagged]
 - `ThreadsDrawer.tsx`
   - `/api/threads` (POST)
 - `WorkspaceShell.tsx`
@@ -90,6 +92,7 @@ graph TD
   C --> I[/api/chat/:threadId/messages]
   C --> J[/api/translator/preview]
   C --> K[/api/translator/accept-lines]
+  C --> K2[/api/translator/instruct]
   C --> L[/api/variants]
   C --> M[/api/versions]
   B --> N{Supabase Client}
@@ -103,6 +106,7 @@ graph TD
   J --> O{OpenAI}
   J --> P{Moderation}
   J --> Q[(Cache)]
+  J --> RL[(Rate Limit)]
   K --> R[[RPC accept_line]]
   R --> CT
   subgraph DB[Supabase DB]
@@ -118,6 +122,44 @@ Notes:
 
 - Most protected routes use `src/lib/apiGuard.ts` to require a Supabase session.
 - Feature-flagged areas: translator preview/accept-lines, router, enhancer.
+- Node listing API filters by `project_id` and `meta->>thread_id`.
+
+### Versions Lineage (A → B → C → D)
+
+- Lineage is defined in `versions.meta`:
+  - `thread_id`: thread scope for nodes
+  - `parent_version_id`: previous version id in the chain
+
+Reads (nodes API uses thread-scoped filter):
+
+```33:38:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/nodes/route.ts
+.from("versions")
+.select("id, tags, meta, created_at")
+.eq("project_id", th.project_id)
+.filter("meta->>thread_id", "eq", threadId)
+```
+
+Journey items are currently read by `meta->>thread_id`:
+
+```59:66:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/server/translator/bundle.ts
+const { data: jrows } = await supabase
+  .from("journey_items")
+  .select("id, kind, summary, created_at, meta")
+  .filter("meta->>thread_id", "eq", threadId)
+  .order("created_at", { ascending: false })
+  .limit(5);
+```
+
+> TODO-VERIFY: If a physical `thread_id` column is added to `journey_items`, switch to `.eq("thread_id", threadId)` (code has a comment noting this intent).
+
+Mermaid (conceptual lineage):
+
+```mermaid
+flowchart TD
+  A[Version A] --> B[Version B]
+  B --> C[Version C]
+  C --> D[Version D]
+```
 
 ---
 

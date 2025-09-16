@@ -1,20 +1,39 @@
+Last updated: 2025-09-11 by CursorDoc-Editor
+
 ## Components Structure
 
 ### Overview
 
 Feature-first structure with shared primitives grouped under `src/components`.
 
+### Feature-first map
+
+| Component                 | File                                                         | Reads/Writes                                                                               | Flags                            | Anchors                                                                               |
+| ------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------ | -------------------------------- | ------------------------------------------------------------------------------------- |
+| ChatPanel                 | `src/components/workspace/chat/ChatPanel.tsx`                | Reads: nodes/messages via hooks; Writes: chat messages, flow actions, instruct             | Router (optional), Translator    | `metamorphs-web/src/components/workspace/chat/ChatPanel.tsx:L519–L523`                |
+| PlanBuilderOverviewSheet  | `src/components/workspace/flow/PlanBuilderOverviewSheet.tsx` | Reads: nodes, thread state; Writes: `chat_threads.state`, calls preview; invalidates nodes | Prismatic, Verify, Backtranslate | `metamorphs-web/src/components/workspace/flow/PlanBuilderOverviewSheet.tsx:L160–L174` |
+| VersionCanvas             | `src/components/workspace/versions/VersionCanvas.tsx`        | Reads: `useNodes`; Writes: positions via PATCH `/api/versions/positions`                   | —                                | `metamorphs-web/src/components/workspace/versions/VersionCanvas.tsx:L52–L52`          |
+| ThreadsDrawer             | `src/components/workspace/chat/ThreadsDrawer.tsx`            | Writes: create thread messages; Reads: Supabase lists                                      | —                                | `metamorphs-web/src/components/workspace/chat/ThreadsDrawer.tsx:L28–L28`              |
+| NodeCard/FullPoemOverview | `src/components/workspace/translate/*`                       | Reads: selected node overview                                                              | —                                | `metamorphs-web/src/components/workspace/flow/PlanBuilderOverviewSheet.tsx:L525–L543` |
+
+Notes:
+
+- Version creation flows through `PlanBuilderOverviewSheet` invoking `/api/translator/preview` and then polling `useNodes`.
+
 ### Key Areas
 
 - `components/auth`: Auth UI elements (buttons, sheets, nav)
 - `components/workspace`
+
   - `chat`: Chat panel and threads drawer
   - `compare`: Compare sheet and related UI
-  - `flow`: Plan preview and flow components
+  - `flow`: Plan builder overview sheet and flow components
   - `journey`: Journey panel
   - `translate`: Translation preview UI
   - `versions`: Version canvas and graph nodes
   - `providers.tsx`: React Query + theme providers
+
+  - Note: PlanBuilderOverviewSheet shows preview, prismatic tabs if present, and optional verify/back-translate buttons (feature-flagged). VersionCanvas renders nodes sourced from React Query; avoid Zustand as the source of truth for versions.
 
 ### Patterns
 
@@ -43,7 +62,7 @@ Feature-first structure with shared primitives grouped under `src/components`.
 - `WorkspaceShell`
   - `ChatPanel`
     - `ThreadsDrawer`
-    - `PlanPreviewSheet`
+    - `PlanBuilderOverviewSheet`
     - `TranslatorPreview`
   - `VersionCanvas`
   - `JourneyPanel`
@@ -62,8 +81,8 @@ export function ChatPanel({ projectId }: { projectId?: string })
 // ThreadsDrawer
 export default function ThreadsDrawer({ projectId }: { projectId?: string })
 
-// PlanPreviewSheet
-export function PlanPreviewSheet({ open, onOpenChange, poem, fields, onLooksGood, plan?, onBuildPlan? }: { ... })
+// PlanBuilderOverviewSheet
+export default function PlanBuilderOverviewSheet({ threadId, open, onOpenChange }: { threadId: string; open: boolean; onOpenChange: (v:boolean)=>void })
 
 // TranslatorPreview
 export function TranslatorPreview({ lines, notes, disabled?, onAccept }: { lines: string[]; notes: string[]; disabled?: boolean; onAccept: (sel: {index:number;text:string}[]) => Promise<void> })
@@ -78,8 +97,10 @@ export function CompareSheet({ open, onOpenChange, left, right }: { open: boolea
 ### 3) State management in components
 
 - Local UI state: inputs, dialogs (`open`, `translatorOpen`, selection lists)
-- Data fetching via React Query hooks (`useThreadMessages`, lists in `WorkspaceShell`)
-- Global coordination via `useWorkspace` store: projectId, threadId, versions, compares, active/selection
+- Data fetching via React Query hooks (`useThreadMessages`, `useNodes`)
+- Global coordination via `useWorkspace` store: projectId, threadId, compares, active/selection, drawer open state
+  - `useWorkspace` coordinates selection for `CompareSheet` and currently selected node for plan/overview
+  - Canvas nodes are NOT sourced from the store; they come from `useNodes(projectId, threadId)`
 
 ### 4) Shared vs page-specific
 
@@ -96,14 +117,16 @@ export function CompareSheet({ open, onOpenChange, left, right }: { open: boolea
 - React Query for fetching/caching
 - Zustand store (`useWorkspace`) for cross-pane coordination
 - React Flow (`VersionCanvas`) for node/edge graph
+- `react-resizable-panels` for adjustable layout in `WorkspaceShell`
 
 ### 7) Data flow between components
 
-- `WorkspaceShell` loads project-scoped data (versions, journey, compares) and seeds `useWorkspace`
+- `WorkspaceShell` loads project-scoped data (journey, compares) and seeds `useWorkspace`
 - `ChatPanel` drives flow state via API calls and writes messages; opens sheets
 - `ThreadsDrawer` selects active thread in `useWorkspace`
 - `CompareSheet` reads selection from `useWorkspace`
-- `VersionCanvas` renders nodes from `useWorkspace.versions` and augments with `/api/versions/nodes` overview labels
+- `VersionCanvas` renders nodes from React Query via `useNodes(projectId, threadId)` (single source of truth) and enriches from the same list
+- `PlanBuilderOverviewSheet` loads thread state from `chat_threads.state`, triggers `/api/translator/preview`, and upon detecting the new node, closes the drawer; invalidation of `["nodes", projectId, threadId]` updates canvas
 
 ### 8) Component Creation Guidelines (LLM)
 
@@ -126,5 +149,50 @@ export function CompareSheet({ open, onOpenChange, left, right }: { open: boolea
 
 ### 10) LLM Context
 
-- To open plan preview from chat, trigger the interview flow until `await_plan_confirm`, then set `PlanPreviewSheet.open`.
+- To open plan preview from chat, trigger the interview flow until `await_plan_confirm`, then open `PlanBuilderOverviewSheet`.
 - To preview translation, ensure `NEXT_PUBLIC_FEATURE_TRANSLATOR=1` and call `/api/translator/preview` via `useInterviewFlow().translatorPreview`.
+
+---
+
+#### Changelog
+
+- 2025-09-09: Updated canvas data source to React Query `useNodes`; adjusted data-flow and state responsibilities; added drawer close behavior after Accept. (CursorDoc-Editor)
+
+### VersionCanvas lineage rendering
+
+- Edges are generated from `parent_version_id → id` and rendered with closed arrow markers.
+
+```151:161:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/versions/VersionCanvas.tsx
+const lineage: Edge[] = (apiNodes || [])
+  .filter((n) => !!n.parent_version_id)
+  .map((n) => ({
+    id: `lineage:${String(n.parent_version_id)}->${n.id}`,
+    source: String(n.parent_version_id),
+    target: n.id,
+    type: "straight", // clean vertical line
+    markerEnd: { type: MarkerType.ArrowClosed },
+  }));
+```
+
+- Default edge styling uses thicker strokes and arrow markers.
+
+```327:331:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/versions/VersionCanvas.tsx
+defaultEdgeOptions={{
+  animated: true,
+  markerEnd: { type: MarkerType.ArrowClosed },
+  style: { strokeWidth: 3 },
+}}
+```
+
+- Node layout is vertical with equal spacing; nodes expose top/bottom connection positions.
+
+```117:130:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/versions/VersionCanvas.tsx
+return {
+  id: api.id,
+  type: "versionCard" as const,
+  position: { x: X, y: TOP + idx * GAP_Y }, // equal spacing
+  targetPosition: Position.Top, // child receives at top
+  sourcePosition: Position.Bottom, // parent sends from bottom
+  data: { /* ... */ },
+};
+```

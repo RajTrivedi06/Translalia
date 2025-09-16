@@ -1,262 +1,109 @@
-## API Routes
+Updated: 2025-09-16
 
-### Overview
+### Routes
 
-This app uses Next.js Route Handlers (`route.ts`) under `src/app/api` for server-side endpoints. Authentication is via Supabase: cookie-based SSR by default, with optional Bearer token fallback where `requireUser` is used.
+| Method | Path                          | Purpose                                                         | Auth/Flags                                   | Key Errors                   | Anchor                                                                |
+| ------ | ----------------------------- | --------------------------------------------------------------- | -------------------------------------------- | ---------------------------- | --------------------------------------------------------------------- |
+| POST   | /api/translate                | Translate with cached moderation and parsing                    | Flag: TRANSLATOR=1; user via thread state    | 400, 404, 409, 422, 502      | `metamorphs-web/src/app/api/translate/route.ts:L15–L19`               |
+| POST   | /api/translator/preview       | Preview translation, anti‑echo, cache, persist placeholder node | Auth required; Flag: TRANSLATOR=1; RL 30/min | 400, 409, 422, 429, 500, 502 | `metamorphs-web/src/app/api/translator/preview/route.ts:L33–L39`      |
+| POST   | /api/translator/instruct      | Translate with explicit instruction and version linkage         | Auth required; Flag: TRANSLATOR=1            | 400, 401, 404, 422, 500, 502 | `metamorphs-web/src/app/api/translator/instruct/route.ts:L21–L25`     |
+| POST   | /api/enhancer                 | Build enhanced request plan                                     | Flag: ENHANCER=1                             | 400, 404, 409, 400/502       | `metamorphs-web/src/app/api/enhancer/route.ts:L13–L16`                |
+| POST   | /api/constraints              | Enforce text rules                                              | None                                         | 400                          | `metamorphs-web/src/app/api/constraints/route.ts:L4–L6`               |
+| POST   | /api/variants                 | Generate text variants                                          | None                                         | 400                          | `metamorphs-web/src/app/api/variants/route.ts:L4–L8`                  |
+| POST   | /api/rag                      | Retrieve augmented context                                      | None                                         | 400                          | `metamorphs-web/src/app/api/rag/route.ts:L4–L6`                       |
+| POST   | /api/chat                     | Echo stub (replace with chain)                                  | None                                         | 400                          | `metamorphs-web/src/app/api/chat/route.ts:L3–L7`                      |
+| POST   | /api/projects                 | Create project; DELETE delete project                           | Auth required                                | 400                          | `metamorphs-web/src/app/api/projects/route.ts:L5–L11`                 |
+| GET    | /api/threads/list             | List threads for project                                        | Auth required                                | 400, 403, 404, 500           | `metamorphs-web/src/app/api/threads/list/route.ts:L8–L15`             |
+| POST   | /api/threads                  | Create thread; DELETE delete thread                             | Auth required                                | 400                          | `metamorphs-web/src/app/api/threads/route.ts:L5–L13`                  |
+| POST   | /api/chat/[threadId]/messages | Add chat message to thread                                      | Auth required                                | 400                          | `metamorphs-web/src/app/api/chat/[threadId]/messages/route.ts:L6–L13` |
+| POST   | /api/versions                 | Create version node                                             | Auth required                                | 400                          | `metamorphs-web/src/app/api/versions/route.ts:L16–L24`                |
+| PATCH  | /api/versions/positions       | Update node positions                                           | Auth required                                | 400                          | `metamorphs-web/src/app/api/versions/positions/route.ts:L17–L23`      |
+| GET    | /api/versions/nodes           | List nodes for thread                                           | Auth required                                | 400, 403, 500                | `metamorphs-web/src/app/api/versions/nodes/route.ts:L8–L15`           |
+| GET    | /api/journey/list             | List journey items                                              | Auth required (Bearer or cookies)            | 400, 500                     | `metamorphs-web/src/app/api/journey/list/route.ts:L15–L23`            |
+| GET    | /api/interview/next           | Next interview question snapshot                                | Auth required                                | 400, 403, 404                | `metamorphs-web/src/app/api/interview/next/route.ts:L10–L17`          |
+| POST   | /api/flow/intent              | Classify intent (LLM)                                           | None (stubbed guard)                         | 400, 502                     | `metamorphs-web/src/app/api/flow/intent/route.ts:L7–L12`              |
+| POST   | /api/flow/confirm             | Confirm plan and advance phase                                  | Auth required                                | 400, 404, 409                | `metamorphs-web/src/app/api/flow/confirm/route.ts:L9–L16`             |
+| POST   | /api/flow/peek                | Backtranslate candidate (daily caps)                            | Auth required; Flag: BACKTRANSLATE=1         | 400, 404, 429, 502           | `metamorphs-web/src/app/api/flow/peek/route.ts:L10–L15`               |
+| POST   | /api/translator/verify        | Verify candidate (daily caps)                                   | Auth required; Flag: VERIFY=1                | 400, 404, 429, 502           | `metamorphs-web/src/app/api/translator/verify/route.ts:L7–L12`        |
+| POST   | /api/translator/accept-lines  | Accept selected lines into draft                                | Auth required                                | 400, 401, 404, 409           | `metamorphs-web/src/app/api/translator/accept-lines/route.ts:L17–L24` |
+| POST   | /api/eval/run                 | Admin eval runner (stub)                                        | Auth required                                | 202                          | `metamorphs-web/src/app/api/eval/run/route.ts:L5–L9`                  |
+| POST   | /api/auth                     | Sync Supabase SSR cookies from client auth                      | None                                         | 401                          | `metamorphs-web/src/app/api/auth/route.ts:L20–L27`                    |
+| GET    | /api/auth/whoami              | Debug current auth identity                                     | None                                         | 200                          | `metamorphs-web/src/app/api/auth/whoami/route.ts:L6–L9`               |
+| GET    | /api/auth/debug-cookies       | Debug cookies and headers                                       | None                                         | 200                          | `metamorphs-web/src/app/api/auth/debug-cookies/route.ts:L6–L12`       |
+| GET    | /api/dev/thread-state         | Dev-only thread state smoke                                     | Dev only                                     | 400, 403                     | `metamorphs-web/src/app/api/dev/thread-state/route.ts:L8–L13`         |
 
-### Quick Reference
+Purpose: Central index of implemented API routes, flags, and references.
+Updated: 2025-09-13
 
-| Method | Path                                | Auth                 | Body/Query                                                  | Success                                    | Errors                            |
-| ------ | ----------------------------------- | -------------------- | ----------------------------------------------------------- | ------------------------------------------ | --------------------------------- |
-| POST   | /api/chat                           | none                 | { text }                                                    | 200 { ok, echo }                           | 400                               |
-| POST   | /api/chat/[threadId]/messages       | Bearer/cookie        | { projectId, content, role?, meta? }                        | 201 { id, created_at }                     | 400, 401                          |
-| POST   | /api/threads                        | Bearer/cookie        | { projectId, title? }                                       | 201 { thread }                             | 400, 401                          |
-| DELETE | /api/threads                        | Bearer/cookie        | { id? or threadId? }                                        | 200 { ok:true }                            | 400, 401                          |
-| POST   | /api/projects                       | Bearer/cookie        | { title?, src_lang?, tgt_langs? }                           | 201 { project }                            | 400, 401                          |
-| DELETE | /api/projects                       | Bearer/cookie        | { id? or projectId? }                                       | 200 { ok:true }                            | 400, 401                          |
-| POST   | /api/versions                       | Bearer/cookie        | { projectId, title, lines, tags?, meta?, summary? }         | 201 { version }                            | 400, 401                          |
-| PATCH  | /api/versions/positions             | Bearer/cookie        | { projectId, positions[] }                                  | 200 { ok:true }                            | 400, 401                          |
-| GET    | /api/versions/nodes?threadId=       | Bearer/cookie        | threadId                                                    | 200 { ok, nodes[] }                        | 400, 403, 500                     |
-| POST   | /api/compares                       | Bearer/cookie        | { projectId, leftId, rightId, lens?, granularity?, notes? } | 201 { compare }                            | 400, 401                          |
-| POST   | /api/constraints                    | none                 | { text, rules }                                             | 200 { ... }                                | 400                               |
-| POST   | /api/variants                       | none                 | { input, recipe }                                           | 200 [variant]                              | 400                               |
-| POST   | /api/rag                            | none                 | { query }                                                   | 200 { ... }                                | 400                               |
-| POST   | /api/flow/start                     | cookie               | { threadId, poem }                                          | 200 { ok, phase, nextQuestion }            | 400, 404                          |
-| POST   | /api/flow/answer                    | cookie               | { threadId, questionId, answer }                            | 200 { ok, phase, ... }                     | 400, 404                          |
-| GET    | /api/flow/peek?threadId=            | cookie               | threadId                                                    | 200 { ok, phase, nextQuestion?, snapshot } | 400, 404, 500                     |
-| POST   | /api/flow/confirm                   | cookie               | { threadId }                                                | 200 { ok, phase }                          | 400, 404, 409                     |
-| POST   | /api/flow/intent                    | none                 | { message, phase }                                          | 200 { intent }                             | 400                               |
-| POST   | /api/enhancer                       | cookie + flag        | { threadId }                                                | 200 { ok, plan }                           | 400, 403, 404, 500                |
-| POST   | /api/translate                      | cookie + flag        | { threadId }                                                | 200 { ok, result }                         | 400, 403, 404, 409, 502           |
-| POST   | /api/translator/preview             | cookie/Bearer + flag | { threadId }                                                | 200 { ok, preview, versionId }             | 400, 401, 403, 409, 429, 500, 502 |
-| POST   | /api/translator/accept-lines        | cookie + flag        | { threadId, selections[] }                                  | 200 { ok }                                 | 400, 401, 404                     |
-| GET    | /api/journey/list?projectId=&limit= | cookie/Bearer        | projectId, limit?                                           | 200 { ok, items[] }                        | 400, 401?, 500                    |
-| GET    | /api/dev/thread-state               | none (dev only)      | threadId                                                    | 200 { before, after }                      | 400, 403                          |
-| GET    | /api/debug/whoami                   | none (dev)           | —                                                           | 200 { cookie_names, has_bearer, uid }      | —                                 |
+# API Routes Index (2025-09-13)
 
-LLM Context: prefer the table above to quickly find method, path, auth, and typical success/error shapes.
+| Route                              | Purpose                     | Flags                               |
+| ---------------------------------- | --------------------------- | ----------------------------------- |
+| `/api/translator/preview`          | Create/preview draft        | `NEXT_PUBLIC_FEATURE_TRANSLATOR`    |
+| `/api/translator/instruct`         | Accept & generate overview  | `NEXT_PUBLIC_FEATURE_TRANSLATOR`    |
+| `/api/translate`                   | Full translate              | `NEXT_PUBLIC_FEATURE_TRANSLATOR`    |
+| `/api/enhancer`                    | Plan (JSON)                 | `NEXT_PUBLIC_FEATURE_ENHANCER`      |
+| `/api/translator/verify`           | Score NOTES rubric (JSON)   | `NEXT_PUBLIC_FEATURE_VERIFY`        |
+| `/api/translator/backtranslate`    | Back-translation (JSON)     | `NEXT_PUBLIC_FEATURE_BACKTRANSLATE` |
+| `/api/interview/next`              | [Deprecated] Clarifier LLM  | —                                   |
+| `/api/flow/peek`                   | Thread ownership/phase peek | —                                   |
+| `/api/flow/{start,answer,confirm}` | Flow state transitions      | —                                   |
+| `/api/flow/intent`                 | Router intent (LLM-backed)  | `NEXT_PUBLIC_FEATURE_ROUTER`        |
+| `/api/chat`                        | Echo stub                   | —                                   |
+| `/api/chat/[threadId]/messages`    | Create message              | — (auth required)                   |
+| `/api/projects`                    | Create/delete project       | — (auth required)                   |
+| `/api/threads`                     | Create/delete thread        | — (auth required)                   |
+| `/api/threads/list`                | List threads for project    | — (auth required)                   |
+| `/api/versions`                    | Create version              | — (auth required)                   |
+| `/api/versions/nodes`              | List nodes for thread       | — (auth required)                   |
+| `/api/versions/positions`          | Upsert version positions    | — (auth required)                   |
+| `/api/compares`                    | Create compare              | — (auth required)                   |
+| `/api/constraints`                 | Enforce simple constraints  | —                                   |
+| `/api/variants`                    | Generate variants (stub)    | —                                   |
+| `/api/rag`                         | Retrieve context            | —                                   |
+| `/api/auth`                        | Supabase cookie sync        | —                                   |
+| `/api/auth/whoami`                 | Identity debug              | —                                   |
+| `/api/auth/debug-cookies`          | Cookie debug                | —                                   |
+| `/api/eval/run`                    | Admin eval stub             | —                                   |
 
-### Conventions
+Evidence (files present under `src/app/api/**/route.ts`):
 
-- Use `lib/apiGuard.ts` for auth where RLS-protected operations are performed. It supports SSR cookies and Bearer fallback.
-- Validate inputs with Zod (`lib/schemas.ts` or local schemas).
-- Keep business logic in `server/*`; route handlers orchestrate and shape responses.
+```1:32:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/enhancer/route.ts
 
-### Endpoint Details
-
-## POST /api/chat
-
-- Authentication: none
-- Parameters: { text: string }
-- Response: { ok: true, echo: string }
-- Status Codes: 200, 400
-- Example Request:
-
-```json
-{ "text": "hello" }
 ```
 
-- Example Response:
+```1:40:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/verify/route.ts
 
-```json
-{ "ok": true, "echo": "hello" }
 ```
 
-## POST /api/chat/[threadId]/messages
+```1:40:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/backtranslate/route.ts
 
-- Authentication: Bearer token or SSR cookie (requireUser)
-- Parameters: { projectId: string (uuid), content: string, role?: "user"|"assistant"|"system", meta?: object }
-- Response: { id: string (uuid), created_at: string }
-- Status Codes: 201, 400, 401
-- Example Request:
-
-```json
-{ "projectId": "00000000-0000-0000-0000-000000000000", "content": "My poem…" }
 ```
 
-- Example Response:
+```1:298:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
 
-```json
-{
-  "id": "11111111-1111-1111-1111-111111111111",
-  "created_at": "2025-01-01T00:00:00Z"
-}
 ```
 
-## POST /api/threads
+```1:214:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
 
-- Authentication: Bearer/cookie
-- Parameters: { projectId: uuid, title?: string }
-- Response: { thread: { id, title, created_at } }
-- Status Codes: 201, 400, 401
+```
 
-## DELETE /api/threads
+```1:147:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts
 
-- Authentication: Bearer/cookie
-- Parameters: { id?: uuid, threadId?: uuid }
-- Response: { ok: true }
-- Status Codes: 200, 400, 401
+```
 
-## POST /api/projects
+```1:69:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/nodes/route.ts
 
-- Authentication: Bearer/cookie
-- Parameters: { title?: string, src_lang?: string, tgt_langs?: string[] }
-- Response: { project: { id, title, created_at } }
-- Status Codes: 201, 400, 401
+```
 
-## DELETE /api/projects
+```1:109:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/flow/answer/route.ts
 
-- Authentication: Bearer/cookie
-- Parameters: { id?: uuid, projectId?: uuid }
-- Response: { ok: true }
-- Status Codes: 200, 400, 401
+```
 
-## POST /api/versions
+```1:43:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/flow/intent/route.ts
 
-- Authentication: Bearer/cookie
-- Parameters: { projectId: uuid, title: string, lines: string[], tags?: string[], meta?: object, summary?: string }
-- Response: { version: { id, project_id, title, lines, tags, meta, created_at } }
-- Status Codes: 201, 400, 401
+```
 
-## PATCH /api/versions/positions
+```1:54:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/interview/next/route.ts
 
-- Authentication: Bearer/cookie
-- Parameters: { projectId: uuid, positions: [{ id: uuid, pos: { x:number, y:number }}] }
-- Response: { ok: true }
-- Status Codes: 200, 400, 401
-
-## GET /api/versions/nodes?threadId=
-
-- Authentication: Bearer/cookie
-- Parameters: threadId: uuid (query)
-- Response: { ok: true, count: number, nodes: [{ id, display_label, status, parent_version_id, overview, complete, created_at }] }
-- Status Codes: 200, 400, 403, 500
-
-## POST /api/compares
-
-- Authentication: Bearer/cookie
-- Parameters: { projectId: uuid, leftId: uuid, rightId: uuid, lens?: "meaning"|"form"|"tone"|"culture", granularity?: "line"|"phrase"|"char", notes?: string }
-- Response: { compare: { id, project_id, left_version_id, right_version_id, lens, granularity, created_at } }
-- Status Codes: 201, 400, 401
-
-## POST /api/constraints
-
-- Authentication: none
-- Parameters: { text: string, rules: string[] }
-- Response: { ok: boolean, text: string, violations: string[] }
-- Status Codes: 200, 400
-
-## POST /api/variants
-
-- Authentication: none
-- Parameters: { input: string, recipe: string }
-- Response: [ { id: string, title: string, lines: string[], tags: string[] } ]
-- Status Codes: 200, 400
-
-## POST /api/rag
-
-- Authentication: none
-- Parameters: { query: string }
-- Response: implementation-defined context bundle
-- Status Codes: 200, 400
-
-## POST /api/flow/start
-
-- Authentication: SSR cookie (RLS guards ownership)
-- Parameters: { threadId: uuid, poem: string }
-- Response: { ok: true, phase: "interviewing", nextQuestion: { id, prompt } }
-- Status Codes: 200, 400, 404
-
-## POST /api/flow/answer
-
-- Authentication: SSR cookie
-- Parameters: { threadId: uuid, questionId: enum, answer: string }
-- Response: one of:
-  - interviewing: { ok: true, phase: "interviewing", nextQuestion: { id, prompt }, snapshot }
-  - plan gate: { ok: true, phase: "await_plan_confirm", planPreview: { poem_excerpt, collected_fields, readyForEnhancer } }
-- Status Codes: 200, 400, 404
-
-## GET /api/flow/peek?threadId=
-
-- Authentication: SSR cookie
-- Parameters: threadId (query)
-- Response: { ok: true, phase, nextQuestion?: { id, prompt } | null, snapshot: { poem_excerpt, collected_fields } }
-- Status Codes: 200, 400, 404, 500
-
-## POST /api/flow/confirm
-
-- Authentication: SSR cookie
-- Parameters: { threadId: uuid }
-- Response: { ok: true, phase: "translating" }
-- Status Codes: 200, 400, 404, 409
-
-## POST /api/flow/intent
-
-- Authentication: none (feature-gated by client)
-- Parameters: { message: string, phase: string }
-- Response: { intent: string|null }
-- Status Codes: 200, 400
-
-## POST /api/enhancer
-
-- Authentication: SSR cookie; Feature flag: NEXT_PUBLIC_FEATURE_ENHANCER=1
-- Parameters: { threadId: uuid }
-- Response: { ok: true, plan: ENHANCER_PAYLOAD, usage? }
-- Status Codes: 200, 400 (validation/moderation), 403 (disabled), 404, 500
-
-## POST /api/translate
-
-- Authentication: SSR cookie; Feature flag: NEXT_PUBLIC_FEATURE_TRANSLATOR=1
-- Parameters: { threadId: uuid }
-- Response: { ok: true, result: { versionA: string, notes: string[], blocked: boolean }, usage? }
-- Status Codes: 200, 400 (validation/moderation), 403 (disabled), 404 (thread), 409 (state), 502 (LLM parse)
-
-## POST /api/translator/preview
-
-- Authentication: SSR cookie or Bearer; Feature flag: NEXT_PUBLIC_FEATURE_TRANSLATOR=1
-- Parameters: { threadId: uuid }
-- Response: { ok: true, preview: { lines: string[], notes: string[], line_policy }, versionId, displayLabel, cached? }
-- Rate Limit: 30 req/min per threadId
-- Status Codes: 200, 400, 401, 403, 409, 429, 500, 502
-
-## POST /api/translator/accept-lines
-
-- Authentication: SSR cookie
-- Parameters: { threadId: uuid, selections: [{ index: number, text: string }] }
-- Response: { ok: true }
-- Status Codes: 200, 400 (validation/moderation), 401, 404
-
-## GET /api/journey/list
-
-- Authentication: SSR cookie or Bearer
-- Query: projectId: uuid, limit?: 1..50 (default 20)
-- Response: { ok: true, items: [{ id, kind, summary, meta, created_at }] }
-- Status Codes: 200, 400, 401?, 500
-
-## GET /api/dev/thread-state
-
-- Authentication: none (blocked in production)
-- Query: threadId: uuid
-- Response: { before: SessionState, after: SessionState, didHitCadence: boolean }
-- Status Codes: 200, 400, 403
-
-### Error Handling
-
-- 400 validation errors (Zod `.flatten()`), moderation failures
-- 401 unauthorized (missing/invalid auth)
-- 403 forbidden or feature disabled
-- 404 not found (or RLS-protected not visible)
-- 409 invalid state transitions
-- 429 rate limiting
-- 500 internal server errors
-- 502 malformed LLM output
-
-### Middleware and Auth
-
-- `src/middleware.ts` initializes Supabase session on each request.
-- `lib/apiGuard.ts` provides `requireUser(req)` to resolve user from cookies or `Authorization: Bearer <token>`.
-
-### LLM Context
-
-- Feature flags control LLM endpoints: set `NEXT_PUBLIC_FEATURE_TRANSLATOR=1` and/or `NEXT_PUBLIC_FEATURE_ENHANCER=1`.
-- Outputs use stable shapes suitable for downstream parsing; see sections above for exact fields.
+```

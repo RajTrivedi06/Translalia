@@ -1,167 +1,481 @@
-# LLM API
+Purpose: How we call LLMs (methods, params) and where each surface uses them.
+Updated: 2025-09-16
 
-## Endpoints Overview
+### [Last Updated: 2025-09-13]
 
-- Enhancer (plan builder): `POST /api/enhancer` (flag: `NEXT_PUBLIC_FEATURE_ENHANCER=1`)
-- Translator (preview node): `POST /api/translator/preview` (flag: `NEXT_PUBLIC_FEATURE_TRANSLATOR=1`)
-- Translator (instructional generation): `POST /api/translator/instruct` (flag: `NEXT_PUBLIC_FEATURE_TRANSLATOR=1`)
-- Translator (legacy single-shot): `POST /api/translate` (flag: `NEXT_PUBLIC_FEATURE_TRANSLATOR=1`)
+# LLM API (2025-09-16)
 
-Auth: Supabase cookie and/or `Authorization: Bearer <access_token>` as documented in API routes.
+We use OpenAI `responses.create` across server surfaces. We do not use legacy `chat.completions.create`.
 
-Rate limiting: Preview endpoint only (30/min per threadId).
+Evidence of responses.create usage (examples):
 
----
-
-## Enhancer (Plan Builder)
-
-- Endpoint: `POST /api/enhancer`
-- Body: `{ "threadId": string(uuid) }`
-- Feature flag: `NEXT_PUBLIC_FEATURE_ENHANCER=1`
-- Model selection: `process.env.ENHANCER_MODEL || "gpt-4o-mini"`
-- Prompt template (system):
-
-```ts
-"You are the Prompt Enhancer for Metamorphs, a decolonial poetry-translation workspace.\n" +
-  "INPUTS provided:\n- POEM_EXCERPT: verbatim text (preserve spacing/line breaks).\n- COLLECTED_FIELDS: JSON of user choices.\n" +
-  "TASK: Produce a human-readable plan and a structured enhanced request.\n" +
-  "Return a SINGLE JSON object named ENHANCER_PAYLOAD with keys:\nplain_english_summary, poem_excerpt (echo verbatim), enhanced_request, warnings[].\n" +
-  "Rules: keep decolonial stance, preserve excerpt exactly, list any defaults as _assumptions inside enhanced_request.\n" +
-  "Never return anything outside ENHANCER_PAYLOAD.";
+```196:199:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+const respUnknown: unknown = await openai.responses.create(
+  reqPayload as unknown as Parameters<typeof openai.responses.create>[0]
+);
 ```
 
-- Response format: `{ ok: true, plan: EnhancerPayload, usage? }`
-- Validation: `EnhancerPayloadSchema` (Zod); response_format: `{ type: "json_object" }`
-- Errors: 400 (validation/moderation), 403 (feature disabled), 404 (thread not found), 500 (non-JSON or parse)
-- Caching: `enhancer:` + `stableHash({ poem, fields })`, TTL 3600s
-
-Example:
-
-```bash
-curl -X POST http://localhost:3000/api/enhancer \
-  -H "Content-Type: application/json" \
-  -d '{"threadId":"<THREAD_UUID>"}'
+```43:49:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/enhance.ts
+const r1 = await openai.responses.create({
+  ...base,
+  messages: [
+    { role: "system", content: ENHANCER_SYSTEM },
+    { role: "user", content: user },
+  ] as const,
+});
 ```
 
----
+## Call Patterns (by surface)
 
-## Translator – Preview (Node)
+- Translator: `model = TRANSLATOR_MODEL`, `temperature ≈ 0.6`.
 
-- Endpoint: `POST /api/translator/preview`
-- Body: `{ "threadId": string(uuid) }`
-- Feature flag: `NEXT_PUBLIC_FEATURE_TRANSLATOR=1`
-- Rate limit: 30 req/min per thread
-- Model selection: `process.env.TRANSLATOR_MODEL || "gpt-4o"`
-- Prompt template (system): `TRANSLATOR_SYSTEM` in `lib/ai/prompts.ts`
-
-```ts
-export const TRANSLATOR_SYSTEM = `You are a decolonial poetry translator.\nPriorities: ...\nYou MUST output using these exact markers:\n---VERSION A---\n<poem lines>\n---NOTES---\n- bullet 1\n- bullet 2`;
+```98:104:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts
+const reqPayload = {
+  model: TRANSLATOR_MODEL,
+  temperature: 0.6,
+  messages: [
 ```
 
-- Request assembly: uses server `buildTranslateBundle(threadId)` to collect poem, enhanced request, line policy, accepted lines, ledger notes, and summary
-- Behavior: creates placeholder version (status:"placeholder"), calls LLM, parses output, updates `versions.meta` with `status:"generated"` and `overview:{ lines[], notes[] }`
-- Response: `{ ok, versionId, displayLabel, preview: { lines[], notes[], line_policy }, cached? }`
-- Validation: `parseTranslatorOutput(raw)` and Zod schema
-- Errors: 400 (validation/moderation), 401 (auth), 403 (feature disabled), 409 (state), 429 (rate limit), 500 (update failure), 502 (parse)
-- Caching: `translator_preview:` + `stableHash(bundle)`, TTL 3600s
+- Enhancer (planner): `model = ENHANCER_MODEL`, `temperature ≈ 0.2`, `response_format: json_object`, with one JSON-fix retry (`temperature 0.1`).
 
----
+```38:45:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/enhance.ts
+const base = {
+  model: ENHANCER_MODEL,
+  temperature: 0.2,
+  response_format: { type: "json_object" } as const,
+};
 
-## Translator – Instruct (Directed Generation)
-
-- Endpoint: `POST /api/translator/instruct`
-- Body: `{ "threadId": uuid, "instruction": string, "citeVersionId"?: uuid }`
-- Feature flag: `NEXT_PUBLIC_FEATURE_TRANSLATOR=1`
-- Model selection: `process.env.TRANSLATOR_MODEL || "gpt-4o"`
-- Behavior: allocates a display label; inserts placeholder version with `meta.thread_id`, `meta.display_label`, optional `meta.parent_version_id`; includes cited version text if provided; updates to `status:"generated"` with `overview`
-- Response: `{ ok: true, versionId, displayLabel }`
-- Errors: 400 (validation), 401 (auth), 403 (feature disabled), 404 (thread/version not found), 500 (update failure or parse)
-
----
-
-## Translator – Legacy Single Shot
-
-- Endpoint: `POST /api/translate`
-- Body: `{ "threadId": uuid }`
-- Feature flag: `NEXT_PUBLIC_FEATURE_TRANSLATOR=1`
-- Model selection: `process.env.TRANSLATOR_MODEL || "gpt-4o"`
-- Parsing: inline split on markers and `TranslatorOutputSchema.safeParse`
-- Response: `{ ok: true, result: { versionA: string, notes: string[], blocked: boolean }, usage? }`
-- Errors: 400 (validation/moderation), 403 (feature disabled), 404 (thread), 409 (state), 502 (LLM output invalid)
-
-```bash
-curl -X POST http://localhost:3000/api/translate \
-  -H "Content-Type: application/json" \
-  -d '{"threadId":"<THREAD_UUID>"}'
+const r1 = await openai.responses.create({
+  ...base,
 ```
 
----
+```58:66:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/enhance.ts
+const r2 = await openai.responses.create({
+  ...base,
+  temperature: 0.1,
+  messages: [
+    {
+      role: "system",
+      content: ENHANCER_SYSTEM +
+```
 
-## Model Selection and Fallback
+- Router / Clarifier: `model = ROUTER_MODEL`, `temperature ≈ 0.2`, `response_format: json_object`.
 
-- Defaults:
-  - Enhancer: `ENHANCER_MODEL` env or `gpt-4o-mini`
-  - Translator: `TRANSLATOR_MODEL` env or `gpt-4o`
-  - Embeddings: `EMBEDDINGS_MODEL` env or `text-embedding-3-large`
-- No automatic failover is implemented. To switch models, set env vars and redeploy.
+```26:33:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/server/flow/intentLLM.ts
+const r = await openai.responses.create({
+  model: ROUTER_MODEL,
+  temperature: 0.2,
+  response_format: { type: "json_object" },
+```
 
----
+```23:27:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/interview/next/route.ts
+const r = await openai.responses.create({
+  model: ROUTER_MODEL,
+  temperature: 0.2,
+  response_format: { type: "json_object" },
+```
 
-## Rate Limiting and Quotas
+- Verifier / Back-translate: JSON outputs using `VERIFIER_MODEL` (default Router) and `BACKTRANSLATE_MODEL` (default Enhancer).
 
-- Preview endpoint uses an in-memory token bucket (`lib/ai/ratelimit.ts`) keyed by `preview:${threadId}` with window 60s and limit 30.
-- No global per-user/hour quota is enforced in code; add an external gateway or extend rate limiter if needed.
+```41:47:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/verify.ts
+const r = await openai.responses.create({
+  model: VERIFIER_MODEL,
+  temperature: 0.2,
+  response_format: { type: "json_object" },
+  messages: [
+```
 
----
+```83:90:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/verify.ts
+const r = await openai.responses.create({
+  model: BACKTRANSLATE_MODEL,
+  temperature: 0.3,
+  response_format: { type: "json_object" },
+  messages: [
+```
 
-## Cost and Optimization
+## Prompt Hashing & Redacted Debug Previews
 
-- The OpenAI client returns `usage` tokens; responses include `usage` where available.
-- Optimization patterns:
-  - Cache identical preview/enhancer calls by a stable hash of inputs for 1 hour.
-  - Trim poem and JSON bundle to essential context before calling LLMs.
-  - Use lower-cost models for enhancer planning (`gpt-4o-mini`).
+- Each call computes a `prompt_hash` over `{route, model, system, user[, schema]}`.
 
----
+```11:20:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/promptHash.ts
+export function buildPromptHash(args: {
+  route: string;
+  model: string;
+  system: string;
+  user: string;
+  schema?: string;
+}) {
+  const { route, model, system, user, schema } = args;
+  return stableHash({ route, model, system, user, schema });
+}
+```
 
-## Error Handling Patterns
+- Redacted previews are logged only when gated by env flags.
 
-- 400: Zod validation failures (return `.flatten()`), moderation blocks
-- 401: unauthenticated
-- 403: feature disabled
-- 404: thread/version not found
-- 409: invalid flow state (e.g., translating not ready)
-- 429: rate limit exceeded (preview)
-- 500: internal errors (e.g., non-JSON from enhancer)
-- 502: LLM output malformed/unparseable
+```30:43:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/promptHash.ts
+const DEBUG =
+  process.env.DEBUG_PROMPTS === "1" ||
+  process.env.NEXT_PUBLIC_DEBUG_PROMPTS === "1";
+if (!DEBUG) return;
+// Avoid printing full poem/user content in logs
+console.info("[LLM]", {
+  route: args.route,
+  model: args.model,
+  hash: args.hash,
+  systemPreview: squeeze(args.system),
+  userPreview: squeeze(args.user, 300),
+});
+```
 
----
+## Parameters and Guards
 
-## Response Parsing and Validation
+- We set `instructions` and `input` for string user payloads; for message arrays we wrap with a system message.
 
-- Enhancer: `response_format: { type: "json_object" }` and `EnhancerPayloadSchema.parse()`
-- Translator (preview/instruct): `parseTranslatorOutput(raw)` → lines + notes (Zod-validated)
-- Translator (legacy): marker split + `TranslatorOutputSchema.safeParse`
+```51:56:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/openai.ts
+if (typeof user === "string") {
+  args.instructions = system;
+  args.input = user;
+} else {
+  args.input = [{ role: "system", content: system }, ...user];
+}
+```
 
----
+- For non‑generative models (moderation, embeddings, audio, realtime), we drop `temperature`, `top_p`, and `response_format` if unsupported.
 
-## Debugging and Monitoring
+```47:51:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/openai.ts
+const nonGen = isNonGenerative(model);
+if (!nonGen && typeof temperature === "number")
+  args.temperature = temperature;
+if (!nonGen && typeof top_p === "number") args.top_p = top_p;
+```
 
-- `GET /api/debug/whoami` reveals cookie names, bearer presence, and current uid for auth debugging.
-- Translator preview returns `debug` bundle: counts of poem chars, accepted lines, ledger count, and summary chars.
-- Log important steps to `journey_items` for traceability (e.g., accept-lines, compares, plan confirmed).
+```57:58:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/openai.ts
+if (!nonGen && response_format) args.response_format = response_format;
+```
 
----
+- Fallback: when API rejects `temperature`, we retry without `temperature`, `top_p`, and `response_format`.
 
-## LLM Integration Best Practices
+```68:76:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/openai.ts
+const unsupportedTemp = /Unsupported parameter:\s*'temperature'/i.test(msg);
+if (unsupportedTemp) {
+  const retryArgs: Record<string, unknown> = { ...args };
+  delete (retryArgs as Record<string, unknown> & { temperature?: unknown })
+    .temperature;
+  delete (retryArgs as Record<string, unknown> & { top_p?: unknown }).top_p;
+  delete (
+    retryArgs as Record<string, unknown> & { response_format?: unknown }
+  ).response_format;
+```
 
-- Always validate model outputs with Zod before persisting.
-- Use cache and rate limit to reduce cost and improve UX.
-- Keep prompts deterministic; use explicit markers and JSON `response_format` when possible.
-- Separate orchestration (route handlers) from logic (server modules) for testability.
+### Policy vs Implementation
 
-Don't Do:
+- Policy: all JSON surfaces should set `response_format: { type: "json_object" }`.
+- Implementation: translator surfaces parse free‑form text and do not set `response_format`.
 
-- Don't persist unvalidated LLM outputs.
-- Don't bypass auth guards for write operations.
-- Don't depend on implicit model behavior; specify strict output formats.
+```93:104:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/translate.ts
+const base = {
+  model: TRANSLATOR_MODEL,
+  temperature,
+  ...(top_p ? { top_p } : {}),
+  messages: [
+    { role: "system", content: system },
+    { role: "user", content: user },
+  ] as const,
+};
+```
+
+## Echo Policy (Translator)
+
+- Preview: server-side anti-echo guard returns 409 when the model echoes the source and `forceTranslate` is not set.
+
+```220:231:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+if (!forceTranslate && looksLikeEcho(sourceLines, outLines)) {
+  return NextResponse.json(
+    {
+      ok: false,
+      code: "PREVIEW_ECHOED_SOURCE",
+      error: "Model echoed source text.",
+    },
+    { status: 409 }
+  );
+}
+```
+
+## Unsupported Parameters
+
+- We do not use `min_p` (no in-code references).
+
+```
+
+```
+
+### Translator Prompt Inputs
+
+| Block                         | Included?         | Notes                                                                 |
+| ----------------------------- | ----------------- | --------------------------------------------------------------------- |
+| JOURNEY (most recent → older) | Preview, Instruct | Appended from `bundle.journeySummaries`                               |
+| CITED_VERSION_FULL_TEXT       | Instruct only     | Included when `citeVersionId` provided, else implicit parent fallback |
+| ACCEPTED_DRAFT_LINES          | Preview           | Pulled from RPC `get_accepted_version`                                |
+| DECISIONS (last)              | Preview           | Last 3–5 ledger notes                                                 |
+| SUMMARY                       | Preview           | From thread state summary                                             |
+| GLOSSARY                      | Preview           | From thread state glossary terms                                      |
+
+```212:234:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+const userPrompt =
+  [
+    `SOURCE_POEM (line_policy=${bundle.line_policy}):\n${bundle.poem}`,
+    `ENHANCED_REQUEST (JSON):\n${JSON.stringify(bundle.enhanced)}`,
+    bundle.glossary?.length
+      ? `GLOSSARY:\n${JSON.stringify(bundle.glossary)}`
+      : "",
+    bundle.acceptedLines.length
+      ? `ACCEPTED_DRAFT_LINES:\n${bundle.acceptedLines.join("\n")}`
+      : "",
+    bundle.ledgerNotes.length
+      ? "DECISIONS (last):\n" + bundle.ledgerNotes
+          .map((n) => `- ${n}`)
+          .join("\n")
+      : "",
+    `TARGET_LANGUAGE:\n${targetNorm}`,
+    bundle.summary ? `SUMMARY:\n${bundle.summary}` : "",
+    bundle.journeySummaries?.length
+      ? "JOURNEY (most recent → older):\n" +
+        bundle.journeySummaries.map((s) => `- ${s}`).join("\n")
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n") + force;
+```
+
+```185:206:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+const bundleUser = [
+  `INSTRUCTION:\n${instruction}`,
+  `SOURCE_POEM:\n${poem}`,
+  Object.keys(enhanced).length
+    ? `ENHANCED_REQUEST(JSON):\n${JSON.stringify(enhanced)}`
+    : "",
+  glossary.length ? `GLOSSARY:\n${JSON.stringify(glossary)}` : "",
+  `TARGET_LANGUAGE:\n${targetNormForPrompt}`,
+  summary ? `SUMMARY:\n${summary}` : "",
+  bundle.journeySummaries?.length
+    ? "JOURNEY (most recent → older):\n" +
+      bundle.journeySummaries.map((s) => `- ${s}`).join("\n")
+    : "",
+  citedText ? `CITED_VERSION_FULL_TEXT:\n${citedText}` : "",
+  citedText
+    ? "Evolve from the cited PRIOR_VERSION only. Make minimal, intentional changes aligned with JOURNEY; do not restart from the source."
+    : "",
+  // Strengthen instruction against echo
+  "CRITICAL: Output MUST be a translation. Do NOT return the source text.",
+]
+  .filter(Boolean)
+  .join("\n\n");
+```
+
+### Guards (Preview & Instruct)
+
+- Echo/Untranslated gate: both routes perform anti‑echo and language gates; one retry with a hard requirement; selected error codes below.
+
+```294:318:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+if (!forceTranslate && (echoish || untranslated)) {
+  const hardReq = `\n\nHARD REQUIREMENT: Output must be fully in the target language (English if requested).\nDo NOT echo or quote SOURCE_POEM lines or reproduce Urdu/Arabic script.\nPreserve the ghazal mechanics (radif/qaafiya) by transliterating refrains (e.g., "hai — hai?") if needed.`;
+
+  const retryUser = userPrompt + hardReq;
+  const respRetryUnknown: unknown = await responsesCall({
+    model,
+    system: getTranslatorSystem(effectiveMode),
+    user: retryUser,
+    temperature: 0.6,
+  } as ResponsesCallOptions);
+```
+
+```270:279:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+if (echoish1 || untranslated1 || hangulUntranslated1) {
+  const hardReq = `\n\nHARD REQUIREMENT: Output must be fully in the target language; do NOT echo or quote SOURCE_POEM lines or reproduce non-target script.`;
+  const retryUser = bundleUser + hardReq;
+
+  const respRetryUnknown: unknown = await responsesCall({
+    model: TRANSLATOR_MODEL,
+    system: getTranslatorSystem(effectiveMode),
+    user: retryUser,
+    temperature: 0.6,
+  });
+```
+
+- Error codes: Preview `409 PREVIEW_ECHOED_SOURCE`; Instruct `409 INSTRUCT_ECHO_OR_UNTRANSLATED`, `502 INSTRUCT_RETRY_EMPTY`, `502 INSTRUCT_PARSE_RETRY_FAILED`.
+
+```355:361:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+return NextResponse.json(
+  {
+    ok: false,
+    code: "PREVIEW_ECHOED_SOURCE",
+    error: "Model echoed/left source language after retry.",
+    retryable: true,
+  },
+  { status: 409 }
+);
+```
+
+```283:297:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+if (!raw2) {
+  await supabase
+    .from("versions")
+    .update({
+      meta: {
+        ...placeholderMeta,
+        status: "failed",
+        error: "INSTRUCT_RETRY_EMPTY",
+      },
+    })
+    .eq("id", newVersionId);
+  return NextResponse.json(
+    { ok: false, code: "INSTRUCT_RETRY_EMPTY", retryable: true },
+    { status: 502 }
+  );
+}
+```
+
+```304:317:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+} catch {
+  await supabase
+    .from("versions")
+    .update({
+      meta: {
+        ...placeholderMeta,
+        status: "failed",
+        error: "INSTRUCT_PARSE_RETRY_FAILED",
+      },
+    })
+    .eq("id", newVersionId);
+  return NextResponse.json(
+    { ok: false, code: "INSTRUCT_PARSE_RETRY_FAILED", retryable: true },
+    { status: 502 }
+  );
+}
+```
+
+- Must-keep enforcement (Instruct): single retry; 409 on missing required tokens.
+
+```367:379:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+const respKeepUnknown: unknown = await responsesCall({
+  model: TRANSLATOR_MODEL,
+  system: getTranslatorSystem(effectiveMode),
+  user: bundleUser + keepReq,
+  temperature: 0.6,
+});
+```
+
+```389:409:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+if (missing2.length) {
+  await supabase
+    .from("versions")
+    .update({
+      meta: {
+        ...placeholderMeta,
+        status: "failed",
+        error: "REQUIRED_TOKENS_MISSING",
+      },
+    })
+    .eq("id", newVersionId);
+  return NextResponse.json(
+    {
+      ok: false,
+      code: "REQUIRED_TOKENS_MISSING",
+      retryable: true,
+      missing: missing2,
+    },
+    { status: 409 }
+  );
+}
+```
+
+### Responses API usage (call sites)
+
+- Translator (translate): `src/app/api/translate/route.ts:L112-L118`
+- Preview: `src/app/api/translator/preview/route.ts:L268-L273`
+- Instruct: `src/app/api/translator/instruct/route.ts:L222-L227`
+- Router/classifier: `src/server/flow/intentLLM.ts:L26-L33`; `src/lib/ai/routeIntent.ts:L29-L37`; `src/app/api/interview/next/route.ts:L23-L31`
+
+Prompt hashing in Preview/Instruct:
+
+```228:236:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+const prompt_hash = buildPromptHash({
+  route: "translator",
+  model: TRANSLATOR_MODEL,
+  system: getTranslatorSystem(effectiveMode),
+  user: userPrompt,
+});
+```
+
+```164:170:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+const prompt_hash = buildPromptHash({
+  route: "translator",
+  model: TRANSLATOR_MODEL,
+  system: getTranslatorSystem(effectiveMode),
+  user: bundleUser,
+});
+```
+
+### Prompt content (Preview)
+
+Blocks included:
+
+- SOURCE_POEM, ENHANCED_REQUEST, GLOSSARY, ACCEPTED_DRAFT_LINES, DECISIONS (last), TARGET_LANGUAGE, SUMMARY, JOURNEY (most recent → older)
+
+```206:224:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+const userPrompt =
+  [
+    `SOURCE_POEM (line_policy=${bundle.line_policy}):\n${bundle.poem}`,
+    `ENHANCED_REQUEST (JSON):\n${JSON.stringify(bundle.enhanced)}`,
+    bundle.glossary?.length
+      ? `GLOSSARY:\n${JSON.stringify(bundle.glossary)}`
+      : "",
+    bundle.acceptedLines.length
+      ? `ACCEPTED_DRAFT_LINES:\n${bundle.acceptedLines.join("\n")}`
+      : "",
+    bundle.ledgerNotes.length
+      ? "DECISIONS (last):\n" + bundle.ledgerNotes
+          .map((n) => `- ${n}`)
+          .join("\n")
+      : "",
+    `TARGET_LANGUAGE:\n${targetNorm}`,
+    bundle.summary ? `SUMMARY:\n${bundle.summary}` : "",
+    bundle.journeySummaries?.length
+      ? "JOURNEY (most recent → older):\n" +
+        bundle.journeySummaries.map((s) => `- ${s}`).join("\n")
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n") + force;
+```
+
+### Prompt content (Instruct)
+
+Blocks included:
+
+- INSTRUCTION, SOURCE_POEM, ENHANCED_REQUEST, GLOSSARY, TARGET_LANGUAGE, SUMMARY, JOURNEY (most recent → older), optional CITED_VERSION_FULL_TEXT, echo guard line
+
+```148:161:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+const bundleUser = [
+  `INSTRUCTION:\n${instruction}`,
+  `SOURCE_POEM:\n${poem}`,
+  Object.keys(enhanced).length
+    ? `ENHANCED_REQUEST(JSON):\n${JSON.stringify(enhanced)}`
+    : "",
+  glossary.length ? `GLOSSARY:\n${JSON.stringify(glossary)}` : "",
+  `TARGET_LANGUAGE:\n${targetNormForPrompt}`,
+  summary ? `SUMMARY:\n${summary}` : "",
+  bundle.journeySummaries?.length
+    ? "JOURNEY (most recent → older):\n" +
+      bundle.journeySummaries.map((s) => `- ${s}`).join("\n")
+    : "",
+]
+  .filter(Boolean)
+  .join("\n\n");
+```
+
+```198:205:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+citedText ? `CITED_VERSION_FULL_TEXT:\n${citedText}` : "",
+// Strengthen instruction against echo
+"CRITICAL: Output MUST be a translation. Do NOT return the source text.",
+```

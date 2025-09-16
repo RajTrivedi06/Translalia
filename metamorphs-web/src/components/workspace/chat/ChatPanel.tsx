@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useMutation } from "@tanstack/react-query";
+// import { useMutation } from "@tanstack/react-query";
 import ThreadsDrawer from "./ThreadsDrawer";
 import { useWorkspace } from "@/store/workspace";
 import { useThreadMessages } from "@/hooks/useThreadMessages";
@@ -44,22 +44,9 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
   const [cites, setCites] = React.useState<string[]>([]);
   const addVersion = useWorkspace((s) => s.addVersion);
   const threadId = useWorkspace((s) => s.threadId);
-  const {
-    peek,
-    start,
-    answer,
-    confirm,
-    enhancer,
-    translate,
-    translatorPreview,
-    acceptLines,
-  } = useInterviewFlow(threadId);
+  const { peek, start, answer, translatorPreview } = useInterviewFlow(threadId);
   const phase = peek.data?.phase ?? "welcome";
   const nextQ = peek.data?.nextQuestion ?? null;
-  const snapshot = peek.data?.snapshot ?? {
-    poem_excerpt: "",
-    collected_fields: {} as Record<string, unknown>,
-  };
   const [planOpen, setPlanOpen] = React.useState(false);
   const [translatorOpen, setTranslatorOpen] = React.useState(false);
   const [translatorData, setTranslatorData] = React.useState<{
@@ -89,49 +76,36 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
   const [instruction, setInstruction] = React.useState("");
   const [citeVersionId, setCiteVersionId] = React.useState<string | "">("");
   const [assistantNotes, setAssistantNotes] = React.useState<string[]>([]);
-  // Legacy /api/chat hook retained for the /prismatic command; not used otherwise
-  const { mutate: _sendChatLegacy } = useMutation({
-    mutationFn: async (payload: { text: string }) => {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error("Chat send failed");
-      return res.json();
-    },
-    onSuccess: () => {
-      setText("");
-    },
-  });
+  // Legacy /api/chat hook removed (unused)
 
   React.useEffect(() => {
     inputRef.current?.focus();
   }, [threadId]);
 
-  React.useEffect(() => {
-    (async () => {
-      if (
-        peek.data?.phase === "translating" &&
-        !translatorData &&
-        !translatorPreview.isPending &&
-        process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR === "1"
-      ) {
-        try {
-          const pv = await translatorPreview.mutateAsync();
-          setTranslatorData({
-            lines: pv.preview.lines,
-            notes: pv.preview.notes,
-          });
-          setTranslatorOpen(true);
-          setTranslatorError(null);
-        } catch (e) {
-          setTranslatorError("Preview failed. Please retry.");
-        }
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [peek.data?.phase]);
+  // Disabled auto-preview on phase change to prevent unintended version creation
+  // React.useEffect(() => {
+  //   (async () => {
+  //     if (
+  //       peek.data?.phase === "translating" &&
+  //       !translatorData &&
+  //       !translatorPreview.isPending &&
+  //       process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR === "1"
+  //     ) {
+  //       try {
+  //         const pv = await translatorPreview.mutateAsync();
+  //         setTranslatorData({
+  //           lines: pv.preview.lines,
+  //           notes: pv.preview.notes,
+  //         });
+  //         setTranslatorOpen(true);
+  //         setTranslatorError(null);
+  //       } catch {
+  //         setTranslatorError("Preview failed. Please retry.");
+  //       }
+  //     }
+  //   })();
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [peek.data?.phase]);
 
   function toggleCite(id: string) {
     setCites((prev) =>
@@ -190,7 +164,7 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
                 className="text-xs underline"
                 onClick={async () => {
                   try {
-                    const pv = await translatorPreview.mutateAsync();
+                    const pv = await translatorPreview.mutateAsync(undefined);
                     setTranslatorData({
                       lines: pv.preview.lines,
                       notes: pv.preview.notes,
@@ -233,6 +207,7 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
               })}
             </div>
           ) : null}
+          {/* Clarifier card removed */}
           {inInstructionMode ? (
             <div className="space-y-2">
               <div className="text-xs text-neutral-500">Instruction mode</div>
@@ -484,7 +459,7 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
                   });
                 }
               }
-            } catch (err) {
+            } catch {
               // ignore and proceed; errors surface via toasts elsewhere
             }
             setText("");
@@ -515,7 +490,7 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
                   setTranslatorOpen(true);
                   if (!translatorData) {
                     try {
-                      const pv = await translatorPreview.mutateAsync();
+                      const pv = await translatorPreview.mutateAsync(undefined);
                       setTranslatorData({
                         lines: pv.preview.lines,
                         notes: pv.preview.notes,

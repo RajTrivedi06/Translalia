@@ -1,3 +1,5 @@
+### [Last Updated: 2025-09-03]
+
 ## Utilities & Helpers
 
 ### Overview
@@ -7,11 +9,34 @@ Common helpers used across the codebase, primarily in `src/lib` and `src/types`.
 ### Key Modules
 
 - `lib/ai/cache.ts`: Simple AI response cache utilities
+- One-liner: process-memory Map TTL cache used for preview/translate/enhancer
+  - Callers:
+    - `metamorphs-web/src/app/api/translator/preview/route.ts:L153–L156`
+    - `metamorphs-web/src/app/api/translate/route.ts:L113–L118`
+    - `metamorphs-web/src/app/api/enhancer/route.ts:L84–L86`
 - `lib/ai/moderation.ts`: Moderation checks and policy mapping
+- One-liner: wraps OpenAI moderation; returns `{ flagged, categories }`
+  - Callers:
+    - `metamorphs-web/src/app/api/enhancer/route.ts:L44–L49`
+    - `metamorphs-web/src/app/api/translator/preview/route.ts:L112–L119`
+    - `metamorphs-web/src/app/api/translate/route.ts:L81–L86`
+    - `metamorphs-web/src/app/api/translator/accept-lines/route.ts:L48–L60`
 - `lib/ai/prompts.ts`: Prompt templates and composition helpers
 - `lib/ai/openai.ts`: Client factory and invocation helpers
+- One-liner: central Responses API call; strips unsupported params and retries on temperature errors
+  - Callers:
+    - `metamorphs-web/src/app/api/translator/preview/route.ts:L259–L264`
+    - `metamorphs-web/src/lib/ai/enhance.ts:L43–L50`
+    - `metamorphs-web/src/server/flow/intentLLM.ts:L26–L34`
 - `lib/ai/ratelimit.ts`: Rate limiting helpers
+- One-liner: in-memory token bucket per-key
+  - Callers:
+    - `metamorphs-web/src/app/api/translator/preview/route.ts:L55–L58`
 - `lib/apiGuard.ts`: Request guards (auth, rate limit, permissions)
+- One-liner: SSR cookie or Bearer Supabase session guard for Next API routes
+  - Callers:
+    - `metamorphs-web/src/app/api/versions/nodes/route.ts:L17–L25`
+    - `metamorphs-web/src/app/api/versions/route.ts:L16–L23`
 - `lib/authHelpers.ts`: Supabase auth helpers
 - `lib/constraints.ts`: Constraint validation and normalization
 - `lib/generation.ts`: Shared generation utilities
@@ -22,8 +47,16 @@ Common helpers used across the codebase, primarily in `src/lib` and `src/types`.
 - `lib/schemas.ts`: Zod schemas and validators
 - `lib/supabaseClient.ts` / `lib/supabaseServer.ts`: Supabase clients
 - `server/threadState.ts`: Server-side session state helpers
+- One-liner: load/merge/persist `chat_threads.state` JSONB; cadence-aware ledger append
+  - Callers:
+    - `metamorphs-web/src/app/api/translator/accept-lines/route.ts:L72–L76`
+    - `metamorphs-web/src/app/api/enhancer/route.ts:L58–L65`
 - `server/translator/bundle.ts`: Input bundling for translator
 - `server/translator/parse.ts`: Output parsing for translator
+- One-liner: parse `---VERSION A---` and `---NOTES---` into `{ lines, notes }`
+  - Callers:
+    - `metamorphs-web/src/app/api/translator/preview/route.ts:L274–L279`
+    - `metamorphs-web/src/app/api/translator/instruct/route.ts:L186–L194`
 
 ### Types
 
@@ -42,6 +75,7 @@ Common helpers used across the codebase, primarily in `src/lib` and `src/types`.
 - `lib/ai/moderation.ts`: OpenAI moderation helper
 - `lib/ai/openai.ts`: OpenAI client factory
 - `lib/ai/prompts.ts`: translator system prompt
+- `lib/featureFlags.ts`: helpers to read `NEXT_PUBLIC_FEATURE_*` and env (`inDev/inProd`)
 - `lib/apiGuard.ts`: Supabase-based auth guard for Next route handlers
 - `lib/policy.ts`: feature and policy constants
 - `lib/constraints.ts`: constraint enforcement stub
@@ -67,6 +101,7 @@ Common helpers used across the codebase, primarily in `src/lib` and `src/types`.
 - Feature flags: `NEXT_PUBLIC_FEATURE_TRANSLATOR`, `NEXT_PUBLIC_FEATURE_ROUTER`, `NEXT_PUBLIC_FEATURE_ENHANCER`
 - Policy constants in `lib/policy.ts` (rates, budgets, TTLs)
 - Models map in `lib/models.ts`
+  - `MODELS.translator|enhancer|embeddings` sourced from env with defaults
 
 ### 4) Type definitions/interfaces
 
@@ -126,5 +161,4 @@ Usage in Code Generation:
 Common Patterns:
 
 - Rate-limit preview-like endpoints then cache results by a stable key.
-- Enrich UI graph nodes using server-computed `meta` fields from `versions`.
-- Centralize route strings via `lib/routers.tsx` and the `<AppLink>` component.
+- Enrich UI graph nodes using server-computed `meta`

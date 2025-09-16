@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/apiGuard";
+import { SessionState } from "@/types/sessionState";
+import { computeNextQuestion, firstQuestion } from "@/server/flow/questions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,15 +52,33 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const state = (th.state as Record<string, unknown>) || {};
-  const phase = (state["phase"] as string) || "interviewing";
-  const has_poem = !!state["poem_excerpt"];
+  const rawState = (th.state as Record<string, unknown>) || {};
+  const state = rawState as unknown as SessionState;
+
+  const has_poem = Boolean(state.poem_excerpt);
+  // Default to "welcome" if no explicit phase and no poem yet
+  const phase = state.phase || (has_poem ? "interviewing" : "welcome");
+
+  // Compute next question only when interviewing
+  let nextQuestion: { id: string; prompt: string } | null = null;
+  if (phase === "interviewing") {
+    const q = computeNextQuestion({
+      ...state,
+      collected_fields: state.collected_fields || {},
+    } as SessionState);
+    const picked = q ?? firstQuestion();
+    nextQuestion = picked ? { id: picked.id, prompt: picked.prompt } : null;
+  }
 
   return NextResponse.json({
     ok: true,
     threadId,
     projectId: th.project_id,
     phase,
-    has_poem,
+    nextQuestion,
+    snapshot: {
+      poem_excerpt: state.poem_excerpt || "",
+      collected_fields: state.collected_fields || {},
+    },
   });
 }

@@ -1,36 +1,97 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+Updated: 2025-09-16
 
-## Getting Started
+## Metamorphs Web
 
-First, run the development server:
+A Next.js app for AI‑assisted creative poetry translation.
+
+### Run locally
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm i
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Environment variables (names only)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `OPENAI_API_KEY`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `NEXT_PUBLIC_FEATURE_PRISMATIC` ("1" to enable)
+- `ECHO_THRESHOLD` (optional numeric override)
 
-## Learn More
+### Supabase auth locally
 
-To learn more about Next.js, take a look at the following resources:
+- Create a project at Supabase and set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+- The app posts auth events to an API route to sync SSR cookies:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```20:33:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/auth/route.ts
+export async function POST(req: NextRequest) {
+  const body = await req.json().catch(() => ({}));
+  const { event, session } = body as {
+    event?: SupabaseAuthEvent;
+    session?: SupabaseSessionPayload;
+  };
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```29:33:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/auth/route.ts
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+```
 
-## Deploy on Vercel
+### Feature flags
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- Prismatic variants: `NEXT_PUBLIC_FEATURE_PRISMATIC` controls translator mode gating.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```1:3:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/flags/prismatic.ts
+export function isPrismaticEnabled() {
+  return process.env.NEXT_PUBLIC_FEATURE_PRISMATIC === "1";
+}
+```
+
+### Stack evidence
+
+- TanStack Query provider and client:
+
+```3:9:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/providers.tsx
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import * as React from "react";
+import { supabase } from "@/lib/supabaseClient";
+
+export function Providers({ children }: { children: React.ReactNode }) {
+  const [client] = React.useState(() => new QueryClient());
+```
+
+- Zustand store:
+
+```1:4:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/store/workspace.ts
+"use client";
+
+import { create } from "zustand";
+import { Version, CompareNode, JourneyItem } from "@/types/workspace";
+```
+
+- OpenAI initialization:
+
+```1:5:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/openai.ts
+import OpenAI from "openai";
+
+export const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY!,
+});
+```
+
+### Troubleshooting
+
+- See `docs/context/CURRENT_ISSUES.md` for known issues and workarounds.
+
+```17:22:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/layout.tsx
+export const metadata: Metadata = {
+  title: "Metamorphs",
+  description:
+    "A decolonial, AI-assisted creative poetry translation workspace.",
+  icons: { icon: "/favicon.ico" },
+};
+```
