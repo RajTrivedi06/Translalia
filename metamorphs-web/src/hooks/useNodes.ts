@@ -1,7 +1,7 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
-import { useWorkspace } from "@/store/workspace";
+// store not required for visibility-gated polling; controlled via opts
 
 export type NodeRow = {
   id: string;
@@ -37,8 +37,6 @@ export function useNodes(
   threadId: string | undefined,
   opts?: { enabled?: boolean }
 ) {
-  const currentView = useWorkspace((s) => s.ui.currentView);
-  const pollingEnabled = currentView === "workshop";
   const enabled = (!!projectId &&
     !!threadId &&
     (opts?.enabled ?? true)) as boolean;
@@ -48,6 +46,6 @@ export function useNodes(
     enabled,
     staleTime: 0,
     refetchOnWindowFocus: true,
-    refetchInterval: pollingEnabled ? 1500 : false,
+    refetchInterval: enabled ? 1500 : false,
   });
 }

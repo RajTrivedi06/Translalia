@@ -72,7 +72,7 @@ export function CompareSheet({
           </SheetTitle>
           <button
             onClick={() => onOpenChange(false)}
-            className="text-sm text-neutral-600"
+            className="text-sm text-neutral-600 focus:outline-none focus:ring-2 focus:ring-neutral-400 dark:focus:ring-neutral-500 rounded-md"
             aria-label="Close compare"
           >
             Close
@@ -100,7 +100,7 @@ export function CompareSheet({
         <div className="border-t p-3 text-right">
           <button
             onClick={onCreateHybrid}
-            className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm text-white"
+            className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-neutral-400 dark:focus:ring-neutral-500"
           >
             Create Hybrid
           </button>

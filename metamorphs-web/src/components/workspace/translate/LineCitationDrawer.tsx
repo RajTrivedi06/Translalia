@@ -140,7 +140,7 @@ export default function LineCitationDrawer({
           <SheetTitle id="citation-title">Per-line citation</SheetTitle>
           <button
             type="button"
-            className="text-sm text-neutral-600"
+            className="text-sm text-neutral-600 focus:outline-none focus:ring-2 focus:ring-neutral-400 dark:focus:ring-neutral-500 rounded-md"
             onClick={() => onOpenChange(false)}
             aria-label="Close citation"
           >
@@ -211,7 +211,7 @@ export default function LineCitationDrawer({
             <div className="flex justify-end">
               <button
                 type="button"
-                className="rounded-md border px-3 py-1.5 text-sm disabled:opacity-60"
+                className="rounded-md border px-3 py-1.5 text-sm disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-neutral-400 dark:focus:ring-neutral-500"
                 onClick={addMapping}
                 disabled={
                   targetIdx == null ||
@@ -242,14 +242,14 @@ export default function LineCitationDrawer({
             <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
-                className="rounded-md px-3 py-1.5 text-sm"
+                className="rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400 dark:focus:ring-neutral-500"
                 onClick={() => onOpenChange(false)}
               >
                 Cancel
               </button>
               <button
                 type="button"
-                className="rounded-md bg-neutral-900 text-white px-3 py-1.5 text-sm disabled:opacity-60"
+                className="rounded-md bg-neutral-900 text-white px-3 py-1.5 text-sm disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-neutral-400 dark:focus:ring-neutral-500"
                 onClick={saveProvenance}
                 disabled={!mappings.length}
               >

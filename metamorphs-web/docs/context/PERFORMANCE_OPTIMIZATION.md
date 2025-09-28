@@ -9,6 +9,29 @@
 ### Bottlenecks & Solutions
 
 - Nodes polling (1.5s): consider backoff or user-triggered refresh
+
+  - V2 visibility-gated polling: pause when view != "workshop"; keep legacy unchanged.
+
+  Evidence:
+
+  ```35:53:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/hooks/useNodes.ts
+  export function useNodes(
+    projectId: string | undefined,
+    threadId: string | undefined,
+    opts?: { enabled?: boolean }
+  ) {
+    const enabled = (!!projectId && !!threadId && (opts?.enabled ?? true)) as boolean;
+    return useQuery({
+      queryKey: ["nodes", projectId, threadId],
+      queryFn: () => fetchNodes(threadId!),
+      enabled,
+      staleTime: 0,
+      refetchOnWindowFocus: true,
+      refetchInterval: enabled ? 1500 : false,
+    });
+  }
+  ```
+
 - Translator preview latency: cache and reduce prompt size
 
   - Use placeholder version update + cached overview to minimize repeated model calls.

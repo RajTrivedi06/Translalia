@@ -21,6 +21,7 @@
   - Optional: `TRANSLATOR_MODEL`, `ENHANCER_MODEL`, `EMBEDDINGS_MODEL`
   - Feature flags: `NEXT_PUBLIC_FEATURE_TRANSLATOR`, `NEXT_PUBLIC_FEATURE_ENHANCER`, `NEXT_PUBLIC_FEATURE_ROUTER`
   - Optional flags: `NEXT_PUBLIC_FEATURE_PRISMATIC`, `NEXT_PUBLIC_FEATURE_VERIFY`, `NEXT_PUBLIC_FEATURE_BACKTRANSLATE`
+  - UI layout flag: `NEXT_PUBLIC_FEATURE_SIDEBAR_LAYOUT` (V2 shell). Set to "1" to enable, "0" to use legacy shell.
 
 ### Environment Variables (YAML for LLM consumption)
 
@@ -82,6 +83,7 @@ env_vars:
   - [ ] Supabase URL + anon key
   - [ ] OpenAI API key (server-only)
   - [ ] Feature flags as needed
+  - [ ] `NEXT_PUBLIC_FEATURE_SIDEBAR_LAYOUT` set appropriately; toggle to rollback UI layout if needed
   - [ ] Optional Redis (Upstash) for daily limits
 - Database:
   - [ ] `chat_threads.state jsonb` present; RLS policies applied
@@ -162,3 +164,8 @@ npm ci && npm run build && npm run start
 - docs/context/SERVICES_INTEGRATIONS.md
 - docs/flags-and-models.md
 - docs/spend-and-cache-policy.md
+
+### Rollback
+
+- To restore legacy workspace UI instantly, set `NEXT_PUBLIC_FEATURE_SIDEBAR_LAYOUT=0` and redeploy.
+- The overlay components are migrated to shadcn-style wrappers for a11y but remain API-compatible; no server changes are involved.
