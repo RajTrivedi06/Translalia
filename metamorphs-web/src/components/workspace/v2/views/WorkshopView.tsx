@@ -7,6 +7,8 @@ import { useExplodeTokens } from "../_utils/useExplodeTokens";
 import { TokenCard } from "../components/TokenCard";
 import { getSourceLines } from "../_utils/data";
 import { useT } from "../_utils/i18n";
+import { groupWithNext, ungroup } from "../_utils/grouping";
+import type { ExplodedLine } from "@/types/workshop";
 
 export function WorkshopView() {
   const t = useT();
@@ -36,7 +38,32 @@ export function WorkshopView() {
 
   // Get current line (for now, use the first line or currentLine from UI)
   const currentLineIdx = ui.currentLine ?? 0;
-  const currentLine = explodedLines[currentLineIdx];
+  const baseLine = explodedLines[currentLineIdx];
+
+  // Local line override for ephemeral grouping (Phase 2 approach)
+  const [lineOverrides, setLineOverrides] = React.useState<Record<string, ExplodedLine>>({});
+  const currentLine = baseLine ? (lineOverrides[baseLine.lineId] || baseLine) : undefined;
+
+  // Grouping handlers
+  const handleGroupWithNext = React.useCallback((tokenIndex: number) => {
+    if (!currentLine) return;
+
+    const newLine = groupWithNext(currentLine, tokenIndex);
+    setLineOverrides(prev => ({
+      ...prev,
+      [currentLine.lineId]: newLine,
+    }));
+  }, [currentLine]);
+
+  const handleUngroup = React.useCallback((tokenIndex: number) => {
+    if (!currentLine) return;
+
+    const newLine = ungroup(currentLine, tokenIndex);
+    setLineOverrides(prev => ({
+      ...prev,
+      [currentLine.lineId]: newLine,
+    }));
+  }, [currentLine]);
 
   const handleCompileLine = () => {
     if (!currentLine) return;
@@ -105,11 +132,15 @@ export function WorkshopView() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {currentLine.tokens
               .filter(token => token.options.length > 0) // Only show tokens with options
-              .map((token) => (
+              .map((token, tokenIndex) => (
                 <TokenCard
                   key={token.tokenId}
                   lineId={currentLine.lineId}
                   token={token}
+                  tokenIndex={tokenIndex}
+                  totalTokens={currentLine.tokens.length}
+                  onGroupWithNext={handleGroupWithNext}
+                  onUngroup={handleUngroup}
                 />
               ))}
           </div>

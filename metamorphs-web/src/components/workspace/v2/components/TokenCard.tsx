@@ -8,14 +8,38 @@ import { useWorkspace } from "@/store/workspace";
 export function TokenCard({
   lineId,
   token,
+  tokenIndex,
+  totalTokens,
+  onGroupWithNext,
+  onUngroup,
 }: {
   lineId: string;
   token: ExplodedToken;
+  tokenIndex?: number;
+  totalTokens?: number;
+  onGroupWithNext?: (tokenIndex: number) => void;
+  onUngroup?: (tokenIndex: number) => void;
 }) {
   const selected = useWorkspace((s) => s.tokensSelections[lineId]?.[token.tokenId]);
   const setTokenSelection = useWorkspace((s) => s.setTokenSelection);
   const [adding, setAdding] = React.useState(false);
   const [custom, setCustom] = React.useState("");
+  const [showMenu, setShowMenu] = React.useState(false);
+  const menuRef = React.useRef<HTMLDivElement>(null);
+
+  // Close menu when clicking outside
+  React.useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setShowMenu(false);
+      }
+    }
+
+    if (showMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [showMenu]);
 
   const handleSaveCustom = (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,8 +56,54 @@ export function TokenCard({
       aria-label={token.surface}
       className="rounded-xl border p-2 bg-white dark:bg-neutral-900"
     >
-      <div className="text-xs text-neutral-600 dark:text-neutral-400 mb-2 font-medium">
-        {token.surface}
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-xs text-neutral-600 dark:text-neutral-400 font-medium">
+          {token.surface}
+        </div>
+
+        {/* Overflow menu for grouping actions */}
+        {(onGroupWithNext || onUngroup) && (
+          <div className="relative" ref={menuRef}>
+            <button
+              type="button"
+              onClick={() => setShowMenu(!showMenu)}
+              className="text-neutral-400 hover:text-neutral-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded p-1"
+              aria-label="Token actions"
+            >
+              <span className="text-xs">⋯</span>
+            </button>
+
+            {showMenu && (
+              <div className="absolute right-0 top-6 z-10 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-md shadow-lg py-1 w-32">
+                {onGroupWithNext && tokenIndex !== undefined && totalTokens !== undefined && tokenIndex < totalTokens - 1 && (
+                  <button
+                    type="button"
+                    className="w-full text-left px-3 py-1 text-xs hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300"
+                    onClick={() => {
+                      onGroupWithNext(tokenIndex);
+                      setShowMenu(false);
+                    }}
+                  >
+                    Group with next
+                  </button>
+                )}
+
+                {onUngroup && token.kind === "phrase" && tokenIndex !== undefined && (
+                  <button
+                    type="button"
+                    className="w-full text-left px-3 py-1 text-xs hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300"
+                    onClick={() => {
+                      onUngroup(tokenIndex);
+                      setShowMenu(false);
+                    }}
+                  >
+                    Ungroup phrase
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
       <div className="flex flex-wrap gap-1">
         {token.options.map((opt) => {
