@@ -100,6 +100,40 @@ export function respondLLMError(e: any) {
 }
 ```
 
+## Error Taxonomy
+
+| code                             | http_status | retry_after     | is_transient | suggested remediation                        | Anchors                                                                                               |
+| -------------------------------- | ----------- | --------------- | ------------ | -------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| MISSING_THREAD_ID                | 400         | none            | false        | Provide `threadId` query param               | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/flow/peek/route.ts#L10-L16             |
+| MISSING_PROJECT_ID               | 400         | none            | false        | Provide `projectId` query param              | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/threads/list/route.ts#L10-L15          |
+| THREAD_NOT_FOUND                 | 404         | none            | false        | Ensure thread exists and is owned            | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/flow/peek/route.ts#L29-L33             |
+| PROJECT_NOT_FOUND                | 404         | none            | false        | Ensure project exists                        | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/threads/list/route.ts#L42-L46          |
+| FORBIDDEN_THREAD                 | 403         | none            | false        | Use an owned thread                          | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/flow/peek/route.ts#L48-L52             |
+| FORBIDDEN_PROJECT                | 403         | none            | false        | Use an owned project                         | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/threads/list/route.ts#L31-L35          |
+| PREVIEW_ECHOED_SOURCE            | 409         | none            | true         | Retry with `forceTranslate` or adjust prompt | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts#L355-L361  |
+| REQUIRED_TOKENS_MISSING          | 409         | none            | true         | Remove or adjust must_keep; try again        | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts#L399-L409 |
+| INSTRUCT_ECHO_OR_UNTRANSLATED    | 409         | none            | true         | Strengthen instruction; re-run               | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts#L333-L346 |
+| INSTRUCT_RETRY_EMPTY             | 502         | none            | true         | Retry operation later                        | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts#L283-L297 |
+| INSTRUCT_PARSE_RETRY_FAILED      | 502         | none            | true         | Improve schema; re-run                       | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts#L304-L317 |
+| Rate limit exceeded              | 429         | 60s (policy)    | true         | Wait and retry                               | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts#L55-L58    |
+| Daily verification limit reached | 429         | 86400s (policy) | true         | Retry next day                               | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/verify/route.ts#L18-L23     |
+
+### Error Envelope (JSON Schema)
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "ok": { "type": "boolean" },
+    "error": { "type": "string" },
+    "code": { "type": "string" },
+    "retryable": { "type": "boolean" },
+    "prompt_hash": { "type": "string" }
+  },
+  "additionalProperties": true
+}
+```
+
 ## Observability
 
 - `prompt_hash` is attached to JSON responses where LLM calls are proxied.

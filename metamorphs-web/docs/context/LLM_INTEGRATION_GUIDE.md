@@ -273,3 +273,176 @@ JOURNEY (most recent → older):
 - compare: Compared A vs B — idiomatic shift noted
 - decision: Adopt internal rhyme for couplet 3
 ```
+
+### LLM Integration Playbook
+
+#### 1) Checklist (copy‑pastable)
+
+1. Gate route with feature flag (if applicable) and auth
+   - Use `requireUser` (cookie → Bearer fallback) for write routes
+2. Apply rate limit to hot endpoints
+   - e.g., `rateLimit(`preview:${threadId}`, 30, 60_000)`
+3. Build a deterministic cache key
+   - `const key = `${prefix}:${stableHash(payload)}`;`
+4. Call Responses API via helper and validate output with Zod
+5. Compute and log `prompt_hash` with redacted previews (dev‑only)
+6. Return typed JSON with explicit error codes (400/401/403/404/409/429/500/502)
+
+Anchors:
+
+```55:59:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+const rl = rateLimit(`preview:${threadId}`, 30, 60_000);
+if (!rl.ok)
+  return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+```
+
+```157:161:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+const key = "translator_preview:" + stableHash({ ...bundle, placeholderId });
+const cached = await cacheGet<unknown>(key);
+```
+
+```208:216:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+const prompt_hash = buildPromptHash({ route: "translator", model: TRANSLATOR_MODEL, system: getTranslatorSystem(effectiveMode), user: userPrompt });
+logLLMRequestPreview({ route: "translator", model: TRANSLATOR_MODEL, system: getTranslatorSystem(effectiveMode), user: userPrompt, hash: prompt_hash });
+```
+
+#### 2) Templates
+
+- Minimal server handler (protected, cached, rate‑limited)
+
+```ts
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { requireUser } from "@/lib/apiGuard";
+import { rateLimit } from "@/lib/ai/ratelimit";
+import { stableHash, cacheGet, cacheSet } from "@/lib/ai/cache";
+import { responsesCall } from "@/lib/ai/openai";
+
+const Body = z.object({ threadId: z.string().uuid() });
+export async function POST(req: NextRequest) {
+  const guard = await requireUser(req);
+  if ("res" in guard) return guard.res;
+
+  const parsed = Body.safeParse(await req.json());
+  if (!parsed.success)
+    return NextResponse.json(
+      { error: parsed.error.flatten() },
+      { status: 400 }
+    );
+  const { threadId } = parsed.data;
+
+  const rl = rateLimit(`example:${threadId}`, 30, 60_000);
+  if (!rl.ok)
+    return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+
+  const payload = { threadId };
+  const key = "example:" + stableHash(payload);
+  const hit = await cacheGet<unknown>(key);
+  if (hit) return NextResponse.json({ ok: true, data: hit, cached: true });
+
+  const r = await responsesCall({
+    model: "gpt-5",
+    system: "SYSTEM",
+    user: "USER",
+    temperature: 0.2,
+  });
+  // parse/validate r → data
+  await cacheSet(key, /* data */ r, 3600);
+  return NextResponse.json({ ok: true, data: r });
+}
+```
+
+- Prompt‑hash integration (redacted debug preview)
+
+```12:20:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/promptHash.ts
+export function buildPromptHash(args: {
+  route: string; model: string; system: string; user: string; schema?: string;
+}) {
+  const { route, model, system, user, schema } = args;
+  return stableHash({ route, model, system, user, schema });
+}
+```
+
+```30:43:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/promptHash.ts
+const DEBUG = process.env.DEBUG_PROMPTS === "1" || process.env.NEXT_PUBLIC_DEBUG_PROMPTS === "1";
+if (!DEBUG) return;
+// Avoid printing full poem/user content in logs
+console.info("[LLM]", { route: args.route, model: args.model, hash: args.hash, systemPreview: squeeze(args.system), userPreview: squeeze(args.user, 300) });
+```
+
+- Redacted debug preview pattern in a route
+
+```236:249:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+logLLMRequestPreview({
+  route: "translator",
+  model: TRANSLATOR_MODEL,
+  system: getTranslatorSystem(effectiveMode),
+  user: userPrompt,
+  hash: prompt_hash,
+});
+```
+
+#### 3) Do / Don’t
+
+| Do                                                               | Don’t                                                      |
+| ---------------------------------------------------------------- | ---------------------------------------------------------- |
+| Validate all inputs/outputs with Zod before persisting/returning | Return raw model text without validation                   |
+| Rate limit hot endpoints and cache idempotent results            | Log full prompts/poems; always redact and gate logs by env |
+| Compute `prompt_hash` and log redacted previews in dev           | Include secrets or PII in prompts/keys                     |
+| Use feature flags to gate optional surfaces                      | Bypass SSR cookies; always use `requireUser` for writes    |
+
+Anchors:
+
+```3:13:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/ratelimit.ts
+export function rateLimit(key: string, limit = 30, windowMs = 60_000) {
+  const now = Date.now();
+  const b = buckets.get(key);
+```
+
+```13:21:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/cache.ts
+export async function cacheGet<T>(key: string): Promise<T | null> {
+  const item = mem.get(key);
+  if (!item) return null;
+```
+
+#### 4) LLM Surface Registration (JSON schema)
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LLMSurfaceRegistration",
+  "type": "object",
+  "required": [
+    "route",
+    "model",
+    "flags",
+    "cache_key_template",
+    "rate_limit_bucket"
+  ],
+  "properties": {
+    "route": { "type": "string", "pattern": "^/api/" },
+    "model": { "type": "string" },
+    "flags": { "type": "array", "items": { "type": "string" } },
+    "cache_key_template": {
+      "type": "string",
+      "description": "e.g., prefix:${stableHash(payload)}"
+    },
+    "rate_limit_bucket": {
+      "type": "string",
+      "description": "e.g., preview:${threadId}"
+    }
+  }
+}
+```
+
+Example (wiring from Preview):
+
+```55:59:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+const rl = rateLimit(`preview:${threadId}`, 30, 60_000);
+```
+
+```153:161:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+const key = "translator_preview:" + stableHash({ ...bundle, placeholderId });
+```
+
+See also: `docs/llm-api.md`, `docs/flags-and-models.md`.

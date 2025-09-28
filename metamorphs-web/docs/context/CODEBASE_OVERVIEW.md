@@ -90,6 +90,19 @@ export async function POST(req: NextRequest) {
     })
 ```
 
+### Auth/session entry points
+
+```1:4:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/middleware.ts
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+```
+
+```27:43:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/middleware.ts
+const needsAuth = pathname.startsWith("/workspaces") || pathname.startsWith("/api/threads") || pathname.startsWith("/api/flow") || pathname.startsWith("/api/versions");
+const hasSupabaseCookies = Array.from(req.cookies.getAll()).some((c) => c.name.startsWith("sb-") || c.name.includes("supabase"));
+if (needsAuth && !hasSupabaseCookies) { /* redirect to sign-in with redirect param */ }
+```
+
 Purpose: High-level map of the repo, stack, and flows for contributors.
 Updated: 2025-09-13
 

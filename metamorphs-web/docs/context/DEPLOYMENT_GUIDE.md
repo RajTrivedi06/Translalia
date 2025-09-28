@@ -22,6 +22,101 @@
   - Feature flags: `NEXT_PUBLIC_FEATURE_TRANSLATOR`, `NEXT_PUBLIC_FEATURE_ENHANCER`, `NEXT_PUBLIC_FEATURE_ROUTER`
   - Optional flags: `NEXT_PUBLIC_FEATURE_PRISMATIC`, `NEXT_PUBLIC_FEATURE_VERIFY`, `NEXT_PUBLIC_FEATURE_BACKTRANSLATE`
 
+### Environment Variables (YAML for LLM consumption)
+
+```yaml
+env_vars:
+  - name: NEXT_PUBLIC_SUPABASE_URL
+    purpose: Supabase project URL (used client and server)
+    required: true
+  - name: NEXT_PUBLIC_SUPABASE_ANON_KEY
+    purpose: Supabase anon key for client and SSR session
+    required: true
+  - name: OPENAI_API_KEY
+    purpose: Server-side OpenAI API key for moderation and translator
+    required: true
+  - name: TRANSLATOR_MODEL
+    purpose: Override translator model
+    required: false
+    default: gpt-5
+  - name: ENHANCER_MODEL
+    purpose: Override enhancer model
+    required: false
+    default: gpt-5-mini
+  - name: EMBEDDINGS_MODEL
+    purpose: Override embeddings model
+    required: false
+    default: text-embedding-3-large
+  - name: NEXT_PUBLIC_FEATURE_TRANSLATOR
+    purpose: Enable translator UI/routes when set to "1"
+    required: false
+  - name: NEXT_PUBLIC_FEATURE_ENHANCER
+    purpose: Enable enhancer UI/routes when set to "1"
+    required: false
+  - name: NEXT_PUBLIC_FEATURE_ROUTER
+    purpose: Enable server-side intent routing when set to "1"
+    required: false
+  - name: NEXT_PUBLIC_FEATURE_PRISMATIC
+    purpose: Enable prismatic translator mode when set to "1"
+    required: false
+  - name: NEXT_PUBLIC_FEATURE_VERIFY
+    purpose: Enable verifier tools when set to "1"
+    required: false
+  - name: NEXT_PUBLIC_FEATURE_BACKTRANSLATE
+    purpose: Enable back-translation when set to "1"
+    required: false
+  - name: UPSTASH_REDIS_REST_URL
+    purpose: Redis (Upstash) REST endpoint for daily rate limits
+    required: false
+  - name: UPSTASH_REDIS_REST_TOKEN
+    purpose: Redis (Upstash) REST token for daily rate limits
+    required: false
+```
+
+### Deployment Checklist
+
+- Build artifacts:
+  - [ ] `npm run lint && npm run typecheck`
+  - [ ] `npm run build`
+- Envs configured (see YAML above):
+  - [ ] Supabase URL + anon key
+  - [ ] OpenAI API key (server-only)
+  - [ ] Feature flags as needed
+  - [ ] Optional Redis (Upstash) for daily limits
+- Database:
+  - [ ] `chat_threads.state jsonb` present; RLS policies applied
+- Runtime:
+  - [ ] Node runtime set; process memory cache acceptable for single instance
+  - [ ] Consider Redis-backed cache/ratelimit for multi-instance scaling
+- Security:
+  - [ ] Disable debug routes in production
+  - [ ] Restrict env exposure; never expose `OPENAI_API_KEY` client-side
+  - [ ] Middleware auth guard in place (see anchor below)
+
+### Middleware Auth/Session Anchors
+
+```5:13:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/middleware.ts
+export async function middleware(req: NextRequest) {
+  const res = NextResponse.next();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: { getAll() { return req.cookies.getAll(); }, setAll(c) { /* ... */ } },
+    }
+  );
+```
+
+```27:43:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/middleware.ts
+const needsAuth = pathname.startsWith("/workspaces") || pathname.startsWith("/api/threads") || pathname.startsWith("/api/flow") || pathname.startsWith("/api/versions");
+const hasSupabaseCookies = Array.from(req.cookies.getAll()).some((c) => c.name.startsWith("sb-") || c.name.includes("supabase"));
+if (needsAuth && !hasSupabaseCookies) {
+  const url = new URL("/auth/sign-in", origin);
+  url.searchParams.set("redirect", req.nextUrl.pathname + req.nextUrl.search);
+  return NextResponse.redirect(url);
+}
+```
+
 ### Build & Run
 
 - Install deps: `npm install`

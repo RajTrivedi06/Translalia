@@ -1,3 +1,184 @@
+doc_purpose: "Document Responses API usage, hashing, and translator/verifier/enhancer patterns"
+audiences: ["devs","ops","prompt-engineers","LLM"]
+version: "2025-09-23"
+last_scanned_code_at: "2025-09-23"
+evidence_policy: "anchors-required"
+
+### Summary
+
+We standardize on OpenAI Responses API. Calls go through a helper that adapts inputs, strips unsupported params for non‑generative models, and retries when temperature is rejected. Prompt hashing and redacted previews are consistent across surfaces.
+
+### LLM Consumption
+
+- **endpoints**: `/api/translate`, `/api/translator/preview`, `/api/translator/instruct`, `/api/translator/verify`, `/api/translator/backtranslate`, `/api/enhancer`
+- **request keys**: `model`, `temperature?`, `top_p?`, `response_format?`, `messages` or (`instructions` + `input`)
+- **hash.json schema**:
+
+```json
+{
+  "route": "string",
+  "model": "string",
+  "system": "string",
+  "user": "string",
+  "schema": "string?"
+}
+```
+
+### Canonical Maps
+
+#### MODELS_MAP (call sites)
+
+| Surface        | Model source                 | Anchor                                                                                                |
+| -------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Translate      | `TRANSLATOR_MODEL`           | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts#L112-L118           |
+| Preview        | `TRANSLATOR_MODEL`           | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts#L268-L273  |
+| Instruct       | `TRANSLATOR_MODEL`           | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts#L222-L227 |
+| Enhancer       | `ENHANCER_MODEL` + JSON      | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/enhance.ts#L37-L49                      |
+| Router         | `ROUTER_MODEL` + JSON        | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/server/flow/intentLLM.ts#L26-L33               |
+| Verifier       | `VERIFIER_MODEL` + JSON      | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/verify.ts#L40-L48                       |
+| Back-translate | `BACKTRANSLATE_MODEL` + JSON | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/verify.ts#L83-L91                       |
+
+#### FLAGS_MAP (routing to endpoints)
+
+| Endpoint                      | Flag                                | Anchor                                                                                                   |
+| ----------------------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| /api/translate                | `NEXT_PUBLIC_FEATURE_TRANSLATOR`    | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts#L16-L18                |
+| /api/translator/preview       | `NEXT_PUBLIC_FEATURE_TRANSLATOR`    | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts#L34-L36       |
+| /api/translator/instruct      | `NEXT_PUBLIC_FEATURE_TRANSLATOR`    | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts#L25-L27      |
+| /api/enhancer                 | `NEXT_PUBLIC_FEATURE_ENHANCER`      | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/enhancer/route.ts#L14-L16                 |
+| /api/translator/verify        | `NEXT_PUBLIC_FEATURE_VERIFY`        | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/verify/route.ts#L10-L12        |
+| /api/translator/backtranslate | `NEXT_PUBLIC_FEATURE_BACKTRANSLATE` | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/backtranslate/route.ts#L13-L15 |
+
+### LLM API Patterns (responses.create usage, hashing, debug)
+
+- Helper adapts payloads and retries when temperature unsupported:
+
+```38:61:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/openai.ts
+export async function responsesCall({
+  model,
+  system,
+  user,
+  temperature,
+  top_p,
+  response_format,
+}: ResponsesCallOptions) {
+  const args: Record<string, unknown> = { model };
+  const nonGen = isNonGenerative(model);
+  if (!nonGen && typeof temperature === "number")
+    args.temperature = temperature;
+  if (!nonGen && typeof top_p === "number") args.top_p = top_p;
+  if (typeof user === "string") {
+    args.instructions = system;
+    args.input = user;
+  } else {
+    args.input = [{ role: "system", content: system }, ...user];
+  }
+  if (!nonGen && response_format) args.response_format = response_format;
+  try {
+    return await openai.responses.create(
+      args as unknown as Parameters<typeof openai.responses.create>[0]
+    );
+  } catch (e: unknown) {
+    // ...
+```
+
+```68:83:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/openai.ts
+    const unsupportedTemp = /Unsupported parameter:\s*'temperature'/i.test(msg);
+    if (unsupportedTemp) {
+      const retryArgs: Record<string, unknown> = { ...args };
+      delete (retryArgs as Record<string, unknown> & { temperature?: unknown })
+        .temperature;
+      delete (retryArgs as Record<string, unknown> & { top_p?: unknown }).top_p;
+      delete (
+        retryArgs as Record<string, unknown> & { response_format?: unknown }
+      ).response_format;
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[responsesCall:fallback:no-temperature]", { model });
+      }
+      return await openai.responses.create(
+        retryArgs as unknown as Parameters<typeof openai.responses.create>[0]
+      );
+    }
+    throw e;
+  }
+}
+```
+
+- Prompt hashing and redacted debug previews:
+
+```11:20:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/promptHash.ts
+export function buildPromptHash(args: {
+  route: string;
+  model: string;
+  system: string;
+  user: string;
+  schema?: string;
+}) {
+  const { route, model, system, user, schema } = args;
+  return stableHash({ route, model, system, user, schema });
+}
+```
+
+```30:43:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/promptHash.ts
+const DEBUG =
+  process.env.DEBUG_PROMPTS === "1" ||
+  process.env.NEXT_PUBLIC_DEBUG_PROMPTS === "1";
+if (!DEBUG) return;
+// Avoid printing full poem/user content in logs
+console.info("[LLM]", {
+  route: args.route,
+  model: args.model,
+  hash: args.hash,
+  systemPreview: squeeze(args.system),
+  userPreview: squeeze(args.user, 300),
+});
+```
+
+### Cost & Caching Policy (keys/TTLs, rate/quotas, invalidation)
+
+- Cache keys are stable SHA‑256 of input bundles with prefixes per route; default TTL 3600s; eviction on TTL expiry.
+- Rate limiting: preview uses in‑memory token bucket (30/min per thread); verify/backtranslate use daily quotas via Upstash Redis.
+- Invalidation: any input change (bundle fields or route/model/system/user/schema) yields a new key.
+
+```23:29:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/cache.ts
+export async function cacheSet<T>(
+  key: string,
+  value: T,
+  ttlSec = 3600
+): Promise<void> {
+  mem.set(key, { expires: Date.now() + ttlSec * 1000, value });
+}
+```
+
+```55:58:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+const rl = rateLimit(`preview:${threadId}`, 30, 60_000);
+if (!rl.ok)
+  return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+```
+
+### Known Gaps / TODOs
+
+- Translator surfaces parse text rather than request JSON output; consider structured schema for notes/lines to reduce parsing failures.
+
+```283:297:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+if (!raw2) {
+  await supabase
+    .from("versions")
+    .update({
+      meta: {
+        ...placeholderMeta,
+        status: "failed",
+        error: "INSTRUCT_RETRY_EMPTY",
+      },
+    })
+    .eq("id", newVersionId);
+  return NextResponse.json(
+    { ok: false, code: "INSTRUCT_RETRY_EMPTY", retryable: true },
+    { status: 502 }
+  );
+}
+```
+
 Purpose: How we call LLMs (methods, params) and where each surface uses them.
 Updated: 2025-09-16
 
@@ -478,4 +659,12 @@ const bundleUser = [
 citedText ? `CITED_VERSION_FULL_TEXT:\n${citedText}` : "",
 // Strengthen instruction against echo
 "CRITICAL: Output MUST be a translation. Do NOT return the source text.",
+```
+
+### See Also
+
+- LLM Integration Playbook: `docs/context/LLM_INTEGRATION_GUIDE.md` (checklist, templates, registration schema)
+
+```
+
 ```

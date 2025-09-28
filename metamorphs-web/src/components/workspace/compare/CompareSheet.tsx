@@ -3,6 +3,12 @@
 import * as React from "react";
 import { Version } from "@/types/workspace";
 import { useWorkspace } from "@/store/workspace";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 
 export function CompareSheet({
   open,
@@ -57,32 +63,21 @@ export function CompareSheet({
     });
     onOpenChange(false);
   };
-  if (!open) return null;
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="compare-title"
-      className="fixed inset-0 z-50 flex items-stretch justify-end bg-black/20"
-      onClick={() => onOpenChange(false)}
-      onKeyDown={(e) => e.key === "Escape" && onOpenChange(false)}
-      tabIndex={-1}
-    >
-      <div
-        className="h-full w-[720px] bg-white shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between border-b px-4 py-3">
-          <div id="compare-title" className="font-semibold">
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent ariaLabelledby="compare-title">
+        <SheetHeader>
+          <SheetTitle id="compare-title">
             Compare {left.id} ↔ {right.id}
-          </div>
+          </SheetTitle>
           <button
             onClick={() => onOpenChange(false)}
             className="text-sm text-neutral-600"
+            aria-label="Close compare"
           >
             Close
           </button>
-        </div>
+        </SheetHeader>
         <div className="flex h-[calc(100%-48px)]">
           <div className="flex-1 overflow-y-auto p-4">
             <div className="mb-2 text-xs font-medium text-neutral-500">
@@ -110,7 +105,7 @@ export function CompareSheet({
             Create Hybrid
           </button>
         </div>
-      </div>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 }

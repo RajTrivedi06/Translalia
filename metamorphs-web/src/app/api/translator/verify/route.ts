@@ -16,11 +16,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
 
   const rl = await checkDailyLimit(user.id, "verify", VERIFY_DAILY_LIMIT);
-  if (!rl.allowed)
-    return NextResponse.json(
-      { error: "Daily verification limit reached" },
-      { status: 429 }
+  if (!rl.allowed) {
+    return new Response(
+      JSON.stringify({ error: "Daily verification limit reached" }),
+      {
+        status: 429,
+        headers: {
+          "content-type": "application/json",
+          "Retry-After": String(Math.max(1, (rl as any).retryAfterSec ?? 60)),
+        },
+      }
     );
+  }
 
   const r = await runVerification({ source, candidate });
   if (!r.ok)

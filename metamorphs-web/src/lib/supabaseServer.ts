@@ -1,34 +1,32 @@
 import { cookies } from "next/headers";
-import { createServerClient } from "@supabase/ssr";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { env, assertEnv } from "./env";
 
-export function supabaseServer() {
-  const cookieStore = cookies() as any; // NOTE(cursor): cast to align with Next types variance
+assertEnv();
+
+export async function getServerClient() {
+  const cookieStore = await cookies();
 
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     {
       cookies: {
         get(name: string) {
           return cookieStore.get(name)?.value;
         },
-        set(name: string, value: string, options?: any) {
+        set(name: string, value: string, options: CookieOptions) {
           cookieStore.set({ name, value, ...options });
         },
-        remove(name: string, options?: any) {
-          cookieStore.set({
-            name,
-            value: "",
-            path: options?.path ?? "/",
-            httpOnly: options?.httpOnly ?? true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: (options?.sameSite as any) ?? "lax",
-            maxAge: 0,
-            expires: new Date(0),
-            ...options,
-          });
+        remove(name: string, options: CookieOptions) {
+          cookieStore.set({ name, value: "", ...options });
         },
       },
     }
   );
+}
+
+// Backwards-compatible alias until all imports are migrated
+export async function supabaseServer() {
+  return getServerClient();
 }

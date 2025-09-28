@@ -6,7 +6,7 @@ Updated: 2025-09-16
 | ------ | ----------------------------- | --------------------------------------------------------------- | -------------------------------------------- | ---------------------------- | --------------------------------------------------------------------- |
 | POST   | /api/translate                | Translate with cached moderation and parsing                    | Flag: TRANSLATOR=1; user via thread state    | 400, 404, 409, 422, 502      | `metamorphs-web/src/app/api/translate/route.ts:L15–L19`               |
 | POST   | /api/translator/preview       | Preview translation, anti‑echo, cache, persist placeholder node | Auth required; Flag: TRANSLATOR=1; RL 30/min | 400, 409, 422, 429, 500, 502 | `metamorphs-web/src/app/api/translator/preview/route.ts:L33–L39`      |
-| POST   | /api/translator/instruct      | Translate with explicit instruction and version linkage         | Auth required; Flag: TRANSLATOR=1            | 400, 401, 404, 422, 500, 502 | `metamorphs-web/src/app/api/translator/instruct/route.ts:L21–L25`     |
+| POST   | /api/translator/instruct      | Translate with explicit instruction and version linkage         | Auth required; Flag: TRANSLATOR=1            | 400, 401, 404, 422, 500, 502 | `metamorphs-web/src/app/api/translator/instruct/route.ts:L24–L32`     |
 | POST   | /api/enhancer                 | Build enhanced request plan                                     | Flag: ENHANCER=1                             | 400, 404, 409, 400/502       | `metamorphs-web/src/app/api/enhancer/route.ts:L13–L16`                |
 | POST   | /api/constraints              | Enforce text rules                                              | None                                         | 400                          | `metamorphs-web/src/app/api/constraints/route.ts:L4–L6`               |
 | POST   | /api/variants                 | Generate text variants                                          | None                                         | 400                          | `metamorphs-web/src/app/api/variants/route.ts:L4–L8`                  |
@@ -21,7 +21,7 @@ Updated: 2025-09-16
 | GET    | /api/versions/nodes           | List nodes for thread                                           | Auth required                                | 400, 403, 500                | `metamorphs-web/src/app/api/versions/nodes/route.ts:L8–L15`           |
 | GET    | /api/journey/list             | List journey items                                              | Auth required (Bearer or cookies)            | 400, 500                     | `metamorphs-web/src/app/api/journey/list/route.ts:L15–L23`            |
 | GET    | /api/interview/next           | Next interview question snapshot                                | Auth required                                | 400, 403, 404                | `metamorphs-web/src/app/api/interview/next/route.ts:L10–L17`          |
-| POST   | /api/flow/intent              | Classify intent (LLM)                                           | None (stubbed guard)                         | 400, 502                     | `metamorphs-web/src/app/api/flow/intent/route.ts:L7–L12`              |
+| POST   | /api/flow/intent              | Classify intent (LLM)                                           | None (stubbed guard)                         | 400                          | `metamorphs-web/src/app/api/flow/intent/route.ts:L7–L12`              |
 | POST   | /api/flow/confirm             | Confirm plan and advance phase                                  | Auth required                                | 400, 404, 409                | `metamorphs-web/src/app/api/flow/confirm/route.ts:L9–L16`             |
 | POST   | /api/flow/peek                | Backtranslate candidate (daily caps)                            | Auth required; Flag: BACKTRANSLATE=1         | 400, 404, 429, 502           | `metamorphs-web/src/app/api/flow/peek/route.ts:L10–L15`               |
 | POST   | /api/translator/verify        | Verify candidate (daily caps)                                   | Auth required; Flag: VERIFY=1                | 400, 404, 429, 502           | `metamorphs-web/src/app/api/translator/verify/route.ts:L7–L12`        |
@@ -35,7 +35,7 @@ Updated: 2025-09-16
 Purpose: Central index of implemented API routes, flags, and references.
 Updated: 2025-09-13
 
-# API Routes Index (2025-09-13)
+# API Routes Index (2025-09-23)
 
 | Route                              | Purpose                     | Flags                               |
 | ---------------------------------- | --------------------------- | ----------------------------------- |
@@ -65,6 +65,21 @@ Updated: 2025-09-13
 | `/api/auth/whoami`                 | Identity debug              | —                                   |
 | `/api/auth/debug-cookies`          | Cookie debug                | —                                   |
 | `/api/eval/run`                    | Admin eval stub             | —                                   |
+
+### Reverse Index (Which docs mention me)
+
+| Route                           | Mentioned in                                                                                        |
+| ------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `/api/translator/preview`       | `docs/flow-api.md`, `docs/llm-api.md`, `docs/spend-and-cache-policy.md`, `docs/flags-and-models.md` |
+| `/api/translator/instruct`      | `docs/flow-api.md`, `docs/llm-api.md`, `docs/flags-and-models.md`                                   |
+| `/api/translate`                | `docs/flow-api.md`, `docs/llm-api.md`, `docs/spend-and-cache-policy.md`, `docs/flags-and-models.md` |
+| `/api/enhancer`                 | `docs/flow-api.md`, `docs/llm-api.md`, `docs/spend-and-cache-policy.md`, `docs/flags-and-models.md` |
+| `/api/translator/verify`        | `docs/flow-api.md`, `docs/spend-and-cache-policy.md`, `docs/flags-and-models.md`                    |
+| `/api/translator/backtranslate` | `docs/flow-api.md`, `docs/spend-and-cache-policy.md`, `docs/flags-and-models.md`                    |
+| `/api/flow/intent`              | `docs/flow-api.md`, `docs/flags-and-models.md`                                                      |
+| `/api/versions`                 | `docs/flow-api.md`                                                                                  |
+| `/api/versions/nodes`           | `docs/flow-api.md`                                                                                  |
+| `/api/versions/positions`       | `docs/flow-api.md`                                                                                  |
 
 Evidence (files present under `src/app/api/**/route.ts`):
 

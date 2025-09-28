@@ -64,3 +64,71 @@ for (const s of selections) {
 ```72:76:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/accept-lines/route.ts
 await appendLedger(threadId, { ts: new Date().toISOString(), kind: "accept", note: `Accepted ${selections.length} line(s)` });
 ```
+
+### Translator Rubric
+
+- Anti-echo policy
+
+  - Server detects echo/untranslated; retries once with stronger directive; returns 409 on failure.
+
+  ```294:306:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+  if (!forceTranslate && (echoish || untranslated)) {
+    const hardReq = `\n\nHARD REQUIREMENT: Output must be fully in the target language (English if requested).\nDo NOT echo or quote SOURCE_POEM lines or reproduce Urdu/Arabic script.`;
+    const respRetryUnknown: unknown = await responsesCall({ /* ... */ });
+  }
+  ```
+
+- Acceptance criteria
+
+  - Notes present (1–10), lines trimmed, final overview persisted to `versions.meta.overview`.
+
+  ```10:17:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/server/translator/parse.ts
+  const afterA = text.split(/---VERSION A---/i)[1] ?? "";
+  const [poemRaw, notesRaw] = afterA.split(/---NOTES---/i);
+  ```
+
+  ```440:447:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+  const updatedMeta: Record<string, unknown> = {
+    ...placeholderMeta,
+    status: "generated" as const,
+    overview: { lines: preview.lines, notes: preview.notes, line_policy: bundle.line_policy },
+  };
+  ```
+
+- Reviewer rubric (human-in-the-loop)
+  - Evaluate faithfulness, fluency, form adherence (line policy), and preservation of must-keep tokens.
+  - Server enforces must-keep with single retry; returns 409 `REQUIRED_TOKENS_MISSING` when unmet.
+  ```389:409:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+  return NextResponse.json(
+    {
+      ok: false,
+      code: "REQUIRED_TOKENS_MISSING",
+      retryable: true,
+      missing: stillMissing,
+    },
+    { status: 409 }
+  );
+  ```
+
+JSON: Translator acceptance rubric (LLM consumption)
+
+```json
+{
+  "anti_echo": { "retry": 1, "on_fail_status": 409 },
+  "notes": { "min": 1, "max": 10 },
+  "overview_persisted": true,
+  "must_keep": { "enforced": true, "on_fail_status": 409 }
+}
+```
+
+Scenario: Accept lines with moderation fail → 400
+
+```48:60:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/accept-lines/route.ts
+const mod = await moderateText(combined);
+if (mod.flagged) {
+  return NextResponse.json(
+    { ok: false, blocked: true, flagged: true, categories: mod.categories, error: "Selected lines flagged by moderation; not saved." },
+    { status: 400 }
+  );
+}
+```

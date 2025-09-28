@@ -1,6 +1,7 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
+import { useWorkspace } from "@/store/workspace";
 
 export type NodeRow = {
   id: string;
@@ -33,14 +34,20 @@ async function fetchNodes(threadId: string): Promise<NodeRow[]> {
 
 export function useNodes(
   projectId: string | undefined,
-  threadId: string | undefined
+  threadId: string | undefined,
+  opts?: { enabled?: boolean }
 ) {
+  const currentView = useWorkspace((s) => s.ui.currentView);
+  const pollingEnabled = currentView === "workshop";
+  const enabled = (!!projectId &&
+    !!threadId &&
+    (opts?.enabled ?? true)) as boolean;
   return useQuery({
     queryKey: ["nodes", projectId, threadId],
     queryFn: () => fetchNodes(threadId!),
-    enabled: !!projectId && !!threadId,
+    enabled,
     staleTime: 0,
     refetchOnWindowFocus: true,
-    refetchInterval: 1500,
+    refetchInterval: pollingEnabled ? 1500 : false,
   });
 }

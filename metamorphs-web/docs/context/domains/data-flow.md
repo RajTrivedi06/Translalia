@@ -4,6 +4,26 @@
 
 End-to-end: Interview → Plan → Preview → Accept → Canvas
 
+### Flow Diagram
+
+```mermaid
+flowchart LR
+  A[Interview] --> B[Plan Confirm]
+  B --> C[Preview]
+  C --> D[Accept Lines]
+  D --> E[Canvas Nodes]
+  subgraph DB
+    T[(chat_threads.state)]
+    V[(versions)]
+    J[(journey_items)]
+  end
+  A -->|store fields| T
+  B -->|phase: translating| T
+  C -->|insert placeholder/update meta| V
+  D -->|RPC accept_line + ledger| T
+  C -->|log journey| J
+```
+
 ### Pipeline (textual diagram with anchors)
 
 1. Interview (collect fields in `chat_threads.state`)
@@ -59,6 +79,66 @@ await appendLedger(threadId, { ts, kind: "accept", note: `Accepted ${selections.
 ### Notes
 
 - Target variety is enforced before translate/preview.
+
+### JSON: Entities and Stages
+
+```json
+{
+  "entities": {
+    "projects": ["id", "owner_id"],
+    "chat_threads": ["id", "project_id", "title", "state", "created_at"],
+    "versions": [
+      "id",
+      "project_id",
+      "title",
+      "lines",
+      "tags",
+      "meta",
+      "created_at"
+    ],
+    "journey_items": ["project_id", "kind", "summary", "meta", "created_at"]
+  },
+  "stages": [
+    {
+      "stage": "Interview",
+      "affected_entities": ["chat_threads"],
+      "anchors": [
+        "/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/flow/answer/route.ts#L86-L108"
+      ]
+    },
+    {
+      "stage": "Plan Confirm",
+      "affected_entities": ["chat_threads", "journey_items"],
+      "anchors": [
+        "/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/flow/confirm/route.ts#L28-L48"
+      ]
+    },
+    {
+      "stage": "Preview",
+      "affected_entities": ["versions", "journey_items"],
+      "anchors": [
+        "/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts#L124-L146",
+        "/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts#L472-L487"
+      ]
+    },
+    {
+      "stage": "Accept Lines",
+      "affected_entities": ["chat_threads", "journey_items"],
+      "anchors": [
+        "/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/accept-lines/route.ts#L63-L71",
+        "/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/accept-lines/route.ts#L78-L84"
+      ]
+    },
+    {
+      "stage": "Canvas",
+      "affected_entities": ["versions"],
+      "anchors": [
+        "/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/nodes/route.ts#L33-L40"
+      ]
+    }
+  ]
+}
+```
 
 ```103:121:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts
 const hasTarget = Boolean(state.collected_fields?.target_lang_or_variety || enhanced?.target);

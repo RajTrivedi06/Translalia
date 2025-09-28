@@ -22,6 +22,24 @@ const { data: proj } = await sb
 ### chat_threads
 
 - Columns used: `id`, `project_id`, `title`, `state`, `created_at`
+- Notable jsonb column with default `{}`: `state` (validated by server schema)
+
+```33:50:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/server/threadState.ts
+/** Load thread.state as SessionState (schema-validated, with defaults). */
+export async function getThreadState(threadId: string): Promise<SessionState> {
+  const { data, error } = await supabase
+    .from("chat_threads")
+    .select("state")
+    .eq("id", threadId)
+    .single();
+  // Helpful migration hint on missing column
+  if (error && String(error?.message||"").includes("column chat_threads.state")) {
+    throw new Error(
+      "Database schema missing column 'chat_threads.state' (jsonb). Apply migration: ALTER TABLE public.chat_threads ADD COLUMN IF NOT EXISTS state jsonb NOT NULL DEFAULT '{}'::jsonb;"
+    );
+  }
+}
+```
 
 ```21:25:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/nodes/route.ts
 const { data: th } = await sb
@@ -47,6 +65,7 @@ const { data: th } = await supabase
 ### versions
 
 - Columns used: `id`, `project_id`, `title`, `lines`, `tags`, `meta`, `created_at`, `pos`
+- `meta` stores: `thread_id`, `display_label`, `status`, `parent_version_id`, `overview{lines,notes,line_policy}`
 
 ```124:134:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
 const { data: inserted } = await sb
@@ -105,6 +124,28 @@ const { data: accepted } = await supabase.rpc("get_accepted_version", {
 ```
 
 - `accept_line(p_thread_id uuid, ...)` (used elsewhere)
+
+## RLS & Access Patterns
+
+- Ownership: `projects.owner_id` checked before listing threads; thread listings and version reads are scoped by `project_id` and `meta->>thread_id`.
+
+```31:35:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/threads/list/route.ts
+if (proj.owner_id !== user.id) {
+  return NextResponse.json(
+    { ok: false, code: "FORBIDDEN_PROJECT" },
+    { status: 403 }
+  );
+}
+```
+
+```33:40:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/nodes/route.ts
+const { data, error } = await sb
+  .from("versions")
+  .select("id, tags, meta, created_at")
+  .eq("project_id", th.project_id)
+  .filter("meta->>thread_id", "eq", threadId)
+  .order("created_at", { ascending: true });
+```
 
 ```63:69:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/accept-lines/route.ts
 for (const s of selections) {

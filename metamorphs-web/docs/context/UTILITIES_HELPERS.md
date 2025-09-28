@@ -14,6 +14,18 @@ Common helpers used across the codebase, primarily in `src/lib` and `src/types`.
     - `metamorphs-web/src/app/api/translator/preview/route.ts:L153–L156`
     - `metamorphs-web/src/app/api/translate/route.ts:L113–L118`
     - `metamorphs-web/src/app/api/enhancer/route.ts:L84–L86`
+  - Anchors:
+    ```13:21:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/cache.ts
+    export async function cacheGet<T>(key: string): Promise<T | null> {
+      const item = mem.get(key);
+      if (!item) return null;
+      if (Date.now() > item.expires) {
+        mem.delete(key);
+        return null;
+      }
+      return item.value as T;
+    }
+    ```
 - `lib/ai/moderation.ts`: Moderation checks and policy mapping
 - One-liner: wraps OpenAI moderation; returns `{ flagged, categories }`
   - Callers:
@@ -32,6 +44,39 @@ Common helpers used across the codebase, primarily in `src/lib` and `src/types`.
 - One-liner: in-memory token bucket per-key
   - Callers:
     - `metamorphs-web/src/app/api/translator/preview/route.ts:L55–L58`
+  - Anchors:
+    ```1:13:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/ratelimit.ts
+    export function rateLimit(key: string, limit = 30, windowMs = 60_000) {
+      const now = Date.now();
+      const b = buckets.get(key);
+      if (!b || now > b.until) {
+        buckets.set(key, { count: 1, until: now + windowMs });
+        return { ok: true, remaining: limit - 1 } as const;
+      }
+      if (b.count >= limit) return { ok: false, remaining: 0 } as const;
+      b.count += 1;
+      return { ok: true, remaining: limit - b.count } as const;
+    }
+    ```
+- `lib/ratelimit/redis.ts`: Upstash/Redis-backed daily limits
+  - Anchors:
+    ```26:40:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ratelimit/redis.ts
+    export async function checkDailyLimit(
+      userId: string,
+      key: string,
+      max: number
+    ) {
+      const l = getLimiter();
+      if (!l) return { allowed: true } as const;
+      const id = `llm:${key}:${userId}:${new Date().toISOString().slice(0, 10)}`;
+      const res = await l.redis.incr(id);
+      if (res === 1) {
+        const ttl = 24 * 60 * 60;
+        await l.redis.expire(id, ttl);
+      }
+      return { allowed: res <= max, current: res, max } as const;
+    }
+    ```
 - `lib/apiGuard.ts`: Request guards (auth, rate limit, permissions)
 - One-liner: SSR cookie or Bearer Supabase session guard for Next API routes
   - Callers:
@@ -162,3 +207,53 @@ Common Patterns:
 
 - Rate-limit preview-like endpoints then cache results by a stable key.
 - Enrich UI graph nodes using server-computed `meta`
+
+### Canonical Cache Key Templates (for LLM consumption)
+
+```json
+{
+  "translator_preview": {
+    "template": "translator_preview:${stableHash({ poem, enhanced, summary, ledgerNotes, acceptedLines, glossary, placeholderId })}",
+    "params": [
+      "poem",
+      "enhanced",
+      "summary",
+      "ledgerNotes",
+      "acceptedLines",
+      "glossary",
+      "placeholderId"
+    ],
+    "ttl_sec": 3600
+  },
+  "translate": {
+    "template": "translate:${stableHash({ poem, enhanced, summary, ledger, acceptedLines, glossary })}",
+    "params": [
+      "poem",
+      "enhanced",
+      "summary",
+      "ledger",
+      "acceptedLines",
+      "glossary"
+    ],
+    "ttl_sec": 3600
+  },
+  "enhancer": {
+    "template": "enhancer:${stableHash({ poem, fields })}",
+    "params": ["poem", "fields"],
+    "ttl_sec": 3600
+  }
+}
+```
+
+Notes:
+
+- `stableHash` sorts object keys before hashing to ensure deterministic keys.
+  ```5:11:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/cache.ts
+  export function stableHash(obj: unknown): string {
+    const json = JSON.stringify(
+      obj,
+      Object.keys(obj as Record<string, unknown>).sort()
+    );
+    return crypto.createHash("sha256").update(json).digest("hex");
+  }
+  ```

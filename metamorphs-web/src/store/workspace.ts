@@ -35,6 +35,20 @@ type WorkspaceState = {
   pinJourney: (j: JourneyItem) => void;
   setVersionPos: (id: string, pos: { x: number; y: number }) => void;
   tidyPositions: () => void;
+  ui: {
+    currentView: "line-selection" | "workshop" | "notebook";
+    sidebarCollapsed: boolean;
+    currentLine: number | null;
+  };
+  setCurrentView: (v: "line-selection" | "workshop" | "notebook") => void;
+  setSidebarCollapsed: (v: boolean) => void;
+  setCurrentLine: (n: number | null) => void;
+  tokensSelections: Record<string, Record<string, string>>;
+  setTokenSelection: (
+    lineId: string,
+    tokenId: string,
+    optionIdOrFreeText: string
+  ) => void;
 };
 
 export const useWorkspace = create<WorkspaceState>((set) => ({
@@ -80,13 +94,16 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
   compareOpen: false,
   setCompareOpen: (open) => set({ compareOpen: open }),
   resetThreadEphemera: () =>
-    set({
+    set((s) => ({
       selectedNodeId: null,
       activeVersionId: undefined,
       highlightVersionId: undefined,
       activeCompare: undefined,
       compareOpen: false,
-    }),
+      // Phase 0: clear only safe UI ephemera for V2 shell
+      ui: { ...s.ui, currentView: "line-selection", currentLine: null },
+      tokensSelections: {},
+    })),
   addVersion: (v) => set((s) => ({ versions: [...s.versions, v] })),
   addCompare: (c) => set((s) => ({ compares: [...s.compares, c] })),
   pinJourney: (j) => set((s) => ({ journey: [j, ...s.journey] })),
@@ -100,5 +117,25 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
         ...v,
         pos: { x: 120, y: 40 + i * 200 },
       })),
+    })),
+  ui: {
+    currentView: "line-selection",
+    sidebarCollapsed: false,
+    currentLine: null,
+  },
+  setCurrentView: (v) => set((s) => ({ ui: { ...s.ui, currentView: v } })),
+  setSidebarCollapsed: (v) =>
+    set((s) => ({ ui: { ...s.ui, sidebarCollapsed: v } })),
+  setCurrentLine: (n) => set((s) => ({ ui: { ...s.ui, currentLine: n } })),
+  tokensSelections: {},
+  setTokenSelection: (lineId, tokenId, optionIdOrFreeText) =>
+    set((s) => ({
+      tokensSelections: {
+        ...s.tokensSelections,
+        [lineId]: {
+          ...(s.tokensSelections[lineId] || {}),
+          [tokenId]: optionIdOrFreeText,
+        },
+      },
     })),
 }));

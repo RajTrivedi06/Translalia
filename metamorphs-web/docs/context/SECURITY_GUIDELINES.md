@@ -106,3 +106,42 @@ export function respondLLMError(e: any) {
   if (retryAfter) res.headers.set("Retry-After", String(retryAfter));
 }
 ```
+
+## Moderation Guardrails
+
+- Pre-checks block with 400 on enhancer/preview/translate; post-checks set `blocked` flag.
+
+```44:49:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/enhancer/route.ts
+const pre = await moderateText(poem);
+if (pre.flagged) {
+  return NextResponse.json(
+    { error: "Poem content flagged by moderation; cannot enhance." },
+    { status: 400 }
+  );
+}
+```
+
+```116:123:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+const pre = await moderateText(
+  bundle.poem + "\n" + JSON.stringify(bundle.enhanced).slice(0, 4000)
+);
+if (pre.flagged)
+  return NextResponse.json(
+    { error: "Content flagged by moderation; cannot preview." },
+    { status: 400 }
+  );
+```
+
+```142:148:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts
+const post = await moderateText(
+  parsedOut.data.versionA + "\n" + parsedOut.data.notes.join("\n")
+);
+const blocked = post.flagged;
+```
+
+## Services & Env Names (link-out)
+
+- Supabase: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- OpenAI: `OPENAI_API_KEY`; model envs: `TRANSLATOR_MODEL`, `ENHANCER_MODEL`, `ROUTER_MODEL`, `EMBEDDINGS_MODEL`, `MODERATION_MODEL`
+- Upstash: `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`
+- See `docs/context/SERVICES_INTEGRATIONS.md` for anchored references.

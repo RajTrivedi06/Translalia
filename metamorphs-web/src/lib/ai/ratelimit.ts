@@ -7,7 +7,10 @@ export function rateLimit(key: string, limit = 30, windowMs = 60_000) {
     buckets.set(key, { count: 1, until: now + windowMs });
     return { ok: true, remaining: limit - 1 } as const;
   }
-  if (b.count >= limit) return { ok: false, remaining: 0 } as const;
+  if (b.count >= limit) {
+    const retryAfterSec = Math.max(1, Math.ceil((b.until - now) / 1000));
+    return { ok: false, remaining: 0, retryAfterSec } as const;
+  }
   b.count += 1;
   return { ok: true, remaining: limit - b.count } as const;
 }

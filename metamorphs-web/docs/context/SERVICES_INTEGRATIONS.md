@@ -84,6 +84,10 @@ const res = await client.moderations.create({
 
 > TODO-VERIFY: Although `MODERATION_MODEL` is exported in `lib/models.ts`, the moderation call uses a hard-coded literal.
 
+### Moderation Lifecycle Link
+
+- See `docs/moderation-policy.md` for lifecycle diagram, enforcement table, and JSON examples.
+
 Required envs (names only): `OPENAI_API_KEY`, `TRANSLATOR_MODEL`, `ENHANCER_MODEL`, `ROUTER_MODEL`, `EMBEDDINGS_MODEL`, optional `VERIFIER_MODEL`, `BACKTRANSLATE_MODEL`.
 
 ## Upstash Redis (Quotas)
@@ -107,6 +111,15 @@ if (!rl.allowed)
 ```
 
 Required envs (names only): `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`.
+
+## Integration Map (usage points & failure modes)
+
+| Service             | Usage points                                                    | Env vars                                                    | Failure modes                                                          | Anchors                                                                                                                                                                                        |
+| ------------------- | --------------------------------------------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Supabase            | Auth guard, threads/projects CRUD, versions insert/update, RPCs | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 401 when missing session; 403/404 on RLS or ownership; 500 on DB error | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/route.ts#L16-L24; /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts#L135-L146 |
+| OpenAI (Responses)  | Translator/Enhancer/Router/Verifier calls via helper            | `OPENAI_API_KEY`, model envs                                | 502 on upstream errors; helper preserves Retry-After on 429            | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/openai.ts#L38-L61; /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/http/errors.ts#L3-L10                              |
+| OpenAI (Moderation) | Pre/post screening for routes                                   | `OPENAI_API_KEY`, `MODERATION_MODEL`                        | 400 block on flagged content; generic messages                         | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/moderation.ts#L10-L13; /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts#L81-L86                 |
+| Upstash Redis       | Daily quotas for verify/backtranslate                           | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`        | 429 JSON when over quota; header TODO                                  | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ratelimit/redis.ts#L26-L39; /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/verify/route.ts#L18-L23       |
 
 ## Feature Flags (exposure control)
 

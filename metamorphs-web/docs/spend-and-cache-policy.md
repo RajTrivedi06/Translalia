@@ -1,3 +1,186 @@
+doc_purpose: "Specify cost controls, cache keys/TTLs, rate/quotas, and invalidation"
+audiences: ["devs","ops","prompt-engineers","LLM"]
+version: "2025-09-23"
+last_scanned_code_at: "2025-09-23"
+evidence_policy: "anchors-required"
+
+### Summary
+
+Defines how we minimize spend with caching, rate limiting, and disciplined API patterns. Lists cache key prefixes, hashed inputs, default TTLs, and quota rules with code anchors.
+
+### LLM Consumption
+
+- **cache.key**: `<prefix>` + `stableHash(bundle)`
+- **cache.ttl_seconds**: 3600 (default)
+- **rate.minute_bucket**: preview 30/min/thread (in‑memory)
+- **rate.daily_quota**: verify/backtranslate per‑user via Upstash
+- **hash.schema** (prompt hash object used in logs/ids):
+
+```json
+{
+  "route": "string",
+  "model": "string",
+  "system": "string",
+  "user": "string",
+  "schema": "string?"
+}
+```
+
+- **cache.key.schema** (conceptual structure):
+
+```json
+{
+  "key": "string",
+  "prefix": "translator_preview|translate|enhancer",
+  "hash": "sha256-hex"
+}
+```
+
+### Canonical Maps
+
+#### MODELS_MAP (cost‑relevant defaults)
+
+| Surface        | Default model           | Anchor                                                                          |
+| -------------- | ----------------------- | ------------------------------------------------------------------------------- |
+| Translator     | "gpt-5"                 | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/models.ts#L2-L2      |
+| Enhancer       | "gpt-5-mini"            | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/models.ts#L4-L5      |
+| Router         | "gpt-5-nano-2025-08-07" | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/models.ts#L7-L8      |
+| Verifier       | fallback Router         | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/verify.ts#L12-L13 |
+| Back-translate | fallback Enhancer       | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/verify.ts#L13-L15 |
+
+#### FLAGS_MAP (cost gating)
+
+| Flag                                | Default | Effect                          | Anchor                                                                                                   |
+| ----------------------------------- | ------- | ------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_FEATURE_TRANSLATOR`    | 0       | Blocks translator calls (403)   | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts#L16-L18                |
+| `NEXT_PUBLIC_FEATURE_ENHANCER`      | 0       | Blocks enhancer calls (403)     | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/enhancer/route.ts#L14-L16                 |
+| `NEXT_PUBLIC_FEATURE_VERIFY`        | 0       | Blocks verify (404 impl)        | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/verify/route.ts#L10-L12        |
+| `NEXT_PUBLIC_FEATURE_BACKTRANSLATE` | 0       | Blocks backtranslate (404 impl) | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/backtranslate/route.ts#L13-L15 |
+
+### LLM API Patterns (responses.create, hashing, previews)
+
+- Helper handles non‑generative models and retry on unsupported temperature.
+
+```38:51:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/openai.ts
+const args: Record<string, unknown> = { model };
+const nonGen = isNonGenerative(model);
+if (!nonGen && typeof temperature === "number")
+  args.temperature = temperature;
+if (!nonGen && typeof top_p === "number") args.top_p = top_p;
+if (typeof user === "string") {
+  args.instructions = system;
+  args.input = user;
+} else {
+  args.input = [{ role: "system", content: system }, ...user];
+}
+```
+
+```68:83:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/openai.ts
+const unsupportedTemp = /Unsupported parameter:\s*'temperature'/i.test(msg);
+if (unsupportedTemp) {
+  const retryArgs: Record<string, unknown> = { ...args };
+  delete (retryArgs as Record<string, unknown> & { temperature?: unknown })
+    .temperature;
+  delete (retryArgs as Record<string, unknown> & { top_p?: unknown }).top_p;
+  delete (
+    retryArgs as Record<string, unknown> & { response_format?: unknown }
+  ).response_format;
+  // retry without optional params
+}
+```
+
+### Cost & Caching Policy
+
+- Cache implementation: in‑process Map with per‑entry expiry.
+
+```13:21:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/cache.ts
+export async function cacheGet<T>(key: string): Promise<T | null> {
+  const item = mem.get(key);
+  if (!item) return null;
+  if (Date.now() > item.expires) {
+    mem.delete(key);
+    return null;
+  }
+  return item.value as T;
+}
+```
+
+- Key construction and TTL usage in routes:
+
+```89:97:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts
+const key = "translate:" + stableHash(bundle);
+const cached = await cacheGet<unknown>(key);
+// ...
+await cacheSet(key, result, 3600);
+```
+
+```157:165:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+const key = "translator_preview:" + stableHash({ ...bundle, placeholderId });
+const cached = await cacheGet<unknown>(key);
+// ...
+await cacheSet(key, preview, 3600);
+```
+
+```52:59:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/enhancer/route.ts
+const key = "enhancer:" + stableHash(payload);
+const cached = await cacheGet<unknown>(key);
+// ...
+await cacheSet(key, plan, 3600);
+```
+
+- Rate limiting and quotas:
+
+```3:12:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/ratelimit.ts
+export function rateLimit(key: string, limit = 30, windowMs = 60_000) {
+  // in-memory sliding window
+}
+```
+
+```21:39:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ratelimit/redis.ts
+if (!limiter)
+  limiter = new Ratelimit({
+    redis: client,
+    limiter: Ratelimit.slidingWindow(1000, "1 d"),
+  });
+```
+
+```26:39:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ratelimit/redis.ts
+export async function checkDailyLimit(
+  userId: string,
+  key: string,
+  max: number
+) {
+  const l = getLimiter();
+  if (!l) return { allowed: true } as const;
+  const id = `llm:${key}:${userId}:${new Date().toISOString().slice(0, 10)}`;
+  const res = await l.redis.incr(id);
+  if (res === 1) {
+    const ttl = 24 * 60 * 60;
+    await l.redis.expire(id, ttl);
+  }
+  return { allowed: res <= max, current: res, max } as const;
+}
+```
+
+#### Cache Table
+
+| Prefix                | Inputs (hashed)                                     | TTL (sec) | Anchor                                                                                               |
+| --------------------- | --------------------------------------------------- | --------- | ---------------------------------------------------------------------------------------------------- |
+| `translator_preview:` | bundle + placeholderId                              | 3600      | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts#L157-L165 |
+| `translate:`          | poem, enhanced, summary, ledger, accepted, glossary | 3600      | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts#L89-L93            |
+| `enhancer:`           | poem, fields                                        | 3600      | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/enhancer/route.ts#L52-L56             |
+
+### Known Gaps / TODOs
+
+- Add `Retry-After` headers on 429 from preview minute bucket and Redis quotas for consistency.
+
+```157:161:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/http/errors.ts
+const res = NextResponse.json(body, { status });
+if (retryAfter) res.headers.set("Retry-After", String(retryAfter));
+```
+
+- Consider shared external cache to survive process restarts if cache hit rate matters.
+
 Purpose: Token/cost patterns, caching keys/TTL, and rate/quotas with headers.
 Updated: 2025-09-16
 

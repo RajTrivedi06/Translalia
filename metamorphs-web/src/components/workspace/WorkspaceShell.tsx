@@ -21,6 +21,7 @@ export function WorkspaceShell({
   projectId?: string;
   threadId?: string;
 }) {
+  // V2 supersedes this shell behind the NEXT_PUBLIC_FEATURE_SIDEBAR_LAYOUT flag.
   const urlThreadId = useThreadId();
   const effectiveThreadId = urlThreadId || threadId;
   const qc = useQueryClient();
@@ -168,23 +169,27 @@ export function WorkspaceShell({
         <Panel
           defaultSize={24}
           minSize={18}
-          className="min-h-0 min-w-0 border-r"
+          className="min-h-0 min-w-0 border-r overflow-hidden"
         >
           <ChatPanel projectId={projectId} />
         </Panel>
-        <PanelResizeHandle className="w-2 bg-neutral-200" />
+        <PanelResizeHandle className="w-2 bg-neutral-200 z-20" />
         {/* Middle: Versions Canvas */}
         <Panel
           key={`${projectId || "no-project"}:${effectiveThreadId || "pending"}`}
           defaultSize={52}
           minSize={40}
-          className="min-h-0 min-w-0 border-r"
+          className="min-h-0 min-w-0 border-r overflow-hidden"
         >
           <VersionCanvas />
         </Panel>
-        <PanelResizeHandle className="w-2 bg-neutral-200" />
+        <PanelResizeHandle className="w-2 bg-neutral-200 z-20" />
         {/* Right: Journey / Summary */}
-        <Panel defaultSize={24} minSize={18} className="min-h-0 min-w-0">
+        <Panel
+          defaultSize={24}
+          minSize={18}
+          className="min-h-0 min-w-0 overflow-hidden"
+        >
           <JourneyPanel />
         </Panel>
       </PanelGroup>

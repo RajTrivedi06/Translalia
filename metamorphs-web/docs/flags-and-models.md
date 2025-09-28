@@ -1,3 +1,227 @@
+doc_purpose: "Normalize model defaults and feature flags; provide canonical maps"
+audiences: ["devs","ops","prompt-engineers","LLM"]
+version: "2025-09-23"
+last_scanned_code_at: "2025-09-23"
+evidence_policy: "anchors-required"
+
+### Summary
+
+Centralized inventory of model defaults, environment overrides, and feature flags used across translator, enhancer, router, verifier, and back-translation surfaces. Values here mirror `src/lib/models.ts` and flag helpers; tables include anchors to definitions and call-sites.
+
+### LLM Consumption
+
+- **keys.model**: string (env‑overridable per surface)
+- **keys.temperature**: number (translator ≈0.6; enhancer ≈0.2; router ≈0.2; verifier ≈0.2; backtranslate ≈0.3)
+- **keys.response_format**: `{ type: "json_object" }` for JSON surfaces (enhancer/verifier/backtranslate/router)
+- **keys.messages vs instructions/input**: message array for most calls; helper maps string user to `instructions`+`input`
+- **schemas.prompt_hash (JSON)**:
+
+```json
+{
+  "route": "string",
+  "model": "string",
+  "system": "string",
+  "user": "string",
+  "schema": "string?"
+}
+```
+
+### Canonical Maps
+
+#### MODELS_MAP
+
+| Surface                                 | ENV/Const             | Default                  | Fallbacks                    | Anchor                                                                          |
+| --------------------------------------- | --------------------- | ------------------------ | ---------------------------- | ------------------------------------------------------------------------------- |
+| Translator (Preview/Translate/Instruct) | `TRANSLATOR_MODEL`    | "gpt-5"                  | —                            | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/models.ts#L2-L2      |
+| Enhancer (planner JSON)                 | `ENHANCER_MODEL`      | "gpt-5-mini"             | —                            | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/models.ts#L4-L5      |
+| Router / Classifier                     | `ROUTER_MODEL`        | "gpt-5-nano-2025-08-07"  | —                            | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/models.ts#L7-L8      |
+| Verifier (JSON)                         | `VERIFIER_MODEL`      | —                        | defaults to `ROUTER_MODEL`   | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/verify.ts#L12-L13 |
+| Back-translate (JSON)                   | `BACKTRANSLATE_MODEL` | —                        | defaults to `ENHANCER_MODEL` | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/verify.ts#L13-L15 |
+| Moderation                              | `MODERATION_MODEL`    | "omni-moderation-latest" | —                            | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/models.ts#L15-L15    |
+| Embeddings                              | `EMBEDDINGS_MODEL`    | "text-embedding-3-large" | —                            | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/models.ts#L11-L12    |
+
+Evidence:
+
+```2:15:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/models.ts
+export const TRANSLATOR_MODEL = process.env.TRANSLATOR_MODEL?.trim() || "gpt-5";
+
+export const ENHANCER_MODEL =
+  process.env.ENHANCER_MODEL?.trim() || "gpt-5-mini";
+
+export const ROUTER_MODEL =
+  process.env.ROUTER_MODEL?.trim() || "gpt-5-nano-2025-08-07";
+
+export const EMBEDDINGS_MODEL =
+  process.env.EMBEDDINGS_MODEL?.trim() || "text-embedding-3-large";
+
+export const MODERATION_MODEL = "omni-moderation-latest";
+```
+
+```12:15:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/verify.ts
+const VERIFIER_MODEL = process.env.VERIFIER_MODEL?.trim() || ROUTER_MODEL;
+const BACKTRANSLATE_MODEL =
+  process.env.BACKTRANSLATE_MODEL?.trim() || ENHANCER_MODEL;
+```
+
+#### FLAGS_MAP
+
+| Flag                            | Env var                                        | Default | Allowed values | Effect when OFF              | Anchor                                                                                             |
+| ------------------------------- | ---------------------------------------------- | ------- | -------------- | ---------------------------- | -------------------------------------------------------------------------------------------------- |
+| Translator features             | `NEXT_PUBLIC_FEATURE_TRANSLATOR`               | 0       | {0,1}          | 403 from translator routes   | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts#L34-L36 |
+| Enhancer (planner)              | `NEXT_PUBLIC_FEATURE_ENHANCER`                 | 0       | {0,1}          | 403 from enhancer route      | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/enhancer/route.ts#L14-L16           |
+| Prismatic variants              | `NEXT_PUBLIC_FEATURE_PRISMATIC`                | 0       | {0,1}          | Mode coerces to balanced     | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/flags/prismatic.ts#L1-L3                |
+| Router intent                   | `NEXT_PUBLIC_FEATURE_ROUTER`                   | 0       | {0,1}          | Router returns null          | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/server/flow/intentLLM.ts#L11-L11            |
+| Verify                          | `NEXT_PUBLIC_FEATURE_VERIFY`                   | 0       | {0,1}          | 404 from verify route        | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/flags/verify.ts#L1-L2                   |
+| Back-translate                  | `NEXT_PUBLIC_FEATURE_BACKTRANSLATE`            | 0       | {0,1}          | 404 from backtranslate route | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/flags/verify.ts#L3-L4                   |
+| Debug prompt previews           | `DEBUG_PROMPTS` or `NEXT_PUBLIC_DEBUG_PROMPTS` | 0       | {0,1}          | No redacted logs             | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/promptHash.ts#L30-L33                |
+| Deprecated: Smart Interview LLM | `NEXT_PUBLIC_FEATURE_SMART_INTERVIEW_LLM`      | —       | —              | always disabled              | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/flags/interview.ts#L1-L2                |
+
+Evidence:
+
+```33:36:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+export async function POST(req: Request) {
+  if (process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR !== "1") {
+    return new NextResponse("Feature disabled", { status: 403 });
+  }
+```
+
+```14:16:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/enhancer/route.ts
+if (process.env.NEXT_PUBLIC_FEATURE_ENHANCER !== "1") {
+  return new NextResponse("Feature disabled", { status: 403 });
+}
+```
+
+```1:3:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/flags/prismatic.ts
+export function isPrismaticEnabled() {
+  return process.env.NEXT_PUBLIC_FEATURE_PRISMATIC === "1";
+}
+```
+
+```10:12:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/server/flow/intentLLM.ts
+export async function classifyIntentLLM(
+  msg: string,
+  phase: string
+): Promise<null | { intent: string }> {
+  if (process.env.NEXT_PUBLIC_FEATURE_ROUTER !== "1") return null;
+```
+
+```1:8:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/flags/verify.ts
+export const isVerifyEnabled = () =>
+  process.env.NEXT_PUBLIC_FEATURE_VERIFY === "1";
+export const isBacktranslateEnabled = () =>
+  process.env.NEXT_PUBLIC_FEATURE_BACKTRANSLATE === "1";
+export const VERIFY_DAILY_LIMIT = Number(process.env.VERIFY_DAILY_LIMIT ?? 20);
+export const BACKTRANSLATE_DAILY_LIMIT = Number(
+  process.env.BACKTRANSLATE_DAILY_LIMIT ?? 10
+);
+```
+
+```30:43:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/promptHash.ts
+const DEBUG =
+  process.env.DEBUG_PROMPTS === "1" ||
+  process.env.NEXT_PUBLIC_DEBUG_PROMPTS === "1";
+if (!DEBUG) return;
+```
+
+```1:2:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/flags/interview.ts
+// Deprecated: interview clarifier removed from client usage.
+export const isSmartInterviewLLMEnabled = () => false;
+```
+
+### LLM API Patterns
+
+- All surfaces use OpenAI Responses API; helpers ensure non‑generative models drop unsupported params and add fallback when `temperature` is rejected.
+
+```38:61:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/openai.ts
+export async function responsesCall({
+  model,
+  system,
+  user,
+  temperature,
+  top_p,
+  response_format,
+}: ResponsesCallOptions) {
+  const args: Record<string, unknown> = { model };
+  const nonGen = isNonGenerative(model);
+  if (!nonGen && typeof temperature === "number")
+    args.temperature = temperature;
+  if (!nonGen && typeof top_p === "number") args.top_p = top_p;
+  if (typeof user === "string") {
+    args.instructions = system;
+    args.input = user;
+  } else {
+    args.input = [{ role: "system", content: system }, ...user];
+  }
+  if (!nonGen && response_format) args.response_format = response_format;
+  try {
+    return await openai.responses.create(
+      args as unknown as Parameters<typeof openai.responses.create>[0]
+    );
+  } catch (e: unknown) {
+    // fallback on unsupported temperature
+```
+
+```68:83:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/openai.ts
+    const unsupportedTemp = /Unsupported parameter:\s*'temperature'/i.test(msg);
+    if (unsupportedTemp) {
+      const retryArgs: Record<string, unknown> = { ...args };
+      delete (retryArgs as Record<string, unknown> & { temperature?: unknown })
+        .temperature;
+      delete (retryArgs as Record<string, unknown> & { top_p?: unknown }).top_p;
+      delete (
+        retryArgs as Record<string, unknown> & { response_format?: unknown }
+      ).response_format;
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[responsesCall:fallback:no-temperature]", { model });
+      }
+      return await openai.responses.create(
+        retryArgs as unknown as Parameters<typeof openai.responses.create>[0]
+      );
+    }
+    throw e;
+  }
+}
+```
+
+### Cost & Caching Policy
+
+- See Spend & Cache Policy document for detailed quotas and TTLs.
+- JSON outputs use `response_format` where applicable to avoid repair calls; translator surfaces parse free‑form text.
+
+### Known Gaps / TODOs
+
+- Moderation call site uses a literal model string; consider wiring `MODERATION_MODEL` constant.
+
+```45:49:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/moderation.ts
+const res = await client.moderations.create({
+  model: "omni-moderation-latest",
+  input: text.slice(0, 20000),
+});
+```
+
+- `EMBEDDINGS_MODEL` exported but not referenced in call‑sites (confirm future use).
+
+```11:12:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/models.ts
+export const EMBEDDINGS_MODEL =
+  process.env.EMBEDDINGS_MODEL?.trim() || "text-embedding-3-large";
+```
+
+- Verify/Backtranslate return 404 when disabled, while other features use 403; align policy.
+
+```10:15:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/verify/route.ts
+if (!isVerifyEnabled())
+  return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
+```
+
+```13:15:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/backtranslate/route.ts
+if (!isBacktranslateEnabled())
+  return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
+```
+
+### See Also
+
+- LLM Integration Playbook: `docs/context/LLM_INTEGRATION_GUIDE.md` (registration schema, rate/cache patterns)
+
 Purpose: Model defaults, env overrides, and feature flags for LLM surfaces.
 Updated: 2025-09-16
 
@@ -269,3 +493,38 @@ const BACKTRANSLATE_MODEL =
 ## Unsupported parameters
 
 - There are no code references to `min_p` in this repo (older docs only).
+
+## NEXT_PUBLIC_FEATURE_SIDEBAR_LAYOUT
+
+- Type: UI Flag (client-visible)
+- Default: 0 (off)
+- When "1": `/workspaces/[projectId]/threads/[threadId]` renders the new V2 shell.
+- When "0": legacy `WorkspaceShell` remains.
+- No server behavior is gated by this flag.
+
+Evidence:
+
+```7:12:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/featureFlags.ts
+export function isSidebarLayoutEnabled() {
+  return process.env.NEXT_PUBLIC_FEATURE_SIDEBAR_LAYOUT === "1";
+}
+```
+
+```1:16:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/(app)/workspaces/[projectId]/threads/[threadId]/page.tsx
+import { WorkspaceShell } from "@/components/workspace/WorkspaceShell";
+import { isSidebarLayoutEnabled } from "@/lib/featureFlags";
+import { WorkspaceV2Shell } from "@/components/workspace/v2/WorkspaceV2Shell";
+
+export default async function ThreadPage({
+  params,
+}: {
+  params: Promise<{ projectId: string; threadId: string }>;
+}) {
+  const { projectId, threadId } = await params;
+  const sidebarEnabled = isSidebarLayoutEnabled();
+  if (sidebarEnabled) {
+    return <WorkspaceV2Shell projectId={projectId} threadId={threadId} />;
+  }
+  return <WorkspaceShell projectId={projectId} threadId={threadId} />;
+}
+```

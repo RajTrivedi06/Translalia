@@ -304,3 +304,118 @@ if (!parsed.success)
 - Decision: Generate A/B/C multi-variant within one LLM call; expose verification and back-translation as user-initiated tools only.
 - Consequences: Predictable budget, clearer UX; puts the human in the loop for quality evaluation.
 - Status: Accepted
+
+### ADR-001: App Router + Route Handlers
+
+- Decision: Use Next.js App Router route handlers for APIs; keep heavy logic in `server/*`.
+- Status: Accepted
+- Consequences: Co-located APIs and UI; simple deployment. Ensure SSR cookies are respected.
+- Anchor:
+
+  ```4:10:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/auth/route.ts
+  export const runtime = "nodejs";
+  export const dynamic = "force-dynamic";
+  export const revalidate = 0;
+
+  export async function POST(req: NextRequest) {
+  ```
+
+### ADR-002: Supabase Auth (SSR cookie + Bearer fallback)
+
+- Decision: Prefer SSR cookie-bound session; fallback to Authorization Bearer when present.
+- Status: Accepted
+- Consequences: Works for browser and programmatic clients; requires secure cookie handling.
+- Anchors:
+  ```4:12:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/supabaseServer.ts
+  export function supabaseServer() {
+    const cookieStore = cookies() as any;
+    return createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  ```
+  ```35:50:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/apiGuard.ts
+  if (authH.toLowerCase().startsWith("bearer ")) {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+    const sbBearer = createSupabaseClient(url, anon, {
+      global: { headers: { Authorization: authH } },
+    }) as unknown as SupabaseClient;
+  ```
+
+### ADR-003: In‑Process Caching for LLM Idempotency (MVP)
+
+- Decision: Cache identical, schema-validated LLM results in memory by `stableHash(payload)` with TTL.
+- Status: Accepted
+- Consequences: Great latency/cost wins; per‑process only; resets on deploy. Consider Redis later.
+- Anchors:
+  ```23:29:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/cache.ts
+  export async function cacheSet<T>(
+    key: string,
+    value: T,
+    ttlSec = 3600
+  ): Promise<void> {
+    mem.set(key, { expires: Date.now() + ttlSec * 1000, value });
+  }
+  ```
+  ```157:165:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+  const key = "translator_preview:" + stableHash({ ...bundle, placeholderId });
+  const cached = await cacheGet<unknown>(key);
+  ```
+
+### ADR-004: Lightweight Rate Limiting on Hot Endpoints
+
+- Decision: Token-bucket style per-key in memory for preview; Upstash Redis for daily verification quotas.
+- Status: Accepted
+- Consequences: MVP friendly; not distributed unless Redis-backed; tune per route.
+- Anchors:
+  ```3:13:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/ratelimit.ts
+  export function rateLimit(key: string, limit = 30, windowMs = 60_000) {
+    const now = Date.now();
+    const b = buckets.get(key);
+  }
+  ```
+  ```26:40:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ratelimit/redis.ts
+  export async function checkDailyLimit(
+    userId: string,
+    key: string,
+    max: number
+  ) {
+    const l = getLimiter();
+    if (!l) return { allowed: true } as const;
+    const id = `llm:${key}:${userId}:${new Date().toISOString().slice(0, 10)}`;
+  }
+  ```
+
+### ADR-005: Server‑Owned Conversation State
+
+- Decision: Persist thread `state` as JSONB; read/merge/write via server helpers only.
+- Status: Accepted
+- Consequences: Durable, RLS‑protected, auditable; requires schema and careful merges.
+- Anchor:
+  ```60:71:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/server/threadState.ts
+  export async function patchThreadState(
+    threadId: string,
+    patch: Partial<SessionState>
+  ): Promise<SessionState> {
+    const supabase = await supabaseServer();
+    const current = await getThreadState(threadId);
+    const merged = deepMerge(
+      current as Record<string, unknown>,
+      patch as Partial<Record<string, unknown>>
+    );
+  }
+  ```
+
+### ADR-006: Auth Cookie Synchronization via App Router
+
+- Decision: Sync Supabase auth cookies on client auth events via `/api/auth`.
+- Status: Accepted
+- Consequences: Reliable SSR session; minimal client coupling.
+- Anchor:
+  ```20:29:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/auth/route.ts
+  export async function POST(req: NextRequest) {
+    const body = await req.json().catch(() => ({}));
+    const { event, session } = body as { event?: string; session?: any };
+    const res = NextResponse.json({ ok: true });
+  }
+  ```

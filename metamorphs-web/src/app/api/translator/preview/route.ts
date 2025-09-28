@@ -18,7 +18,7 @@ import { looksLikeEcho } from "@/lib/text/similarity";
 import { TRANSLATOR_MODEL } from "@/lib/models";
 import { buildPromptHash, logLLMRequestPreview } from "@/lib/ai/promptHash";
 import { requireUser } from "@/lib/auth/requireUser";
-import { respondLLMError } from "@/lib/http/errors";
+import { respondLLMError, jsonError } from "@/lib/http/errors";
 import { isPrismaticEnabled } from "@/lib/flags/prismatic";
 import { parsePrismatic } from "@/lib/ai/prismaticParser";
 import { getThreadState } from "@/server/threadState";
@@ -53,8 +53,10 @@ export async function POST(req: Request) {
   if (!currentUser) return response;
 
   const rl = rateLimit(`preview:${threadId}`, 30, 60_000);
-  if (!rl.ok)
-    return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+  if (!rl.ok) {
+    const retryAfterSec = rl.retryAfterSec ?? 60;
+    return jsonError(429, "Too Many Requests", { retryAfterSec });
+  }
 
   // Normalize target variety inputs from request or server state
   const fromBundle = (body?.bundle?.collected_fields?.targetVariety ??

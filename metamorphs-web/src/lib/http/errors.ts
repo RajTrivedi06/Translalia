@@ -9,3 +9,15 @@ export function respondLLMError(e: any) {
   if (retryAfter) res.headers.set("Retry-After", String(retryAfter));
   return res;
 }
+
+export function jsonError(
+  status: number,
+  message: string,
+  opts?: { retryAfterSec?: number }
+) {
+  const res = NextResponse.json({ error: message }, { status });
+  if (opts?.retryAfterSec) {
+    res.headers.set("Retry-After", String(opts.retryAfterSec));
+  }
+  return res;
+}

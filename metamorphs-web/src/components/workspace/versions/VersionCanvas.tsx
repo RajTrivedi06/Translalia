@@ -266,7 +266,7 @@ export function VersionCanvas() {
   return (
     <div className="relative h-full w-full overflow-hidden min-w-0">
       {/* Simple nodes list overlay (ensures we render API nodes and allow selection) */}
-      <div className="absolute left-3 bottom-3 z-10 max-h-[40%] w-80 overflow-y-auto rounded-md border bg-white/90 p-2 shadow">
+      <div className="absolute left-3 bottom-3 z-[1] pointer-events-none max-h-[40%] w-80 overflow-y-auto rounded-md border bg-white/90 p-2 shadow">
         <div className="mb-1 text-xs font-semibold">Nodes</div>
         {!threadId ? (
           <div className="text-xs text-neutral-500">No thread</div>
@@ -279,7 +279,7 @@ export function VersionCanvas() {
                 <button
                   type="button"
                   onClick={() => setSelectedNodeId(n.id)}
-                  className="w-full rounded border bg-white px-2 py-1 text-left hover:bg-neutral-50"
+                  className="w-full rounded border bg-white px-2 py-1 text-left hover:bg-neutral-50 pointer-events-auto"
                   title={n.display_label || n.id}
                 >
                   <div className="text-xs font-medium">
@@ -297,10 +297,10 @@ export function VersionCanvas() {
           </ul>
         )}
       </div>
-      <div className="absolute right-3 top-3 z-10 flex items-center gap-2">
+      <div className="absolute right-3 top-3 z-[1] pointer-events-none flex items-center gap-2">
         <button
           onClick={tidyPositions}
-          className="inline-flex items-center gap-1 rounded-md border bg-white px-2 py-1 text-xs shadow"
+          className="inline-flex items-center gap-1 rounded-md border bg-white px-2 py-1 text-xs shadow pointer-events-auto"
           aria-label="Tidy graph"
         >
           <Wand2 className="h-3.5 w-3.5" /> Tidy
@@ -309,7 +309,7 @@ export function VersionCanvas() {
           type="button"
           onClick={onCompareClick}
           disabled={!canCompare}
-          className="inline-flex items-center gap-1 rounded-md border bg-white px-2 py-1 text-xs shadow disabled:opacity-50"
+          className="inline-flex items-center gap-1 rounded-md border bg-white px-2 py-1 text-xs shadow disabled:opacity-50 pointer-events-auto"
           title={
             canCompare
               ? `Compare ${selectedVersionIds[0]} vs ${selectedVersionIds[1]}`
@@ -346,7 +346,7 @@ export function VersionCanvas() {
         <Controls />
       </ReactFlow>
       {/* Activity overlay (top-left) */}
-      <div className="absolute left-3 top-3 z-10 max-h-[40%] w-72 overflow-y-auto rounded-md border bg-white/90 p-2 shadow">
+      <div className="absolute left-3 top-3 z-[1] pointer-events-none max-h-[40%] w-72 overflow-y-auto rounded-md border bg-white/90 p-2 shadow">
         <div className="mb-1 text-xs font-semibold">Activity</div>
         {journeyLoading ? (
           <div className="text-xs">Loading…</div>

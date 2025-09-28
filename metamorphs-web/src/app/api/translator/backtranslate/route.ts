@@ -23,11 +23,18 @@ export async function POST(req: Request) {
     "backtranslate",
     BACKTRANSLATE_DAILY_LIMIT
   );
-  if (!rl.allowed)
-    return NextResponse.json(
-      { error: "Daily back-translation limit reached" },
-      { status: 429 }
+  if (!rl.allowed) {
+    return new Response(
+      JSON.stringify({ error: "Daily back-translation limit reached" }),
+      {
+        status: 429,
+        headers: {
+          "content-type": "application/json",
+          "Retry-After": String(Math.max(1, (rl as any).retryAfterSec ?? 60)),
+        },
+      }
     );
+  }
 
   const r = await runBacktranslate({ candidate });
   if (!r.ok)

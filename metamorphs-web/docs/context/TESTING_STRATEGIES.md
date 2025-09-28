@@ -28,64 +28,76 @@ export function parseTranslatorOutput(raw: string): TranslatorParsed {
 
 Assert that missing markers throws Zod error when notes are empty; valid markers yield `{ lines[], notes[] }`.
 
-### Integration Testing
+### Testing Matrix
 
-- Route handlers with mocked Supabase and OpenAI.
-- Validate status codes: 400/401/403/404/409/429/502.
-  - Include translator anti-echo (409 PREVIEW_ECHOED_SOURCE) path.
+| Module                       | Test Level(s) | Core Assertions                                                  | Anchors                                                                                    |
+| ---------------------------- | ------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `server/translator/parse.ts` | Unit          | Parses markers; trims lines; caps notes at 10; throws on invalid | ```10:17:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/server/translator/parse.ts |
 
-Assertion anchors:
+const afterA = text.split(/---VERSION A---/i)[1] ?? "";
+const [poemRaw, notesRaw] = afterA.split(/---NOTES---/i);
 
-```20:24:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+````|
+| `server/flow/questions.ts` | Unit | `computeNextQuestion` routing; `processAnswer` normalization; list parsing | ```96:105:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/server/flow/questions.ts
+export function computeNextQuestion(state: SessionState): Question | null {
+  const f = state.collected_fields ?? {};
+  if (!f.target_lang_or_variety) return QUESTIONS[0];
+  if (!f.style_form?.meter || !f.style_form?.rhyme) return QUESTIONS[1];
+``` |
+| `app/api/translator/preview` | Integration | 403 when feature off; 401 on missing user; 429 on rate limit; 409 on echo; 500/502 on LLM/DB failures; 200 with cached flag | ```34:36:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
 if (process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR !== "1") {
   return new NextResponse("Feature disabled", { status: 403 });
 }
-```
-
-```43:45:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
-if (!me?.user) {
-  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-}
-```
-
-```39:43:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts
-return NextResponse.json(
-  { error: "Not ready to translate" },
-  { status: 409 }
-);
-```
+````
 
 ```55:58:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
 const rl = rateLimit(`preview:${threadId}`, 30, 60_000);
-if (!rl.ok)
-  return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 ```
 
-```31:35:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
-if (!forceTranslate && looksLikeEcho(sourceLines, outLines)) {
-  return NextResponse.json({ ok: false, code: "PREVIEW_ECHOED_SOURCE" }, { status: 409 });
-}
-```
-
-```76:83:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts
-const pre = await moderateText([poem, JSON.stringify(enhanced)].join("\n\n"));
-if (pre.flagged) {
+````157:165:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+const key = "translator_preview:" + stableHash({ ...bundle, placeholderId });
+const cached = await cacheGet<unknown>(key);
+``` |
+| `app/api/enhancer` | Integration | 403 feature off; 404 no thread; 409 no poem; 400 moderation; 200 cached | ```52:56:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/enhancer/route.ts
+const payload = { poem, fields };
+const key = "enhancer:" + stableHash(payload);
+const cached = await cacheGet<unknown>(key);
+``` |
+| `app/api/translate` | Integration | 409 not ready; 400 moderation; 502 invalid parse; 200 cached | ```38:44:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts
+if (state.phase !== "translating" && state.phase !== "review") {
   return NextResponse.json(
-    { error: "Content flagged by moderation; cannot translate." },
-    { status: 400 }
+    { error: "Not ready to translate" },
+    { status: 409 }
   );
 }
-```
-
-```25:31:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/verify/route.ts
-if (!rl.allowed)
-  return NextResponse.json(
-    { error: "Daily verification limit reached" },
-    { status: 429 }
+``` |
+| `lib/ai/cache.ts` | Unit | Stable key hashing sorted keys; TTL expiry deletes | ```5:11:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/cache.ts
+export function stableHash(obj: unknown): string {
+  const json = JSON.stringify(
+    obj,
+    Object.keys(obj as Record<string, unknown>).sort()
   );
-```
+  return crypto.createHash("sha256").update(json).digest("hex");
+}
+``` |
+| `lib/ai/ratelimit.ts` | Unit | Window reset; count increments; deny at limit | ```1:8:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/ratelimit.ts
+const buckets = new Map<string, { count: number; until: number }>();
+export function rateLimit(key: string, limit = 30, windowMs = 60_000) {
+  const now = Date.now();
+  const b = buckets.get(key);
+  if (!b or now > b.until) { /* resets */ }
+}
+``` |
+| `lib/ratelimit/redis.ts` | Integration (with test Redis) | Increments; sets TTL on first; respects max | ```33:39:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ratelimit/redis.ts
+const res = await l.redis.incr(id);
+if (res === 1) {
+  const ttl = 24 * 60 * 60;
+  await l.redis.expire(id, ttl);
+}
+``` |
 
-### End-to-End (optional)
+### End-to-End
 
 - Happy paths: sign-in → start flow → answer → confirm → preview → accept-lines.
 
@@ -98,7 +110,7 @@ const placeholderMeta = {
   status: "placeholder" as const,
   parent_version_id: null as string | null,
 };
-```
+````
 
 ### Fixtures & Mocks
 
