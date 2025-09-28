@@ -1,191 +1,212 @@
-## Database Schema
+Purpose: Tables, columns, and RPCs referenced in code, with evidence anchors.
+Updated: 2025-09-16
 
-### Overview
+# Database Schema (Excerpts from Code)
 
-The application integrates with Supabase for authentication and persistence. This document captures core entities, relations, and data access patterns.
+Note: This document reflects tables/columns referenced in code. For full schema (indexes/constraints), consult migrations (TODO: add migration dump).
 
-### Tech & Access
+## Tables referenced
 
-- Platform: Supabase (PostgreSQL)
-- Clients: `lib/supabaseClient.ts` (browser), `lib/supabaseServer.ts` (server)
-- Auth: Supabase Auth helpers in `lib/authHelpers.ts`
+### projects
 
-### Core Entities (Conceptual)
+- Columns used: `id`, `owner_id`
 
-- Users: Authenticated users (from Supabase)
-- Projects/Workspaces: Grouping for threads, versions, and assets
-- Threads: Conversation containers for chat flows
-- Messages: Items within a thread (user/assistant/system)
-- Versions/Variants: Alternative outputs for compare workflows
-
-Note: Refer to migrations (if present) or Supabase project UI for the authoritative schema. Update this section with exact table/column names as they evolve.
-
-### Relationships (Conceptual)
-
-- user 1..\* projects
-- project 1..\* threads
-- thread 1..\* messages
-- project 1.._ versions and version 1.._ variants
-
-### Migrations
-
-- If using code-based migrations, document the workflow here (e.g., `supabase migration generate`, `db push`).
-- Otherwise, track schema changes through ADRs or this doc.
-
-### Query Patterns
-
-- Client-side fetches should go through typed helpers or hooks when possible
-- Prefer RLS-secured views/functions for cross-tenant safety
-- Keep heavy joins server-side (in route handlers or `server/` modules)
-
-### Performance & Indexing
-
-- Add indexes for frequent filters: `project_id`, `thread_id`, `created_at`
-- Consider composite indexes for `(project_id, created_at)` or `(thread_id, created_at)`
-
-### Data Retention & Privacy
-
-- Review `lib/policy.ts` and `docs/moderation-policy.md`
-- Define retention windows for messages/artifacts per business policy
-
----
-
-## DATABASE_SCHEMA
-
-Note: Tables and columns are inferred from code usage. Verify in your Supabase project and adjust as needed.
-
-### 1) All Supabase tables with columns and types (inferred)
-
-- profiles
-
-  - id (uuid, pk)
-  - display_name (text, nullable)
-  - username (text, unique, nullable)
-  - email (text, nullable)
-  - avatar_url (text, nullable)
-  - locale (text, nullable)
-  - created_at (timestamptz, default now())
-
-- projects
-
-  - id (uuid, pk)
-  - title (text)
-  - owner_id (uuid)
-  - src_lang (text, nullable)
-  - tgt_langs (text[], nullable)
-  - created_at (timestamptz)
-
-- chat_threads
-
-  - id (uuid, pk)
-  - project_id (uuid, fk → projects.id)
-  - title (text)
-  - state (jsonb) — server session state (`types/sessionState`)
-  - created_by (uuid, fk → profiles.id)
-  - created_at (timestamptz)
-
-- chat_messages
-
-  - id (uuid, pk)
-  - project_id (uuid, fk → projects.id)
-  - thread_id (uuid, fk → chat_threads.id)
-  - role (text: 'user' | 'assistant' | 'system')
-  - content (text)
-  - meta (jsonb)
-  - created_by (uuid, fk → profiles.id)
-  - created_at (timestamptz)
-
-- versions
-
-  - id (uuid, pk)
-  - project_id (uuid, fk → projects.id)
-  - title (text)
-  - lines (text[])
-  - tags (text[])
-  - meta (jsonb)
-  - pos (jsonb, optional: {x:number, y:number})
-  - created_at (timestamptz)
-
-- compares
-
-  - id (uuid, pk)
-  - project_id (uuid, fk → projects.id)
-  - left_version_id (uuid, fk → versions.id)
-  - right_version_id (uuid, fk → versions.id)
-  - lens (text: 'meaning'|'form'|'tone'|'culture')
-  - granularity (text: 'line'|'phrase'|'char')
-  - notes (text, nullable)
-  - created_at (timestamptz)
-
-- journey_items
-
-  - id (uuid, pk)
-  - project_id (uuid, fk → projects.id)
-  - kind (text)
-  - summary (text)
-  - from_version_id (uuid, nullable, fk → versions.id)
-  - to_version_id (uuid, nullable, fk → versions.id)
-  - compare_id (uuid, nullable, fk → compares.id)
-  - created_at (timestamptz)
-
-- storage bucket: avatars
-  - paths: `<userId>/<timestamp>_<filename>`
-
-### 2) Relationships between tables
-
-- projects 1..\* chat_threads
-- chat_threads 1..\* chat_messages
-- projects 1..\* versions
-- projects 1..\* compares
-- projects 1..\* journey_items
-- versions 1..\* compares (as left/right)
-
-### 3) RLS policies in place (assumed)
-
-- Enable RLS on all tables; policies should ensure users can only read/write rows for projects they own or are members of. Ensure `created_by` and `owner_id` are enforced in policies.
-
-### 4) Database functions and triggers
-
-- RPC: `accept_line(p_thread_id uuid, p_line_index int, p_new_text text, p_actor uuid)` — updates thread draft/accepted lines and logs decisions. Called by `/api/translator/accept-lines`.
-
-### 5) Indexes (recommended)
-
-- On frequent filters: `(project_id)`, `(thread_id)`, `(created_at)`
-- Composite: `(project_id, created_at)` on versions and journey_items
-- Composite: `(thread_id, created_at)` on chat_messages
-
-### 6) Sample queries for common operations
-
-```ts
-// Load project threads (newest first)
-supabase
-  .from("chat_threads")
-  .select("id, title, created_at")
-  .eq("project_id", projectId)
-  .order("created_at", { ascending: false });
-
-// Append a chat message
-supabase
-  .from("chat_messages")
-  .insert({
-    project_id,
-    thread_id,
-    role: "user",
-    content,
-    meta: {},
-    created_by: userId,
-  })
-  .select("id, created_at")
-  .single();
-
-// Create a version
-supabase
-  .from("versions")
-  .insert({ project_id, title, lines, tags, meta })
-  .select("id, project_id, title, lines, tags, meta, created_at")
+```21:25:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/threads/list/route.ts
+const { data: proj } = await sb
+  .from("projects")
+  .select("id, owner_id")
+  .eq("id", projectId)
   .single();
 ```
 
-### 7) Migration history
+### chat_threads
 
-- Track in Supabase Migrations if configured; otherwise document changes via ADRs. Current repo does not include migration files.
+- Columns used: `id`, `project_id`, `title`, `state`, `created_at`
+- Notable jsonb column with default `{}`: `state` (validated by server schema)
+
+```33:50:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/server/threadState.ts
+/** Load thread.state as SessionState (schema-validated, with defaults). */
+export async function getThreadState(threadId: string): Promise<SessionState> {
+  const { data, error } = await supabase
+    .from("chat_threads")
+    .select("state")
+    .eq("id", threadId)
+    .single();
+  // Helpful migration hint on missing column
+  if (error && String(error?.message||"").includes("column chat_threads.state")) {
+    throw new Error(
+      "Database schema missing column 'chat_threads.state' (jsonb). Apply migration: ALTER TABLE public.chat_threads ADD COLUMN IF NOT EXISTS state jsonb NOT NULL DEFAULT '{}'::jsonb;"
+    );
+  }
+}
+```
+
+```21:25:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/nodes/route.ts
+const { data: th } = await sb
+  .from("chat_threads")
+  .select("id, project_id")
+  .eq("id", threadId)
+  .single();
+```
+
+```38:42:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/threads/list/route.ts
+const { data, error } = await sb
+  .from("chat_threads")
+  .select("id, title, created_at")
+  .eq("project_id", projectId)
+```
+
+```47:49:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+const { data: th } = await supabase
+  .from("chat_threads")
+  .select("id, project_id, state")
+```
+
+### versions
+
+- Columns used: `id`, `project_id`, `title`, `lines`, `tags`, `meta`, `created_at`, `pos`
+- `meta` stores: `thread_id`, `display_label`, `status`, `parent_version_id`, `overview{lines,notes,line_policy}`
+
+```124:134:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+const { data: inserted } = await sb
+  .from("versions")
+  .insert({
+    project_id: projectId,
+    title: displayLabel,
+    lines: [],
+    meta: placeholderMeta,
+    tags: ["translation"],
+  })
+  .select("id")
+  .single();
+```
+
+```33:38:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/nodes/route.ts
+const { data, error } = await sb
+  .from("versions")
+  .select("id, tags, meta, created_at")
+  .eq("project_id", th.project_id)
+```
+
+```28:33:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/positions/route.ts
+const { error } = await sb
+  .from("versions")
+  .upsert(updates, { onConflict: "id" });
+```
+
+### journey_items
+
+- Columns used: `project_id`, `kind`, `summary`, `compare_id`, `created_at`
+
+```43:45:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/route.ts
+await guard.sb.from("journey_items").insert({
+  project_id: v.project_id,
+```
+
+### compares
+
+- Columns used: `id`, `project_id`, `left_version_id`, `right_version_id`, `lens`, `granularity`, `created_at`
+
+```31:33:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/compares/route.ts
+const { data: c, error } = await guard.sb
+  .from("compares")
+  .insert({
+```
+
+## RPCs
+
+- `get_accepted_version(p_thread_id uuid)`
+
+```61:64:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts
+const { data: accepted } = await supabase.rpc("get_accepted_version", {
+  p_thread_id: threadId,
+});
+```
+
+- `accept_line(p_thread_id uuid, ...)` (used elsewhere)
+
+## RLS & Access Patterns
+
+- Ownership: `projects.owner_id` checked before listing threads; thread listings and version reads are scoped by `project_id` and `meta->>thread_id`.
+
+```31:35:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/threads/list/route.ts
+if (proj.owner_id !== user.id) {
+  return NextResponse.json(
+    { ok: false, code: "FORBIDDEN_PROJECT" },
+    { status: 403 }
+  );
+}
+```
+
+```33:40:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/nodes/route.ts
+const { data, error } = await sb
+  .from("versions")
+  .select("id, tags, meta, created_at")
+  .eq("project_id", th.project_id)
+  .filter("meta->>thread_id", "eq", threadId)
+  .order("created_at", { ascending: true });
+```
+
+```63:69:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/accept-lines/route.ts
+for (const s of selections) {
+  await supabase.rpc("accept_line", {
+    p_thread_id: threadId,
+    p_line_index: s.index + 1,
+    p_new_text: s.text,
+    p_actor: userId,
+  });
+}
+```
+
+## Notable constraints/indexes (policy intent)
+
+- Project ownership is enforced by checking `projects.owner_id` before listing threads.
+
+```31:35:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/threads/list/route.ts
+if (proj.owner_id !== user.id) {
+  return NextResponse.json(
+    { ok: false, code: "FORBIDDEN_PROJECT" },
+    { status: 403 }
+  );
+}
+```
+
+- Thread-to-project join is used to scope versions queries via `project_id` and `meta->>thread_id` filter.
+
+```33:38:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/nodes/route.ts
+.from("versions")
+.select("id, tags, meta, created_at")
+.eq("project_id", th.project_id)
+.filter("meta->>thread_id", "eq", threadId)
+```
+
+## Lineage fields (in versions.meta)
+
+- `thread_id`: identifies the thread; used with `meta->>thread_id` filter in nodes API.
+- `parent_version_id`: links a version to its parent; used by UI to render lineage edges.
+
+```33:40:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/nodes/route.ts
+const { data, error } = await sb
+  .from("versions")
+  .select("id, tags, meta, created_at")
+  .eq("project_id", th.project_id)
+  .filter("meta->>thread_id", "eq", threadId)
+  .order("created_at", { ascending: true });
+```
+
+## Journey items read pattern
+
+Currently filtered by `meta->>thread_id`:
+
+```59:66:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/server/translator/bundle.ts
+const { data: jrows } = await supabase
+  .from("journey_items")
+  .select("id, kind, summary, created_at, meta")
+  .filter("meta->>thread_id", "eq", threadId)
+  .order("created_at", { ascending: false })
+  .limit(5);
+```
+
+> TODO-VERIFY: migrate to a dedicated `thread_id` column on `journey_items` when available.
+
+> TODO: Pull full DDL from migrations to document PKs, FKs, and indexes.

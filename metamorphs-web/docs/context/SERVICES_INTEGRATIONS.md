@@ -1,72 +1,138 @@
-## Services & Integrations
+Purpose: External services used (Supabase, OpenAI, Upstash), usage points, and env names.
+Updated: 2025-09-16
 
-### Overview
+### [Last Updated: 2025-09-16]
 
-External services and platform integrations used by the application.
+# Services & Integrations (2025-09-16)
 
-### Supabase
+## Supabase (Auth + DB)
 
-- Auth and PostgreSQL database
-- Clients in `lib/supabaseClient.ts` and `lib/supabaseServer.ts`
-- Auth helpers in `lib/authHelpers.ts`
+- SSR client creation:
 
-### OpenAI-Compatible LLMs
-
-- Clients and config in `lib/ai/openai.ts`
-- Moderation and policy enforcement in `lib/ai/moderation.ts` and `docs/moderation-policy.md`
-- Caching in `lib/ai/cache.ts`
-
-### RAG & Content
-
-- Retrieval helpers in `lib/rag.ts`
-- Constraints and policy in `lib/constraints.ts` and `lib/policy.ts`
-
-### Rate Limiting
-
-- Helpers in `lib/ai/ratelimit.ts`
-- Apply in route handlers via `lib/apiGuard.ts` where appropriate
-
----
-
-## SERVICES_INTEGRATIONS
-
-### 1) Supabase client configuration
-
-- Browser: `lib/supabaseClient.ts`
-
-```ts
-export const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || "",
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
-);
+```7:10:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/supabaseServer.ts
+return createServerClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
 ```
 
-- Server: `lib/supabaseServer.ts` with cookie adapter
+- Client (browser) for hooks:
 
-### 2) Authentication flow
+```4:5:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/supabaseClient.ts
+process.env.NEXT_PUBLIC_SUPABASE_URL || "",
+process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
+```
 
-- `useSupabaseUser` loads user via `supabase.auth.getUser()` and subscribes via `onAuthStateChange`
-- API routes use `requireUser` to enforce auth with Authorization header passthrough
+- Guarded routes pattern:
 
-### 3) Storage bucket setup
+```16:19:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/route.ts
+export async function POST(req: NextRequest) {
+  const guard = await requireUser(req);
+  if ("res" in guard) return guard.res;
+```
 
-- Bucket `avatars` for user profile images; paths `userId/timestamp_filename`
-- Public URL retrieval via `supabase.storage.from("avatars").getPublicUrl(path)`
+Required envs (names only): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
 
-### 4) Real-time subscriptions
+## OpenAI (LLM)
 
-- Auth: handled via Supabase client auth subscription
-- DB realtime not currently implemented
+- API key usage and validation:
 
-### 5) Third-party services
+```1:5:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/openai.ts
+import OpenAI from "openai";
 
-- OpenAI (moderation + chat completions) via `lib/ai/openai.ts`
+export const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY!,
+});
+```
 
-### 6) API client configurations
+```7:10:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/openai.ts
+export function getOpenAI() {
+  if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY missing");
+  return openai;
+}
+```
 
-- Models in `lib/models.ts`; feature flags via `process.env.NEXT_PUBLIC_FEATURE_*`
+- Model defaults and env overrides (names only):
+  - `TRANSLATOR_MODEL`, `ENHANCER_MODEL`, `ROUTER_MODEL`, `EMBEDDINGS_MODEL`, `MODERATION_MODEL`
 
-### 7) Error handling and retry logic
+```2:15:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/models.ts
+export const TRANSLATOR_MODEL = process.env.TRANSLATOR_MODEL?.trim() || "gpt-5";
+export const ENHANCER_MODEL =
+  process.env.ENHANCER_MODEL?.trim() || "gpt-5-mini";
+export const ROUTER_MODEL =
+  process.env.ROUTER_MODEL?.trim() || "gpt-5-nano-2025-08-07";
+export const EMBEDDINGS_MODEL =
+  process.env.EMBEDDINGS_MODEL?.trim() || "text-embedding-3-large";
+export const MODERATION_MODEL = "omni-moderation-latest";
+```
 
-- Translator preview: moderation gate, rate limit (429), cache, and structured 4xx/5xx errors
-- UI retries via buttons (e.g., retry preview) and React Query refetches
+- Optional: `VERIFIER_MODEL`, `BACKTRANSLATE_MODEL`
+
+```12:15:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/verify.ts
+const VERIFIER_MODEL = process.env.VERIFIER_MODEL?.trim() || ROUTER_MODEL;
+const BACKTRANSLATE_MODEL =
+  process.env.BACKTRANSLATE_MODEL?.trim() || ENHANCER_MODEL;
+```
+
+- Moderation note (Policy vs Implementation):
+
+```9:13:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/moderation.ts
+const res = await client.moderations.create({
+  model: "omni-moderation-latest",
+  input: text.slice(0, 20000),
+});
+```
+
+> TODO-VERIFY: Although `MODERATION_MODEL` is exported in `lib/models.ts`, the moderation call uses a hard-coded literal.
+
+### Moderation Lifecycle Link
+
+- See `docs/moderation-policy.md` for lifecycle diagram, enforcement table, and JSON examples.
+
+Required envs (names only): `OPENAI_API_KEY`, `TRANSLATOR_MODEL`, `ENHANCER_MODEL`, `ROUTER_MODEL`, `EMBEDDINGS_MODEL`, optional `VERIFIER_MODEL`, `BACKTRANSLATE_MODEL`.
+
+## Upstash Redis (Quotas)
+
+- Daily quota helper:
+
+```1:3:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ratelimit/redis.ts
+import { Ratelimit } from "@upstash/ratelimit";
+import { Redis } from "@upstash/redis";
+```
+
+- Verify/back-translate routes use daily limits:
+
+```18:23:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/verify/route.ts
+const rl = await checkDailyLimit(user.id, "verify", VERIFY_DAILY_LIMIT);
+if (!rl.allowed)
+  return NextResponse.json(
+    { error: "Daily verification limit reached" },
+    { status: 429 }
+  );
+```
+
+Required envs (names only): `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`.
+
+## Integration Map (usage points & failure modes)
+
+| Service             | Usage points                                                    | Env vars                                                    | Failure modes                                                          | Anchors                                                                                                                                                                                        |
+| ------------------- | --------------------------------------------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Supabase            | Auth guard, threads/projects CRUD, versions insert/update, RPCs | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 401 when missing session; 403/404 on RLS or ownership; 500 on DB error | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/route.ts#L16-L24; /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts#L135-L146 |
+| OpenAI (Responses)  | Translator/Enhancer/Router/Verifier calls via helper            | `OPENAI_API_KEY`, model envs                                | 502 on upstream errors; helper preserves Retry-After on 429            | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/openai.ts#L38-L61; /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/http/errors.ts#L3-L10                              |
+| OpenAI (Moderation) | Pre/post screening for routes                                   | `OPENAI_API_KEY`, `MODERATION_MODEL`                        | 400 block on flagged content; generic messages                         | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/moderation.ts#L10-L13; /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts#L81-L86                 |
+| Upstash Redis       | Daily quotas for verify/backtranslate                           | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`        | 429 JSON when over quota; header TODO                                  | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ratelimit/redis.ts#L26-L39; /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/verify/route.ts#L18-L23       |
+
+## Feature Flags (exposure control)
+
+- Routes gate access via `NEXT_PUBLIC_FEATURE_*`.
+
+```28:30:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+if (process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR !== "1") {
+  return new NextResponse("Feature disabled", { status: 403 });
+}
+```
+
+## Other providers
+
+- No Stripe/S3/Sendgrid integrations found in code.
+
+> Redaction: Do not print secret values. List env names only.

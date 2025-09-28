@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     );
 
   const guard = await requireUser(req);
-  if (guard.res) return guard.res;
+  if ("res" in guard) return guard.res;
   const sb = guard.sb;
 
   const { data: th, error: thErr } = await sb

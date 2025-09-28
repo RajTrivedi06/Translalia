@@ -5,7 +5,7 @@ import { createMessageSchema } from "@/lib/schemas";
 // POST /api/chat/[threadId]/messages
 export async function POST(req: NextRequest) {
   const guard = await requireUser(req);
-  if (guard.res) return guard.res;
+  if ("res" in guard) return guard.res;
 
   // Extract threadId from URL: /api/chat/[threadId]/messages
   const url = new URL(req.url);

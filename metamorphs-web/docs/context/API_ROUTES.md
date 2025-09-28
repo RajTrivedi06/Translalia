@@ -1,161 +1,124 @@
-## API Routes
+Updated: 2025-09-16
 
-### Overview
+### Routes
 
-This app uses Next.js Route Handlers (`route.ts`) under `src/app/api` for server-side endpoints.
+| Method | Path                          | Purpose                                                         | Auth/Flags                                   | Key Errors                   | Anchor                                                                |
+| ------ | ----------------------------- | --------------------------------------------------------------- | -------------------------------------------- | ---------------------------- | --------------------------------------------------------------------- |
+| POST   | /api/translate                | Translate with cached moderation and parsing                    | Flag: TRANSLATOR=1; user via thread state    | 400, 404, 409, 422, 502      | `metamorphs-web/src/app/api/translate/route.ts:L15–L19`               |
+| POST   | /api/translator/preview       | Preview translation, anti‑echo, cache, persist placeholder node | Auth required; Flag: TRANSLATOR=1; RL 30/min | 400, 409, 422, 429, 500, 502 | `metamorphs-web/src/app/api/translator/preview/route.ts:L33–L39`      |
+| POST   | /api/translator/instruct      | Translate with explicit instruction and version linkage         | Auth required; Flag: TRANSLATOR=1            | 400, 401, 404, 422, 500, 502 | `metamorphs-web/src/app/api/translator/instruct/route.ts:L24–L32`     |
+| POST   | /api/enhancer                 | Build enhanced request plan                                     | Flag: ENHANCER=1                             | 400, 404, 409, 400/502       | `metamorphs-web/src/app/api/enhancer/route.ts:L13–L16`                |
+| POST   | /api/constraints              | Enforce text rules                                              | None                                         | 400                          | `metamorphs-web/src/app/api/constraints/route.ts:L4–L6`               |
+| POST   | /api/variants                 | Generate text variants                                          | None                                         | 400                          | `metamorphs-web/src/app/api/variants/route.ts:L4–L8`                  |
+| POST   | /api/rag                      | Retrieve augmented context                                      | None                                         | 400                          | `metamorphs-web/src/app/api/rag/route.ts:L4–L6`                       |
+| POST   | /api/chat                     | Echo stub (replace with chain)                                  | None                                         | 400                          | `metamorphs-web/src/app/api/chat/route.ts:L3–L7`                      |
+| POST   | /api/projects                 | Create project; DELETE delete project                           | Auth required                                | 400                          | `metamorphs-web/src/app/api/projects/route.ts:L5–L11`                 |
+| GET    | /api/threads/list             | List threads for project                                        | Auth required                                | 400, 403, 404, 500           | `metamorphs-web/src/app/api/threads/list/route.ts:L8–L15`             |
+| POST   | /api/threads                  | Create thread; DELETE delete thread                             | Auth required                                | 400                          | `metamorphs-web/src/app/api/threads/route.ts:L5–L13`                  |
+| POST   | /api/chat/[threadId]/messages | Add chat message to thread                                      | Auth required                                | 400                          | `metamorphs-web/src/app/api/chat/[threadId]/messages/route.ts:L6–L13` |
+| POST   | /api/versions                 | Create version node                                             | Auth required                                | 400                          | `metamorphs-web/src/app/api/versions/route.ts:L16–L24`                |
+| PATCH  | /api/versions/positions       | Update node positions                                           | Auth required                                | 400                          | `metamorphs-web/src/app/api/versions/positions/route.ts:L17–L23`      |
+| GET    | /api/versions/nodes           | List nodes for thread                                           | Auth required                                | 400, 403, 500                | `metamorphs-web/src/app/api/versions/nodes/route.ts:L8–L15`           |
+| GET    | /api/journey/list             | List journey items                                              | Auth required (Bearer or cookies)            | 400, 500                     | `metamorphs-web/src/app/api/journey/list/route.ts:L15–L23`            |
+| GET    | /api/interview/next           | Next interview question snapshot                                | Auth required                                | 400, 403, 404                | `metamorphs-web/src/app/api/interview/next/route.ts:L10–L17`          |
+| POST   | /api/flow/intent              | Classify intent (LLM)                                           | None (stubbed guard)                         | 400                          | `metamorphs-web/src/app/api/flow/intent/route.ts:L7–L12`              |
+| POST   | /api/flow/confirm             | Confirm plan and advance phase                                  | Auth required                                | 400, 404, 409                | `metamorphs-web/src/app/api/flow/confirm/route.ts:L9–L16`             |
+| POST   | /api/flow/peek                | Backtranslate candidate (daily caps)                            | Auth required; Flag: BACKTRANSLATE=1         | 400, 404, 429, 502           | `metamorphs-web/src/app/api/flow/peek/route.ts:L10–L15`               |
+| POST   | /api/translator/verify        | Verify candidate (daily caps)                                   | Auth required; Flag: VERIFY=1                | 400, 404, 429, 502           | `metamorphs-web/src/app/api/translator/verify/route.ts:L7–L12`        |
+| POST   | /api/translator/accept-lines  | Accept selected lines into draft                                | Auth required                                | 400, 401, 404, 409           | `metamorphs-web/src/app/api/translator/accept-lines/route.ts:L17–L24` |
+| POST   | /api/eval/run                 | Admin eval runner (stub)                                        | Auth required                                | 202                          | `metamorphs-web/src/app/api/eval/run/route.ts:L5–L9`                  |
+| POST   | /api/auth                     | Sync Supabase SSR cookies from client auth                      | None                                         | 401                          | `metamorphs-web/src/app/api/auth/route.ts:L20–L27`                    |
+| GET    | /api/auth/whoami              | Debug current auth identity                                     | None                                         | 200                          | `metamorphs-web/src/app/api/auth/whoami/route.ts:L6–L9`               |
+| GET    | /api/auth/debug-cookies       | Debug cookies and headers                                       | None                                         | 200                          | `metamorphs-web/src/app/api/auth/debug-cookies/route.ts:L6–L12`       |
+| GET    | /api/dev/thread-state         | Dev-only thread state smoke                                     | Dev only                                     | 400, 403                     | `metamorphs-web/src/app/api/dev/thread-state/route.ts:L8–L13`         |
 
-### Index of Routes
+Purpose: Central index of implemented API routes, flags, and references.
+Updated: 2025-09-13
 
-- `api/chat`
-  - `GET/POST /api/chat` — thread creation or chat orchestration
-  - `POST /api/chat/[threadId]/messages` — append and process messages
-- `api/flow`
-  - `POST /api/flow/start` — initiate a guided flow
-  - `POST /api/flow/intent` — detect/confirm user intent
-  - `POST /api/flow/peek` — preview next steps or plan
-  - `POST /api/flow/confirm` — confirm plan before execution
-  - `POST /api/flow/answer` — produce final answer/output
-- `api/translator`
-  - `POST /api/translator/preview` — parse, diff, and preview translation units
-  - `POST /api/translator/accept-lines` — accept line-by-line changes
-- `api/translate` — translation helper endpoint (legacy/simple)
-- `api/rag` — retrieval helper endpoint
-- `api/threads` — thread management
-- `api/variants` — variant generation/management
-- `api/versions` and `api/versions/positions` — versioning support
-- `api/compares` — compare workflows
-- `api/constraints` — constraint extraction/validation
-- `api/projects` — project/workspace management
-- `api/dev/thread-state` — development-only inspection of thread state
+# API Routes Index (2025-09-23)
 
-### Conventions
+| Route                              | Purpose                     | Flags                               |
+| ---------------------------------- | --------------------------- | ----------------------------------- |
+| `/api/translator/preview`          | Create/preview draft        | `NEXT_PUBLIC_FEATURE_TRANSLATOR`    |
+| `/api/translator/instruct`         | Accept & generate overview  | `NEXT_PUBLIC_FEATURE_TRANSLATOR`    |
+| `/api/translate`                   | Full translate              | `NEXT_PUBLIC_FEATURE_TRANSLATOR`    |
+| `/api/enhancer`                    | Plan (JSON)                 | `NEXT_PUBLIC_FEATURE_ENHANCER`      |
+| `/api/translator/verify`           | Score NOTES rubric (JSON)   | `NEXT_PUBLIC_FEATURE_VERIFY`        |
+| `/api/translator/backtranslate`    | Back-translation (JSON)     | `NEXT_PUBLIC_FEATURE_BACKTRANSLATE` |
+| `/api/interview/next`              | [Deprecated] Clarifier LLM  | —                                   |
+| `/api/flow/peek`                   | Thread ownership/phase peek | —                                   |
+| `/api/flow/{start,answer,confirm}` | Flow state transitions      | —                                   |
+| `/api/flow/intent`                 | Router intent (LLM-backed)  | `NEXT_PUBLIC_FEATURE_ROUTER`        |
+| `/api/chat`                        | Echo stub                   | —                                   |
+| `/api/chat/[threadId]/messages`    | Create message              | — (auth required)                   |
+| `/api/projects`                    | Create/delete project       | — (auth required)                   |
+| `/api/threads`                     | Create/delete thread        | — (auth required)                   |
+| `/api/threads/list`                | List threads for project    | — (auth required)                   |
+| `/api/versions`                    | Create version              | — (auth required)                   |
+| `/api/versions/nodes`              | List nodes for thread       | — (auth required)                   |
+| `/api/versions/positions`          | Upsert version positions    | — (auth required)                   |
+| `/api/compares`                    | Create compare              | — (auth required)                   |
+| `/api/constraints`                 | Enforce simple constraints  | —                                   |
+| `/api/variants`                    | Generate variants (stub)    | —                                   |
+| `/api/rag`                         | Retrieve context            | —                                   |
+| `/api/auth`                        | Supabase cookie sync        | —                                   |
+| `/api/auth/whoami`                 | Identity debug              | —                                   |
+| `/api/auth/debug-cookies`          | Cookie debug                | —                                   |
+| `/api/eval/run`                    | Admin eval stub             | —                                   |
 
-- Use `lib/apiGuard.ts` for auth/ratelimit/permission checks where applicable
-- Validate inputs with `lib/schemas.ts` and shared `types/*`
-- Keep business logic in `server/*` modules; route handlers only orchestrate
+### Reverse Index (Which docs mention me)
 
-### Example Handler Skeleton
+| Route                           | Mentioned in                                                                                        |
+| ------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `/api/translator/preview`       | `docs/flow-api.md`, `docs/llm-api.md`, `docs/spend-and-cache-policy.md`, `docs/flags-and-models.md` |
+| `/api/translator/instruct`      | `docs/flow-api.md`, `docs/llm-api.md`, `docs/flags-and-models.md`                                   |
+| `/api/translate`                | `docs/flow-api.md`, `docs/llm-api.md`, `docs/spend-and-cache-policy.md`, `docs/flags-and-models.md` |
+| `/api/enhancer`                 | `docs/flow-api.md`, `docs/llm-api.md`, `docs/spend-and-cache-policy.md`, `docs/flags-and-models.md` |
+| `/api/translator/verify`        | `docs/flow-api.md`, `docs/spend-and-cache-policy.md`, `docs/flags-and-models.md`                    |
+| `/api/translator/backtranslate` | `docs/flow-api.md`, `docs/spend-and-cache-policy.md`, `docs/flags-and-models.md`                    |
+| `/api/flow/intent`              | `docs/flow-api.md`, `docs/flags-and-models.md`                                                      |
+| `/api/versions`                 | `docs/flow-api.md`                                                                                  |
+| `/api/versions/nodes`           | `docs/flow-api.md`                                                                                  |
+| `/api/versions/positions`       | `docs/flow-api.md`                                                                                  |
 
-```ts
-// app/api/example/route.ts
-import { NextRequest } from "next/server";
+Evidence (files present under `src/app/api/**/route.ts`):
 
-export async function POST(req: NextRequest) {
-  // 1) parse and validate input
-  // 2) authorize and guard
-  // 3) call server module(s)
-  // 4) return JSON Response
-  return Response.json({ ok: true });
-}
+```1:32:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/enhancer/route.ts
+
 ```
 
-### Error Handling
+```1:40:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/verify/route.ts
 
-- Return typed error shapes; avoid leaking internal details
-- Prefer non-200 for hard failures; include actionable messages for clients
+```
 
----
+```1:40:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/backtranslate/route.ts
 
-## API_ROUTES
+```
 
-### 1) All API endpoints
+```1:298:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
 
-- POST `/api/chat` — echo stub
+```
 
-  - Body: `{ text: string }`
-  - Response: `{ ok: true, echo: string }`
+```1:214:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
 
-- POST `/api/chat/[threadId]/messages` — create message (auth required)
+```
 
-  - Auth: Bearer token from Supabase session
-  - Body: `{ projectId: uuid; content: string; role?: 'user'|'assistant'|'system'; meta?: Record<string,unknown> }`
-  - Response: `{ id: uuid, created_at: string }`
-  - Errors: 400 invalid, 401 unauthorized
+```1:147:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts
 
-- POST `/api/threads` — create thread (auth)
+```
 
-  - Body: `{ projectId: uuid; title?: string }`
-  - Response: `{ thread: { id, title, created_at } }`
-  - DELETE `/api/threads` — `{ id?: uuid, threadId?: uuid }` → `{ ok: true }`
+```1:69:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/nodes/route.ts
 
-- POST `/api/projects` — create project (auth)
+```
 
-  - Body: `{ title?: string; src_lang?: string; tgt_langs?: string[] }`
-  - Response: `{ project: { id, title, created_at } }`
-  - DELETE `/api/projects` — `{ id?: uuid, projectId?: uuid }` → `{ ok: true }`
+```1:109:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/flow/answer/route.ts
 
-- POST `/api/versions` — create version (auth)
+```
 
-  - Body: `{ projectId: uuid; title: string; lines: string[]; tags?: string[]; meta?: object; summary?: string }`
-  - Response: `{ version: { id, project_id, title, lines, tags, meta, created_at } }`
+```1:43:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/flow/intent/route.ts
 
-- PATCH `/api/versions/positions` — upsert version positions (auth)
+```
 
-  - Body: `{ projectId: uuid; positions: Array<{ id: uuid; pos: { x:number; y:number } }> }`
-  - Response: `{ ok: true }`
+```1:54:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/interview/next/route.ts
 
-- POST `/api/compares` — create compare (auth)
-
-  - Body: `{ projectId: uuid; leftId: uuid; rightId: uuid; lens?: 'meaning'|'form'|'tone'|'culture'; granularity?: 'line'|'phrase'|'char'; notes?: string }`
-  - Response: `{ compare: { id, project_id, left_version_id, right_version_id, lens, granularity, created_at } }`
-
-- POST `/api/constraints` — enforce simple constraints (public)
-
-  - Body: `{ text: string; rules: string[] }`
-  - Response: `{ ok: boolean; text: string; violations: string[] }`
-
-- POST `/api/variants` — generate variants (public)
-
-  - Body: `{ input: string; recipe: string }`
-  - Response: `Array<{ id: string; title: string; lines: string[]; tags: string[] }>`
-
-- POST `/api/rag` — retrieve context (public)
-
-  - Body: `{ query: string }`
-  - Response: `{ passages: []; sources: Array<{ title: string; url: string }> }`
-
-- Flow
-
-  - POST `/api/flow/start` — `{ threadId: uuid; poem: string }` → `{ ok, phase, nextQuestion }`
-  - POST `/api/flow/answer` — `{ threadId: uuid; questionId: enum; answer: string }` → `{ ok, phase, nextQuestion? | planPreview? }`
-  - POST `/api/flow/peek` — `?threadId=uuid` (GET in hook) → `{ ok, phase, nextQuestion?, snapshot? }`
-  - POST `/api/flow/confirm` — `{ threadId: uuid }` → `{ ok, phase }`
-  - POST `/api/flow/intent` — `{ message: string; phase: string }` → `{ intent: string }` (when feature enabled)
-
-- Translator (feature-flagged)
-  - POST `/api/translator/preview` — `{ threadId: uuid }` → `{ ok, preview, cached?, debug }`
-    - Rate limiting: 30 req/min per threadId
-  - POST `/api/translator/accept-lines` — `{ threadId: uuid; selections: Array<{ index:number; text:string }>} → { ok }`
-
-### 2) Request/response formats
-
-- Validated with Zod in `src/lib/schemas.ts` and route-local schemas
-- JSON responses via `NextResponse.json`
-
-### 3) Authentication requirements
-
-- Routes using `requireUser` require Supabase Bearer token
-- Public routes: `/api/chat` (stub), `/api/constraints`, `/api/variants`, `/api/rag`, and translator preview gate by feature flag + moderation
-
-### 4) Rate limiting
-
-- Implemented in `lib/ai/ratelimit.ts`; currently applied to `/api/translator/preview` (30/min per thread)
-
-### 5) Error handling patterns
-
-- 400 for validation errors with Zod `.flatten()`
-- 401 for unauthenticated
-- 404 for missing resources
-- 409 for invalid state transitions
-- 429 for rate limiting
-- 502 for malformed LLM output
-
-### 6) Middleware used
-
-- `requireUser` composes `@supabase/ssr` with Authorization header passthrough
-- No Next.js `middleware.ts` present; security headers configured in `next.config.ts`
-
-### 7) External API integrations
-
-- OpenAI chat completions for translator; moderations for content checks
-- Supabase for auth, DB, and storage
+```

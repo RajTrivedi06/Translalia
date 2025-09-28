@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useMutation } from "@tanstack/react-query";
+// import { useMutation } from "@tanstack/react-query";
 import ThreadsDrawer from "./ThreadsDrawer";
 import { useWorkspace } from "@/store/workspace";
 import { useThreadMessages } from "@/hooks/useThreadMessages";
@@ -11,6 +11,14 @@ import { useInterviewFlow } from "@/hooks/useInterviewFlow";
 import PlanBuilderOverviewSheet from "@/components/workspace/flow/PlanBuilderOverviewSheet";
 import { routeIntent } from "@/server/flow/intent";
 import { softReply } from "@/server/flow/softReplies";
+import AttachmentButton from "@/components/chat/AttachmentButton";
+import UploadsTray from "@/components/chat/UploadsTray";
+import UploadListItem from "@/components/chat/UploadListItem";
+import { useUploadsStore } from "@/state/uploads";
+import { useUploadsList, useUploadMutation } from "@/hooks/uploadsQuery";
+import { assertOnline } from "@/lib/net/isOnline";
+import { toastError } from "@/lib/ui/toast";
+import { isSidebarLayoutEnabled } from "@/lib/featureFlags";
 
 function renderContentWithCitations(
   content: string,
@@ -39,27 +47,41 @@ function renderContentWithCitations(
   return parts;
 }
 
-export function ChatPanel({ projectId }: { projectId?: string }) {
+export function ChatPanel({
+  projectId,
+  threadId: pThreadId,
+}: {
+  projectId?: string;
+  threadId?: string | null;
+}) {
+  const sidebarLayout = isSidebarLayoutEnabled();
   const [text, setText] = React.useState("");
   const [cites, setCites] = React.useState<string[]>([]);
+  const { list, removeByName } = useUploadsStore();
   const addVersion = useWorkspace((s) => s.addVersion);
-  const threadId = useWorkspace((s) => s.threadId);
-  const {
-    peek,
-    start,
-    answer,
-    confirm,
-    enhancer,
-    translate,
-    translatorPreview,
-    acceptLines,
-  } = useInterviewFlow(threadId);
+  const threadIdFromStore = useWorkspace((s) => s.threadId);
+  const threadId = (pThreadId ?? threadIdFromStore) as string | undefined;
+  const tId = threadId ?? null;
+  // Preload uploads for this thread and hydrate the store
+  useUploadsList(tId);
+  const items = list(tId);
+  const uploadMut = useUploadMutation(tId);
+  async function onFiles(files: FileList) {
+    try {
+      assertOnline();
+    } catch (e) {
+      const msg =
+        e instanceof Error ? e.message : "You’re offline — try again later.";
+      toastError(msg);
+      return;
+    }
+    for (const f of Array.from(files)) {
+      uploadMut.mutate(f);
+    }
+  }
+  const { peek, start, answer, translatorPreview } = useInterviewFlow(threadId);
   const phase = peek.data?.phase ?? "welcome";
   const nextQ = peek.data?.nextQuestion ?? null;
-  const snapshot = peek.data?.snapshot ?? {
-    poem_excerpt: "",
-    collected_fields: {} as Record<string, unknown>,
-  };
   const [planOpen, setPlanOpen] = React.useState(false);
   const [translatorOpen, setTranslatorOpen] = React.useState(false);
   const [translatorData, setTranslatorData] = React.useState<{
@@ -69,6 +91,11 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
   const [translatorError, setTranslatorError] = React.useState<string | null>(
     null
   );
+  // Close any open citation state on thread change
+  React.useEffect(() => {
+    setCites([]);
+    setCiteVersionId("");
+  }, [threadId]);
   const inputRef = React.useRef<HTMLInputElement | null>(null);
   const versions = useWorkspace((s) => s.versions);
   const setActiveVersionId = useWorkspace((s) => s.setActiveVersionId);
@@ -79,54 +106,41 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
     refetch,
     isFetching,
   } = useThreadMessages(projectId, threadId);
-  const { data: nodes } = useNodes(threadId || undefined);
+  const { data: nodes } = useNodes(projectId, threadId || undefined);
   const inInstructionMode = (nodes?.length || 0) > 0;
   const [instruction, setInstruction] = React.useState("");
   const [citeVersionId, setCiteVersionId] = React.useState<string | "">("");
   const [assistantNotes, setAssistantNotes] = React.useState<string[]>([]);
-  // Legacy /api/chat hook retained for the /prismatic command; not used otherwise
-  const { mutate: _sendChatLegacy } = useMutation({
-    mutationFn: async (payload: { text: string }) => {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error("Chat send failed");
-      return res.json();
-    },
-    onSuccess: () => {
-      setText("");
-    },
-  });
+  // Legacy /api/chat hook removed (unused)
 
   React.useEffect(() => {
     inputRef.current?.focus();
   }, [threadId]);
 
-  React.useEffect(() => {
-    (async () => {
-      if (
-        peek.data?.phase === "translating" &&
-        !translatorData &&
-        !translatorPreview.isPending &&
-        process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR === "1"
-      ) {
-        try {
-          const pv = await translatorPreview.mutateAsync();
-          setTranslatorData({
-            lines: pv.preview.lines,
-            notes: pv.preview.notes,
-          });
-          setTranslatorOpen(true);
-          setTranslatorError(null);
-        } catch (e) {
-          setTranslatorError("Preview failed. Please retry.");
-        }
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [peek.data?.phase]);
+  // Disabled auto-preview on phase change to prevent unintended version creation
+  // React.useEffect(() => {
+  //   (async () => {
+  //     if (
+  //       peek.data?.phase === "translating" &&
+  //       !translatorData &&
+  //       !translatorPreview.isPending &&
+  //       process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR === "1"
+  //     ) {
+  //       try {
+  //         const pv = await translatorPreview.mutateAsync();
+  //         setTranslatorData({
+  //           lines: pv.preview.lines,
+  //           notes: pv.preview.notes,
+  //         });
+  //         setTranslatorOpen(true);
+  //         setTranslatorError(null);
+  //       } catch {
+  //         setTranslatorError("Preview failed. Please retry.");
+  //       }
+  //     }
+  //   })();
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [peek.data?.phase]);
 
   function toggleCite(id: string) {
     setCites((prev) =>
@@ -135,38 +149,44 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <ThreadsDrawer projectId={projectId} />
-      <div className="border-b p-3 font-semibold">Chat</div>
-      <div className="flex-1 overflow-auto p-2 space-y-2 text-sm">
-        {phase === "welcome" ? (
-          <div className="mb-2 rounded-md border p-3 text-sm text-neutral-600 dark:text-neutral-300">
-            <b>Welcome to Metamorphs.</b> Paste your poem or one stanza in a
-            single message. Then answer a few short questions.
-          </div>
-        ) : null}
-        {!threadId ? (
-          <p className="text-neutral-500">
-            Create or select a chat to start messaging.
-          </p>
-        ) : isFetching ? (
-          <p className="text-neutral-500">Loading messages…</p>
-        ) : messages.length === 0 ? (
-          <p className="text-neutral-500">No messages yet.</p>
-        ) : (
-          messages.map((m) => (
-            <MessageBubble
-              key={m.id}
-              role={m.role}
-              content={m.content}
-              onCiteClick={(id: string) => {
-                setActiveVersionId(id);
-                setHighlightVersionId(id);
-              }}
-            />
-          ))
-        )}
-      </div>
+    <div className="flex h-full min-h-0 min-w-0 flex-col">
+      {!sidebarLayout && !threadId ? (
+        <ThreadsDrawer projectId={projectId} />
+      ) : null}
+      {!sidebarLayout ? (
+        <div className="border-b p-3 font-semibold">Chat</div>
+      ) : null}
+      {!sidebarLayout ? (
+        <div className="flex-1 overflow-auto p-2 space-y-2 text-sm">
+          {phase === "welcome" ? (
+            <div className="mb-2 rounded-md border p-3 text-sm text-neutral-600 dark:text-neutral-300">
+              <b>Welcome to Metamorphs.</b> Paste your poem or one stanza in a
+              single message. Then answer a few short questions.
+            </div>
+          ) : null}
+          {!threadId ? (
+            <p className="text-neutral-500">
+              Create or select a chat to start messaging.
+            </p>
+          ) : isFetching ? (
+            <p className="text-neutral-500">Loading messages…</p>
+          ) : messages.length === 0 ? (
+            <p className="text-neutral-500">No messages yet.</p>
+          ) : (
+            messages.map((m) => (
+              <MessageBubble
+                key={m.id}
+                role={m.role}
+                content={m.content}
+                onCiteClick={(id: string) => {
+                  setActiveVersionId(id);
+                  setHighlightVersionId(id);
+                }}
+              />
+            ))
+          )}
+        </div>
+      ) : null}
       {false && translatorOpen && translatorData && (
         <div className="mb-3 rounded-lg border p-3 bg-neutral-50 dark:bg-neutral-900/40">
           <div className="flex items-center justify-between mb-2">
@@ -185,7 +205,7 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
                 className="text-xs underline"
                 onClick={async () => {
                   try {
-                    const pv = await translatorPreview.mutateAsync();
+                    const pv = await translatorPreview.mutateAsync(undefined);
                     setTranslatorData({
                       lines: pv.preview.lines,
                       notes: pv.preview.notes,
@@ -205,7 +225,7 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
       )}
       {threadId ? (
         <div className="flex flex-col gap-2 border-t p-2">
-          {!inInstructionMode ? (
+          {!sidebarLayout && !inInstructionMode ? (
             <div className="flex flex-wrap gap-2">
               <span className="text-xs text-neutral-500">Cite version:</span>
               {versions.map((v) => {
@@ -228,7 +248,8 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
               })}
             </div>
           ) : null}
-          {inInstructionMode ? (
+          {/* Clarifier card removed */}
+          {!sidebarLayout && inInstructionMode ? (
             <div className="space-y-2">
               <div className="text-xs text-neutral-500">Instruction mode</div>
               <div className="flex items-center gap-2">
@@ -345,7 +366,7 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
                     tags: saved.version.tags ?? [],
                   });
                 } else {
-                  alert(saved?.error ?? "Failed to save version");
+                  toastError(saved?.error ?? "Failed to save version");
                 }
                 await refetch();
               }
@@ -381,7 +402,7 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
             });
             if (!res.ok) {
               const json = await res.json().catch(() => ({}));
-              alert(json?.error || "Failed to send");
+              toastError(json?.error || "Failed to send");
               return;
             }
             // Intent routing
@@ -479,7 +500,7 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
                   });
                 }
               }
-            } catch (err) {
+            } catch {
               // ignore and proceed; errors surface via toasts elsewhere
             }
             setText("");
@@ -510,7 +531,7 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
                   setTranslatorOpen(true);
                   if (!translatorData) {
                     try {
-                      const pv = await translatorPreview.mutateAsync();
+                      const pv = await translatorPreview.mutateAsync(undefined);
                       setTranslatorData({
                         lines: pv.preview.lines,
                         notes: pv.preview.notes,
@@ -534,13 +555,31 @@ export function ChatPanel({ projectId }: { projectId?: string }) {
               Send
             </button>
           </div>
+          <div className="mt-3">
+            <AttachmentButton onFiles={onFiles} />
+          </div>
+          <div className="mt-3">
+            <UploadsTray
+              items={items}
+              renderItem={(it, i) => (
+                <UploadListItem
+                  key={`${it.name}-${i}`}
+                  it={it}
+                  onRemove={() => removeByName(tId, it.name)}
+                  onDeleted={() => removeByName(tId, it.name)}
+                />
+              )}
+            />
+          </div>
         </form>
       ) : null}
-      <PlanBuilderOverviewSheet
-        threadId={threadId || ""}
-        open={planOpen}
-        onOpenChange={setPlanOpen}
-      />
+      {!sidebarLayout ? (
+        <PlanBuilderOverviewSheet
+          threadId={threadId || ""}
+          open={planOpen}
+          onOpenChange={setPlanOpen}
+        />
+      ) : null}
     </div>
   );
 }

@@ -34,27 +34,7 @@ export default function ThreadsDrawer({ projectId }: ThreadsDrawerProps) {
     },
   });
 
-  async function onNewChat() {
-    if (!projectId) return;
-    const { data: sessionData } = await supabase.auth.getSession();
-    const accessToken = sessionData.session?.access_token;
-    const res = await fetch("/api/threads", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-      },
-      body: JSON.stringify({ projectId }),
-    });
-    const json = await res.json();
-    if (!res.ok) {
-      alert(json?.error ?? "Failed to create thread");
-      return;
-    }
-    await refetch();
-    const newId = (json?.thread?.id as string) || undefined;
-    if (newId) setThreadId(newId);
-  }
+  // New chat creation is disabled within thread view; available only on the list page.
 
   return (
     <div className="border-b">
@@ -67,14 +47,7 @@ export default function ThreadsDrawer({ projectId }: ThreadsDrawerProps) {
         >
           {open ? "▼" : "►"} Chats
         </button>
-        <button
-          type="button"
-          onClick={onNewChat}
-          className="rounded-md border px-2 py-1 text-sm"
-          disabled={!projectId || isFetching}
-        >
-          New Chat
-        </button>
+        {/* New chat disabled in-thread; use list page */}
       </div>
 
       {open ? (

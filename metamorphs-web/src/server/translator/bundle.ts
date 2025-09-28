@@ -4,9 +4,16 @@ import { getThreadState } from "@/server/threadState";
 export type TranslateBundle = {
   poem: string;
   enhanced: Record<string, unknown>;
+  glossary?: Array<{
+    term: string;
+    origin?: string;
+    dialect_marker?: string;
+    source?: string;
+  }>;
   line_policy: "line-preserving" | "free";
   acceptedLines: string[];
   ledgerNotes: string[]; // last 3–5
+  journeySummaries: string[]; // last 5
   summary: string;
   debug: {
     poemChars: number;
@@ -24,6 +31,16 @@ export async function buildTranslateBundle(
 
   const poem = (state.poem_excerpt ?? "").trim();
   const enhanced = (state.enhanced_request ?? {}) as Record<string, unknown>;
+  const glossaryRaw = (state as unknown as { glossary_terms?: unknown })
+    .glossary_terms;
+  const glossary = Array.isArray(glossaryRaw)
+    ? (glossaryRaw as Array<{
+        term: string;
+        origin?: string;
+        dialect_marker?: string;
+        source?: string;
+      }>)
+    : undefined;
   const line_policy = (state.collected_fields?.line_policy ??
     "line-preserving") as "line-preserving" | "free";
   const summary = state.summary ?? "";
@@ -37,6 +54,33 @@ export async function buildTranslateBundle(
     ? accepted.lines
     : [];
 
+  // Fetch recent journey items scoped to this thread
+  // TODO-VERIFY: when/if a real 'thread_id' column exists, switch to .eq("thread_id", threadId)
+  const { data: jrows } = await supabase
+    .from("journey_items")
+    .select("id, kind, summary, created_at, meta")
+    .filter("meta->>thread_id", "eq", threadId)
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  const journeySummaries = (jrows || []).map(
+    (r: {
+      kind?: string;
+      summary?: unknown;
+      meta?: { selections?: unknown };
+    }) => {
+      const s = String(r.summary || "")
+        .replace(/\s+/g, " ")
+        .slice(0, 200);
+      const maybeLen = (
+        r.meta as unknown as { selections?: { length?: number } }
+      )?.selections?.length;
+      const linesCount =
+        typeof maybeLen === "number" ? ` (lines: ${maybeLen})` : "";
+      return `${r.kind || "activity"}: ${s}${linesCount}`;
+    }
+  );
+
   const debug = {
     poemChars: poem.length,
     acceptedCount: acceptedLines.length,
@@ -47,9 +91,11 @@ export async function buildTranslateBundle(
   return {
     poem,
     enhanced,
+    glossary,
     line_policy,
     acceptedLines,
     ledgerNotes,
+    journeySummaries,
     summary,
     debug,
   };

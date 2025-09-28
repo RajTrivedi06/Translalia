@@ -1,13 +1,8 @@
 import { z } from "zod";
-
-export const EnhancerPayloadSchema = z.object({
-  plain_english_summary: z.string(),
-  poem_excerpt: z.string(),
-  enhanced_request: z.record(z.any()),
-  warnings: z.array(z.string()).optional(),
-});
-
-export type EnhancerPayload = z.infer<typeof EnhancerPayloadSchema>;
+import { ENHANCER_PAYLOAD } from "@/lib/ai/schemas";
+// NOTE(cursor): Use centralized Enhancer schema
+export const EnhancerPayloadSchema = ENHANCER_PAYLOAD;
+export type EnhancerPayload = z.infer<typeof ENHANCER_PAYLOAD>;
 
 export const TranslatorOutputSchema = z.object({
   versionA: z.string(), // poem text

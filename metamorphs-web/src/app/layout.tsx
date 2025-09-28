@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
+import MainNav from "@/components/nav/MainNav";
 import { AuthNav } from "@/components/auth/AuthNav";
 
 const geistSans = Geist({
@@ -38,6 +39,7 @@ export default function RootLayout({
               <AuthNav />
             </div>
           </header>
+          <MainNav />
           {/* Default: allow pages to size naturally; workspace routes add their own wrapper */}
           <main className="min-h-[calc(100vh-var(--header-h))]">
             {children}

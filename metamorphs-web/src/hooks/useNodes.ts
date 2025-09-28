@@ -1,6 +1,7 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
+// store not required for visibility-gated polling; controlled via opts
 
 export type NodeRow = {
   id: string;
@@ -31,13 +32,20 @@ async function fetchNodes(threadId: string): Promise<NodeRow[]> {
   return Array.isArray(j?.nodes) ? (j.nodes as NodeRow[]) : (j as NodeRow[]);
 }
 
-export function useNodes(threadId: string | undefined) {
+export function useNodes(
+  projectId: string | undefined,
+  threadId: string | undefined,
+  opts?: { enabled?: boolean }
+) {
+  const enabled = (!!projectId &&
+    !!threadId &&
+    (opts?.enabled ?? true)) as boolean;
   return useQuery({
-    queryKey: ["nodes", threadId],
+    queryKey: ["nodes", projectId, threadId],
     queryFn: () => fetchNodes(threadId!),
-    enabled: !!threadId,
+    enabled,
     staleTime: 0,
     refetchOnWindowFocus: true,
-    refetchInterval: 1500,
+    refetchInterval: enabled ? 1500 : false,
   });
 }

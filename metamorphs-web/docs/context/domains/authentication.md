@@ -1,147 +1,177 @@
+### [Last Updated: 2025-09-16]
+
 ## Authentication
 
-### Overview
+### Methods
 
-Supabase handles auth (email/password and OAuth). Client hooks manage session, and API routes enforce authentication via a server-side guard.
+- Supabase Auth (email/password, OAuth) with SSR cookies for API routes and Bearer fallback for client calls.
 
-### Complete flow: login → session → logout
+### Guards & Permissions
 
-- Sign-in UI uses username-or-email resolution, then `signInWithPassword`.
-- Session is maintained by Supabase; client listens to `onAuthStateChange` and server uses cookie-based SSR client.
-- Logout signs out via Supabase client and refreshes UI.
+- Server routes use one of two guards:
+  - Simple guard (SSR cookie only):
 
-#### Sign in (username or email)
-
-Path: `src/app/auth/sign-in/page.tsx`
-
-```tsx
-// src/app/auth/sign-in/page.tsx
-const email = await resolveIdentifierToEmail(identifier);
-const { error } = await supabase.auth.signInWithPassword({ email, password });
-```
-
-Resolver:
-
-```ts
-// src/lib/authHelpers.ts
-export async function resolveIdentifierToEmail(
-  identifier: string
-): Promise<string> {
-  if (identifier.includes("@")) return identifier.toLowerCase();
-  const { data } = await supabase
-    .from("profiles")
-    .select("email")
-    .eq("username", identifier)
-    .single();
-  if (!data?.email) throw new Error("No account found for that username.");
-  return data.email.toLowerCase();
+```4:11:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/auth/requireUser.ts
+/** Ensures a user session exists; returns 401 JSON response otherwise. */
+export async function requireUser() {
+  const supabase = await supabaseServer();
+  const { data, error } = await supabase.auth.getUser();
+  if (error or !data?.user) return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
 }
 ```
 
-#### Session management (client)
+- Full guard (SSR cookie or Authorization header):
 
-Path: `src/hooks/useSupabaseUser.ts`
-
-```ts
-// src/hooks/useSupabaseUser.ts
-const { data } = await supabase.auth.getUser();
-const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-  setUser(session?.user ?? null);
-});
+```35:50:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/apiGuard.ts
+if (authH.toLowerCase().startsWith("bearer ")) {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const sbBearer = createSupabaseClient(url, anon, {
+    global: { headers: { Authorization: authH } },
+  }) as unknown as SupabaseClient;
+  const { data: u2 } = await sbBearer.auth.getUser();
+}
 ```
 
-#### Session management (server)
+### Cookie vs Header
 
-Path: `src/lib/supabaseServer.ts`
+- Cookie-based SSR client:
 
-```ts
-// src/lib/supabaseServer.ts
+```7:13:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/supabaseServer.ts
 return createServerClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  { cookies: cookieAdapter }
-);
+  { cookies: { get, set, remove } }
+)
 ```
 
-#### Logout
+- Header-based Bearer fallback (API-only): see guard above.
 
-Paths: `src/components/auth/AuthButton.tsx`, `src/components/auth/AuthNav.tsx`
+### Sample protected-route template
 
-```tsx
-// src/components/auth/AuthNav.tsx
-await supabase.auth.signOut();
-router.refresh();
-```
-
-### Protected routes (APIs)
-
-Use a guard that validates the Supabase session and injects a server client.
-Path: `src/lib/apiGuard.ts`
-
-```ts
-// src/lib/apiGuard.ts
-export async function requireUser(req: NextRequest) {
-  const sb = makeServerClientWithAuth(req);
-  const { data } = await sb.auth.getUser();
-  if (!data?.user)
-    return {
-      user: null,
-      sb,
-      res: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
-    };
-  return { user: data.user, sb, res: null };
-}
-```
-
-Example usage:
-
-```ts
-// src/app/api/threads/route.ts
+```16:25:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/route.ts
 export async function POST(req: NextRequest) {
   const guard = await requireUser(req);
-  if (guard.res) return guard.res;
-  // ... proceed with authenticated logic
+  if ("res" in guard) return guard.res;
+  const parsed = createVersionSchema.safeParse(await req.json());
+  if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 }
 ```
 
-### Protected pages (patterns)
+### WhoAmI/Debug
 
-- Server components: use `supabaseServer()` to check session and redirect unauthenticated users.
-- Client components: gate render with `useSupabaseUser()` and show sign-in links.
+- Auth debug route returns cookie names and user id when present:
 
-Example server-check (pattern):
-
-```ts
-// app/(app)/workspace/page.tsx (pattern)
-const sb = await supabaseServer();
-const { data } = await sb.auth.getUser();
-if (!data.user) redirect("/auth/sign-in");
+```6:15:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/auth/debug-cookies/route.ts
+export async function GET() {
+  const cookieStore = await cookies();
+  const supabase = await supabaseServer();
+  const { data } = await supabase.auth.getUser();
+  return NextResponse.json({ cookie_names: cookieStore.getAll().map((c)=>c.name), uid: data?.user?.id ?? null });
+}
 ```
 
-### Role-based access control (RBAC)
+### Auth Patterns
 
-- Database-level RBAC via RLS is recommended (not shown in repo).
-- Enforce project membership in policies; check `owner_id`/`created_by` on rows.
-- API routes assume RLS guards additional constraints.
+| Entry point       | Guard type          | Failure behavior      | Anchor                                                                                 |
+| ----------------- | ------------------- | --------------------- | -------------------------------------------------------------------------------------- |
+| Cookie SSR helper | SSR cookie (server) | 401 JSON when missing | ```4:11:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/auth/requireUser.ts |
 
-### Password reset flow
+/\*_ Ensures a user session exists; returns 401 JSON response otherwise. _/
+export async function requireUser() {
+const supabase = await supabaseServer();
+const { data, error } = await supabase.auth.getUser();
+if (error || !data?.user)
+return {
+user: null as any,
+response: NextResponse.json({ error: "Unauthenticated" }, { status: 401 }),
+};
+}
 
-- Not wired in pages yet; Supabase supports password recovery via OTP link.
-- Pattern:
-  1. `supabase.auth.resetPasswordForEmail(email, { redirectTo })`
-  2. On the redirect page, call `supabase.auth.updateUser({ password: newPwd })`.
+````|
+| API guard (cookie → Bearer) | SSR cookie or Authorization: Bearer | 401 JSON when none | ```35:45:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/apiGuard.ts
+if (authH.toLowerCase().startsWith("bearer ")) {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const sbBearer = createSupabaseClient(url, anon, {
+    global: { headers: { Authorization: authH } },
+  }) as unknown as SupabaseClient;
+}
+``` |
+| Supabase SSR client | Cookie wiring | Reads/writes cookies | ```4:13:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/supabaseServer.ts
+export function supabaseServer() {
+  const cookieStore = cookies() as any;
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { get(name) { return cookieStore.get(name)?.value; }, set(name, value, options) { cookieStore.set({ name, value, ...options }); }, remove(name, options) { cookieStore.set({ name, value: "", path: options?.path ?? "/", httpOnly: options?.httpOnly ?? true, secure: process.env.NODE_ENV === "production", sameSite: (options?.sameSite as any) ?? "lax", maxAge: 0, expires: new Date(0), ...options, }); } } }
+  );
+}
+``` |
 
-### Social auth
+Example (protected list route):
 
-Path: `src/components/auth/AuthSheet.tsx`
+```16:21:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/nodes/route.ts
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const threadId = searchParams.get("threadId");
+  if (!threadId)
+    return NextResponse.json({ ok: false, error: "MISSING_THREAD_ID" }, { status: 400 });
+  const guard = await requireUser(req);
+  if ("res" in guard) return guard.res;
+````
+
+### Protected route template
 
 ```ts
-await supabase.auth.signInWithOAuth({
-  provider: "google",
-  options: { redirectTo },
+import { NextRequest, NextResponse } from "next/server";
+import { requireUser } from "@/lib/apiGuard";
+import { z } from "zod";
+
+const Body = z.object({
+  /* fields */
 });
-await supabase.auth.signInWithOAuth({
-  provider: "github",
-  options: { redirectTo },
-});
+export async function POST(req: NextRequest) {
+  const guard = await requireUser(req);
+  if ("res" in guard) return guard.res;
+
+  const parsed = Body.safeParse(await req.json());
+  if (!parsed.success)
+    return NextResponse.json(
+      { error: parsed.error.flatten() },
+      { status: 400 }
+    );
+
+  // business logic
+  return NextResponse.json({ ok: true });
+}
+```
+
+### JSON: Protected route config (LLM consumption)
+
+```json
+{
+  "guard": "cookie_or_bearer",
+  "rate_limit": {
+    "bucket": "example:${threadId}",
+    "limit": 30,
+    "window_ms": 60000
+  },
+  "cache": {
+    "key_template": "example:${stableHash(payload)}",
+    "ttl_sec": 3600
+  },
+  "errors": [400, 401, 403, 404, 409, 429, 500, 502]
+}
+```
+
+Scenario: Bearer token present but invalid → 401
+
+```36:50:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/apiGuard.ts
+const authH = req.headers.get("authorization") || "";
+if (authH.toLowerCase().startsWith("bearer ")) {
+  const { data: u2, error: e2 } = await sbBearer.auth.getUser();
+  if (!u2?.user)
+    return { res: NextResponse.json({ ok: false, code: "UNAUTHORIZED" }, { status: 401 }) } as const;
+}
 ```

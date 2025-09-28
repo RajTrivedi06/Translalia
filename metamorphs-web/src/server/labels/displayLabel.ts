@@ -19,6 +19,18 @@ export async function allocateDisplayLabel(threadId: string) {
 
   const displayLabel = indexToDisplayLabel(nextIndex);
 
+  // Debug logging for label allocation
+  console.log("[LABEL] Thread:", threadId);
+  console.log("[LABEL] Current index:", currentIndex);
+  console.log("[LABEL] Next index:", nextIndex);
+  console.log("[LABEL] Display label:", displayLabel);
+  if (!displayLabel || displayLabel.includes("?")) {
+    console.error("[LABEL] Invalid label generated!", {
+      currentIndex,
+      nextIndex,
+    });
+  }
+
   const nextState = { ...state, last_display_label_index: nextIndex } as Record<
     string,
     unknown
@@ -33,5 +45,6 @@ export async function allocateDisplayLabel(threadId: string) {
     index: nextIndex,
     displayLabel,
     projectId: thread.project_id as string,
+    nextIndex,
   };
 }

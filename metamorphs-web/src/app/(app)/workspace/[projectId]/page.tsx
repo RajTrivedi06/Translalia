@@ -1,25 +1,16 @@
-import * as React from "react";
-import { use } from "react";
-import { WorkspaceShell } from "@/components/workspace/WorkspaceShell";
+import { redirect } from "next/navigation";
 
-type PageProps = {
-  params?: Promise<{ projectId?: string | string[] }>;
-  searchParams?: Promise<{ thread?: string | string[] }>;
-};
-
-export default function ProjectWorkspacePage({
+export default function LegacyWorkspacePage({
   params,
   searchParams,
-}: PageProps) {
-  const resolvedParams = use(
-    params ?? Promise.resolve<{ projectId?: string | string[] }>({})
-  );
-  const resolvedSearch = use(
-    searchParams ?? Promise.resolve<{ thread?: string | string[] }>({})
-  );
-  const value = resolvedParams.projectId;
-  const projectId = Array.isArray(value) ? value[0] : value;
-  const threadValue = resolvedSearch.thread;
-  const threadId = Array.isArray(threadValue) ? threadValue[0] : threadValue;
-  return <WorkspaceShell projectId={projectId} threadId={threadId} />;
+}: {
+  params: { projectId: string };
+  searchParams: { thread?: string };
+}) {
+  const { projectId } = params;
+  const tid = searchParams?.thread;
+  if (tid) {
+    redirect(`/workspaces/${projectId}/threads/${tid}`);
+  }
+  redirect(`/workspaces/${projectId}`);
 }
