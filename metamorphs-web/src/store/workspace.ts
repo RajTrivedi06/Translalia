@@ -36,14 +36,14 @@ type WorkspaceState = {
   setVersionPos: (id: string, pos: { x: number; y: number }) => void;
   tidyPositions: () => void;
   ui: {
-    currentView: "line-selection" | "workshop" | "notebook";
+    currentView: "line-selection" | "workshop" | "notebook" | "chat";
     sidebarCollapsed: boolean;
     currentLine: number | null;
     targetLang?: string;
     targetStyle?: string;
     includeDialectOptions?: boolean;
   };
-  setCurrentView: (v: "line-selection" | "workshop" | "notebook") => void;
+  setCurrentView: (v: "line-selection" | "workshop" | "notebook" | "chat") => void;
   setSidebarCollapsed: (v: boolean) => void;
   setCurrentLine: (n: number | null) => void;
   setTargetLang: (v: string) => void;
