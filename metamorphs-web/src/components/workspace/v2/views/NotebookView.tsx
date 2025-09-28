@@ -4,25 +4,42 @@ import NotebookPanel from "@/components/notebook/NotebookPanel";
 import { useWorkspace } from "@/store/workspace";
 
 export function NotebookView() {
+  const txt = useWorkspace((s) => s.workshopDraft.notebookText);
   const setCurrentView = useWorkspace((s) => s.setCurrentView);
-  // future: use currentLine to prefill content
+  const clearNotebookDraft = useWorkspace((s) => s.clearNotebookDraft);
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="border-b p-3 flex items-center justify-between">
-        <div className="font-semibold">Notebook</div>
+    <div>
+      <h1 className="text-base font-semibold mb-3">Notebook</h1>
+
+      <div className="mb-3 flex flex-wrap gap-2">
         <button
-          className="rounded-md border px-3 py-1.5 text-sm"
+          className="rounded-md border px-3 py-1.5 text-sm focus:outline-none focus:ring-2"
           onClick={() => setCurrentView("workshop")}
-          aria-label="Back to Workshop"
         >
-          Back to Workshop
+          ← Back to Workshop
+        </button>
+        <button
+          className="rounded-md border px-3 py-1.5 text-sm focus:outline-none focus:ring-2"
+          onClick={() => clearNotebookDraft()}
+        >
+          Clear draft
+        </button>
+        <button
+          className="rounded-md border px-3 py-1.5 text-sm focus:outline-none focus:ring-2"
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(txt);
+            } catch {
+              // Silently fail if clipboard API is not available
+            }
+          }}
+        >
+          Copy
         </button>
       </div>
-      <div className="flex-1 overflow-auto p-3">
-        <div className="mb-2 text-xs text-neutral-500">Meter: — | Rhyme: —</div>
-        <NotebookPanel />
-      </div>
+
+      <NotebookPanel initial={txt} />
     </div>
   );
 }
