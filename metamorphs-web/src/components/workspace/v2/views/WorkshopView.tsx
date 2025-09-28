@@ -138,7 +138,11 @@ export function WorkshopView() {
       {/* Token Cards */}
       <div className="flex-1 overflow-y-auto p-4">
         {currentLine ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <>
+            <p className="sr-only">
+              Editing line {currentLineIdx + 1} of {explodedLines.length}.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {currentLine.tokens
               .filter(token => token.options.length > 0) // Only show tokens with options
               .map((token, tokenIndex) => (
@@ -152,7 +156,8 @@ export function WorkshopView() {
                   onUngroup={handleUngroup}
                 />
               ))}
-          </div>
+            </div>
+          </>
         ) : (
           <div className="text-center text-neutral-500">
             <p>No tokens available for this line.</p>

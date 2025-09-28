@@ -27,7 +27,7 @@ export function TokenCard({
   const [showMenu, setShowMenu] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement>(null);
 
-  // Close menu when clicking outside
+  // Close menu when clicking outside or pressing Esc
   React.useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
@@ -35,9 +35,19 @@ export function TokenCard({
       }
     }
 
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setShowMenu(false);
+      }
+    }
+
     if (showMenu) {
       document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
+      document.addEventListener("keydown", handleKeyDown);
+      return () => {
+        document.removeEventListener("mousedown", handleClickOutside);
+        document.removeEventListener("keydown", handleKeyDown);
+      };
     }
   }, [showMenu]);
 
@@ -53,9 +63,12 @@ export function TokenCard({
   return (
     <div
       role="group"
-      aria-label={token.surface}
+      aria-labelledby={`tok-${lineId}-${token.tokenId}-label`}
       className="rounded-xl border p-2 bg-white dark:bg-neutral-900"
     >
+      <span id={`tok-${lineId}-${token.tokenId}-label`} className="sr-only">
+        Token "{token.surface}"
+      </span>
       <div className="flex items-center justify-between mb-2">
         <div className="text-xs text-neutral-600 dark:text-neutral-400 font-medium">
           {token.surface}
@@ -120,6 +133,7 @@ export function TokenCard({
                   : "bg-white text-neutral-900 border-neutral-300 hover:bg-neutral-50 dark:bg-neutral-800 dark:text-neutral-100 dark:border-neutral-600 dark:hover:bg-neutral-700"
               }`}
               title={`${opt.label} (${opt.dialect})`}
+              aria-label={`${opt.label} (${opt.dialect})`}
             >
               {opt.label}{" "}
               <span className="opacity-60 text-[10px]">({opt.dialect})</span>
