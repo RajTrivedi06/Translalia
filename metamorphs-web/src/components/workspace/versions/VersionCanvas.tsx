@@ -84,11 +84,6 @@ export function VersionCanvas() {
       .filter((id) => !seq.includes(id));
     return [...seq, ...remaining];
   }, [apiNodes]);
-  // Saved positions are not used for vertical spacing, but we keep X when snapping
-  const posById = React.useMemo(
-    () => new Map(versions.map((v) => [v.id, v.pos])),
-    [versions]
-  );
 
   const savePositions = React.useCallback(async () => {
     if (!projectId) return;

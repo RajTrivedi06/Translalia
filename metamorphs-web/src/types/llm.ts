@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { ENHANCER_PAYLOAD } from "@/lib/ai/schemas";
 // NOTE(cursor): Use centralized Enhancer schema
-export const EnhancerPayloadSchema = ENHANCER_PAYLOAD;
 export type EnhancerPayload = z.infer<typeof ENHANCER_PAYLOAD>;
 
 export const TranslatorOutputSchema = z.object({

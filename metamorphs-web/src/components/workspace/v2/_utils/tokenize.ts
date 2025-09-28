@@ -1,6 +1,6 @@
 // src/components/workspace/v2/_utils/tokenize.ts
 
-import { ExplodedToken, ExplodedLine, TokenOption, DialectTag } from "@/types/workshop";
+import { ExplodedToken, ExplodedLine, TokenOption } from "@/types/workshop";
 
 // Simple lexicon for deterministic mock tokenization
 const LEXICON: Record<string, TokenOption[]> = {

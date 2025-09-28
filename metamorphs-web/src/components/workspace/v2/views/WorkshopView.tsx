@@ -5,7 +5,6 @@ import * as React from "react";
 import { useWorkspace } from "@/store/workspace";
 import { useExplodeTokens } from "../_utils/useExplodeTokens";
 import { TokenCard } from "../components/TokenCard";
-import { getSourceLines } from "../_utils/data";
 import { useT } from "../_utils/i18n";
 import { groupWithNext, ungroup } from "../_utils/grouping";
 import type { ExplodedLine } from "@/types/workshop";
