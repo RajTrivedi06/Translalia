@@ -13,7 +13,9 @@ import { saveLocal, loadLocal } from "../_utils/persist";
 
 export function WorkshopView() {
   const t = useT();
-  const ui = useWorkspace((s) => s.ui);
+  // Narrow selectors for better performance
+  const currentLineIdx = useWorkspace((s) => s.ui.currentLine);
+  const includeDialectOptions = useWorkspace((s) => s.ui.includeDialectOptions);
   const threadId = useWorkspace((s) => s.threadId);
   const tokenSelections = useWorkspace((s) => s.tokensSelections);
   const notebookText = useWorkspace((s) => s.workshopDraft.notebookText);
@@ -41,13 +43,24 @@ export function WorkshopView() {
   // Use the explode tokens hook
   const { explodedLines, helpers } = useExplodeTokens(sourceLines);
 
-  // Get current line (for now, use the first line or currentLine from UI)
-  const currentLineIdx = ui.currentLine ?? 0;
-  const baseLine = explodedLines[currentLineIdx];
+  // Get current line
+  const baseLine = explodedLines[currentLineIdx ?? 0];
 
   // Local line override for ephemeral grouping (Phase 2 approach)
   const [lineOverrides, setLineOverrides] = React.useState<Record<string, ExplodedLine>>({});
   const currentLine = baseLine ? (lineOverrides[baseLine.lineId] || baseLine) : undefined;
+
+  // Memoize tokens for performance
+  const tokens = React.useMemo(() => currentLine?.tokens ?? [], [currentLine]);
+
+  // Windowing for extreme cases (300+ tokens)
+  const WINDOW = 150;
+  const [tokenCount, setTokenCount] = React.useState(WINDOW);
+  const visibleTokens = React.useMemo(() =>
+    tokens.filter(token => token.options.length > 0).slice(0, tokenCount),
+    [tokens, tokenCount]
+  );
+  const canLoadMore = tokens.filter(token => token.options.length > 0).length > tokenCount;
 
   // Hydrate from localStorage on thread change
   React.useEffect(() => {
@@ -171,23 +184,35 @@ export function WorkshopView() {
         {currentLine ? (
           <>
             <p className="sr-only">
-              Editing line {currentLineIdx + 1} of {explodedLines.length}.
+              Editing line {(currentLineIdx ?? 0) + 1} of {explodedLines.length}.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {currentLine.tokens
-              .filter(token => token.options.length > 0) // Only show tokens with options
-              .map((token, tokenIndex) => (
-                <TokenCard
-                  key={token.tokenId}
-                  lineId={currentLine.lineId}
-                  token={token}
-                  tokenIndex={tokenIndex}
-                  totalTokens={currentLine.tokens.length}
-                  onGroupWithNext={handleGroupWithNext}
-                  onUngroup={handleUngroup}
-                />
-              ))}
+              {visibleTokens.map((token, visibleIndex) => {
+                const originalIndex = tokens.indexOf(token);
+                return (
+                  <TokenCard
+                    key={token.tokenId}
+                    lineId={currentLine.lineId}
+                    token={token}
+                    tokenIndex={originalIndex}
+                    totalTokens={tokens.length}
+                    onGroupWithNext={handleGroupWithNext}
+                    onUngroup={handleUngroup}
+                  />
+                );
+              })}
             </div>
+
+            {canLoadMore && (
+              <div className="text-center mt-4">
+                <button
+                  className="rounded-md border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  onClick={() => setTokenCount(prev => prev + WINDOW)}
+                >
+                  Load more tokens ({tokens.filter(t => t.options.length > 0).length - tokenCount} remaining)
+                </button>
+              </div>
+            )}
           </>
         ) : (
           <div className="text-center text-neutral-500">
