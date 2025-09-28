@@ -9,10 +9,15 @@ import { getSourceLines } from "../_utils/data";
 import { useT } from "../_utils/i18n";
 import { groupWithNext, ungroup } from "../_utils/grouping";
 import type { ExplodedLine } from "@/types/workshop";
+import { saveLocal, loadLocal } from "../_utils/persist";
 
 export function WorkshopView() {
   const t = useT();
   const ui = useWorkspace((s) => s.ui);
+  const threadId = useWorkspace((s) => s.threadId);
+  const tokenSelections = useWorkspace((s) => s.tokensSelections);
+  const notebookText = useWorkspace((s) => s.workshopDraft.notebookText);
+  const clearSelections = useWorkspace((s) => s.clearSelections);
   const setCurrentLine = useWorkspace((s) => s.setCurrentLine);
   const setCurrentView = useWorkspace((s) => s.setCurrentView);
   const appendNotebook = useWorkspace((s) => s.appendNotebook);
@@ -43,6 +48,32 @@ export function WorkshopView() {
   // Local line override for ephemeral grouping (Phase 2 approach)
   const [lineOverrides, setLineOverrides] = React.useState<Record<string, ExplodedLine>>({});
   const currentLine = baseLine ? (lineOverrides[baseLine.lineId] || baseLine) : undefined;
+
+  // Hydrate from localStorage on thread change
+  React.useEffect(() => {
+    const saved = loadLocal<{ tokenSelections: any; notebookText: string }>(threadId);
+    if (saved) {
+      // Hydrate with setState calls
+      useWorkspace.setState((s) => ({
+        tokensSelections: saved.tokenSelections ?? s.tokensSelections,
+        workshopDraft: { notebookText: saved.notebookText ?? s.workshopDraft.notebookText },
+      }));
+    } else {
+      // Ensure clean slate per thread change
+      clearSelections();
+      useWorkspace.setState({ workshopDraft: { notebookText: "" } });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threadId]);
+
+  // Throttled save to localStorage
+  React.useEffect(() => {
+    const id = window.setTimeout(
+      () => saveLocal(threadId, { tokenSelections, notebookText }),
+      2000
+    );
+    return () => window.clearTimeout(id);
+  }, [threadId, tokenSelections, notebookText]);
 
   // Grouping handlers
   const handleGroupWithNext = React.useCallback((tokenIndex: number) => {
