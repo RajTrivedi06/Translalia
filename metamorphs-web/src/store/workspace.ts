@@ -50,11 +50,14 @@ type WorkspaceState = {
   setTargetStyle: (v: string) => void;
   setIncludeDialectOptions: (v: boolean) => void;
   tokensSelections: Record<string, Record<string, string>>;
+  workshopDraft: { notebookText: string };
   setTokenSelection: (
     lineId: string,
     tokenId: string,
     optionIdOrFreeText: string
   ) => void;
+  clearSelections: (lineId?: string) => void;
+  appendNotebook: (text: string) => void;
 };
 
 export const useWorkspace = create<WorkspaceState>((set) => ({
@@ -109,6 +112,7 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
       // Phase 0: clear only safe UI ephemera for V2 shell
       ui: { ...s.ui, currentView: "line-selection", currentLine: null },
       tokensSelections: {},
+      workshopDraft: { notebookText: "" },
     })),
   addVersion: (v) => set((s) => ({ versions: [...s.versions, v] })),
   addCompare: (c) => set((s) => ({ compares: [...s.compares, c] })),
@@ -140,6 +144,7 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
   setTargetStyle: (v) => set((s) => ({ ui: { ...s.ui, targetStyle: v } })),
   setIncludeDialectOptions: (v) => set((s) => ({ ui: { ...s.ui, includeDialectOptions: v } })),
   tokensSelections: {},
+  workshopDraft: { notebookText: "" },
   setTokenSelection: (lineId, tokenId, optionIdOrFreeText) =>
     set((s) => ({
       tokensSelections: {
@@ -150,4 +155,12 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
         },
       },
     })),
+  clearSelections: (lineId?: string) =>
+    set((s) =>
+      lineId
+        ? { tokensSelections: { ...s.tokensSelections, [lineId]: {} } }
+        : { tokensSelections: {} }
+    ),
+  appendNotebook: (text: string) =>
+    set((s) => ({ workshopDraft: { notebookText: s.workshopDraft.notebookText + text } })),
 }));
