@@ -39,10 +39,16 @@ type WorkspaceState = {
     currentView: "line-selection" | "workshop" | "notebook";
     sidebarCollapsed: boolean;
     currentLine: number | null;
+    targetLang?: string;
+    targetStyle?: string;
+    includeDialectOptions?: boolean;
   };
   setCurrentView: (v: "line-selection" | "workshop" | "notebook") => void;
   setSidebarCollapsed: (v: boolean) => void;
   setCurrentLine: (n: number | null) => void;
+  setTargetLang: (v: string) => void;
+  setTargetStyle: (v: string) => void;
+  setIncludeDialectOptions: (v: boolean) => void;
   tokensSelections: Record<string, Record<string, string>>;
   setTokenSelection: (
     lineId: string,
@@ -122,11 +128,17 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
     currentView: "line-selection",
     sidebarCollapsed: false,
     currentLine: null,
+    targetLang: "en",
+    targetStyle: "balanced",
+    includeDialectOptions: true,
   },
   setCurrentView: (v) => set((s) => ({ ui: { ...s.ui, currentView: v } })),
   setSidebarCollapsed: (v) =>
     set((s) => ({ ui: { ...s.ui, sidebarCollapsed: v } })),
   setCurrentLine: (n) => set((s) => ({ ui: { ...s.ui, currentLine: n } })),
+  setTargetLang: (v) => set((s) => ({ ui: { ...s.ui, targetLang: v } })),
+  setTargetStyle: (v) => set((s) => ({ ui: { ...s.ui, targetStyle: v } })),
+  setIncludeDialectOptions: (v) => set((s) => ({ ui: { ...s.ui, includeDialectOptions: v } })),
   tokensSelections: {},
   setTokenSelection: (lineId, tokenId, optionIdOrFreeText) =>
     set((s) => ({

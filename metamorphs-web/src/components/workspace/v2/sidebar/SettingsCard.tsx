@@ -1,61 +1,75 @@
 "use client";
+
 import * as React from "react";
 import { useWorkspace } from "@/store/workspace";
+import { useT } from "../_utils/i18n";
+
+const LANGS = ["en", "es", "fr", "de", "hi", "zh", "ar"]; // extend as needed
+const STYLES = [
+  { id: "literal", label: "Literal" },
+  { id: "balanced", label: "Balanced" },
+  { id: "formal", label: "Formal" },
+  { id: "dialect-rich", label: "Dialect-rich" },
+];
 
 export function SettingsCard() {
-  const [targetLang, setTargetLang] = React.useState<string>("en");
-  const [style, setStyle] = React.useState<string>("neutral");
-  // placeholder wiring; later integrate with a proper ui slice or persisted settings
-  const setCurrentView = useWorkspace((s) => s.setCurrentView);
+  const t = useT();
+  // Narrow selectors for performance
+  const targetLang = useWorkspace((s) => s.ui.targetLang);
+  const targetStyle = useWorkspace((s) => s.ui.targetStyle);
+  const includeDialectOptions = useWorkspace((s) => s.ui.includeDialectOptions);
+  const setTargetLang = useWorkspace((s) => s.setTargetLang);
+  const setTargetStyle = useWorkspace((s) => s.setTargetStyle);
+  const setIncludeDialectOptions = useWorkspace((s) => s.setIncludeDialectOptions);
+
   return (
-    <section
-      role="region"
-      aria-labelledby="settings-card-title"
-      className="rounded-lg border p-3 bg-white dark:bg-neutral-950"
-    >
-      <div id="settings-card-title" className="mb-2 text-sm font-semibold">
-        Settings
-      </div>
-      <dl className="grid grid-cols-2 gap-2 text-sm">
-        <div className="col-span-2">
-          <dt className="text-xs text-neutral-500">Target language</dt>
-          <dd>
-            <select
-              aria-label="Target language"
-              className="w-full rounded-md border p-2 text-sm"
-              value={targetLang}
-              onChange={(e) => setTargetLang(e.target.value)}
-            >
-              <option value="en">English</option>
-              <option value="es">Spanish</option>
-              <option value="fr">French</option>
-            </select>
-          </dd>
-        </div>
-        <div className="col-span-2">
-          <dt className="text-xs text-neutral-500">Style</dt>
-          <dd>
-            <select
-              aria-label="Target style"
-              className="w-full rounded-md border p-2 text-sm"
-              value={style}
-              onChange={(e) => setStyle(e.target.value)}
-            >
-              <option value="neutral">Neutral</option>
-              <option value="lyrical">Lyrical</option>
-              <option value="formal">Formal</option>
-            </select>
-          </dd>
-        </div>
-      </dl>
-      <div className="mt-3 text-right">
-        <button
-          className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm text-white"
-          onClick={() => setCurrentView("line-selection")}
-          aria-label="Start line selection"
+    <section role="region" aria-labelledby="settings-title" className="m-3 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-4 sm:p-6 space-y-2">
+      <h2 id="settings-title" className="mb-2 text-sm font-semibold">{t("settings")}</h2>
+
+      <div className="mb-3 grid grid-cols-[140px_1fr] items-center gap-2">
+        <label className="text-xs font-medium text-neutral-600 dark:text-neutral-400" htmlFor="target-lang">
+          {t("targetLanguage")}
+        </label>
+        <select
+          id="target-lang"
+          aria-label={t("targetLanguage")}
+          className="h-8 rounded-md border px-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400 dark:focus:ring-neutral-600"
+          value={targetLang ?? "en"}
+          onChange={(e) => setTargetLang(e.target.value)}
         >
-          Start selection
-        </button>
+          {LANGS.map(l => <option key={l} value={l}>{l}</option>)}
+        </select>
+      </div>
+
+      <div className="mb-3 grid grid-cols-[140px_1fr] items-center gap-2">
+        <label className="text-xs font-medium text-neutral-600 dark:text-neutral-400" htmlFor="target-style">
+          {t("targetStyle")}
+        </label>
+        <select
+          id="target-style"
+          aria-label={t("targetStyle")}
+          className="h-8 rounded-md border px-2 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-400 dark:focus:ring-neutral-600"
+          value={targetStyle ?? "balanced"}
+          onChange={(e) => setTargetStyle(e.target.value)}
+          title="Affects the kind of options shown in Workshop (Phase 2+)"
+        >
+          {STYLES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+        </select>
+      </div>
+
+      <div className="grid grid-cols-[140px_1fr] items-center gap-2">
+        <span className="text-xs font-medium text-neutral-600 dark:text-neutral-400">{t("dialectOptions")}</span>
+        <label className="inline-flex cursor-pointer items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={!!includeDialectOptions}
+            onChange={(e) => setIncludeDialectOptions(e.target.checked)}
+            aria-label={t("dialectOptions")}
+            title="Show dialect-tagged options in Workshop (Phase 2)"
+            className="focus:outline-none focus:ring-2 focus:ring-neutral-400 dark:focus:ring-neutral-600 rounded-md"
+          />
+          {t("dialectOptions")}
+        </label>
       </div>
     </section>
   );

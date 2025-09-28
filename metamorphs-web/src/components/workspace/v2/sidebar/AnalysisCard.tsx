@@ -1,63 +1,53 @@
 "use client";
 import * as React from "react";
+import { useInterviewFlow } from "@/hooks/useInterviewFlow";
 import { useNodes } from "@/hooks/useNodes";
+import { getAnalysisSnapshot } from "../_utils/data";
+import { useT } from "../_utils/i18n";
 
-export function AnalysisCard({
-  projectId,
-  threadId,
-}: {
-  projectId: string;
-  threadId: string | null;
-}) {
-  const { data: nodes } = useNodes(projectId, threadId || undefined, {
-    enabled: !!projectId && !!threadId,
-  });
-  const meta = React.useMemo(() => {
-    type Overview = { language?: string; form?: string; themes?: string[] };
-    const newest = (nodes || []).slice(-1)[0];
-    const overview: Overview = (newest?.overview as Overview) || {};
-    return {
-      language: overview.language ?? "—",
-      form: overview.form ?? "—",
-      themes: (overview.themes as string[] | undefined) ?? [],
-    } satisfies { language: string; form: string; themes: string[] };
-  }, [nodes]);
+export function AnalysisCard({ projectId, threadId }: { projectId?: string; threadId?: string | null }) {
+  const t = useT();
+  const { peek } = useInterviewFlow(threadId ?? undefined);
+  const { data: peek_data, isLoading: lp } = peek || {};
+  const { data: nodes, isLoading: ln } =
+    useNodes(projectId, threadId ?? undefined, { enabled: !!projectId && !!threadId });
+
+  const latestNodeMeta = Array.isArray(nodes) ? (nodes.at(-1) as Record<string, unknown> | undefined)?.meta : undefined;
+  const snap = getAnalysisSnapshot({ flowPeek: peek_data, nodeMeta: latestNodeMeta });
+  const loading = lp || ln;
+
+  const Row = ({ label, value }: { label: string; value?: string | string[] }) => (
+    <div className="grid grid-cols-[120px_1fr] items-start gap-2 py-1">
+      <dt className="text-xs font-medium text-neutral-600 dark:text-neutral-400">{label}</dt>
+      <dd className="text-sm">
+        {Array.isArray(value) ? (value.length ? value.join(", ") : "—") : (value || "—")}
+      </dd>
+    </div>
+  );
+
   return (
-    <section
-      role="region"
-      aria-labelledby="analysis-card-title"
-      className="rounded-lg border p-3 bg-white dark:bg-neutral-950"
-    >
-      <div id="analysis-card-title" className="mb-2 text-sm font-semibold">
-        Analysis
-      </div>
-      <dl className="grid grid-cols-3 gap-2 text-sm">
-        <div>
-          <dt className="text-xs text-neutral-500">Language</dt>
-          <dd>{meta.language}</dd>
+    <section role="region" aria-labelledby="analysis-title" className="m-3 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-4 sm:p-6 space-y-2">
+      <h2 id="analysis-title" className="mb-2 text-sm font-semibold">{t("analysis")}</h2>
+
+      {loading && (
+        <div aria-busy="true" className="space-y-2">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="h-4 w-full animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
+          ))}
         </div>
-        <div>
-          <dt className="text-xs text-neutral-500">Form</dt>
-          <dd>{meta.form}</dd>
-        </div>
-        <div className="col-span-3">
-          <dt className="text-xs text-neutral-500">Themes</dt>
-          <dd className="flex flex-wrap gap-1">
-            {(meta.themes || []).length ? (
-              meta.themes.map((t, i) => (
-                <span
-                  key={i}
-                  className="rounded-full border px-2 py-0.5 text-xs"
-                >
-                  {t}
-                </span>
-              ))
-            ) : (
-              <span className="text-neutral-500">—</span>
-            )}
-          </dd>
-        </div>
-      </dl>
+      )}
+
+      {!loading && (
+        <dl>
+          <Row label={t("language")} value={snap.language} />
+          <Row label={t("form")} value={snap.form} />
+          <Row label={t("themes")} value={snap.themes ?? []} />
+          <Row label={t("audienceTone")} value={snap.audienceOrTone} />
+          {!snap.language && !snap.form && !snap.themes?.length && !snap.audienceOrTone && (
+            <p className="mt-2 text-xs text-neutral-500">{t("setDuringInterview")}</p>
+          )}
+        </dl>
+      )}
     </section>
   );
 }
