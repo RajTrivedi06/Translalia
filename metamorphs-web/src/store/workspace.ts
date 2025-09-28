@@ -58,6 +58,7 @@ type WorkspaceState = {
   ) => void;
   clearSelections: (lineId?: string) => void;
   appendNotebook: (text: string) => void;
+  clearNotebookDraft: () => void;
 };
 
 export const useWorkspace = create<WorkspaceState>((set) => ({
@@ -163,4 +164,5 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
     ),
   appendNotebook: (text: string) =>
     set((s) => ({ workshopDraft: { notebookText: s.workshopDraft.notebookText + text } })),
+  clearNotebookDraft: () => set({ workshopDraft: { notebookText: "" } }),
 }));

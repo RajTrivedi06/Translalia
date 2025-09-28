@@ -65,20 +65,29 @@ export function WorkshopView() {
     }));
   }, [currentLine]);
 
-  const handleCompileLine = () => {
+  const handleCompileLine = React.useCallback(() => {
     if (!currentLine) return;
 
-    // Apply current selections to build the compiled line
-    const compiledText = helpers.applySelectionsToLine(currentLine.lineId);
-    appendNotebook(compiledText + "\n");
+    const state = useWorkspace.getState();
+    const compiled = currentLine.tokens
+      .map(token => {
+        const selection = state.tokensSelections[currentLine.lineId]?.[token.tokenId];
+        if (!selection) return token.surface;
+        if (selection.startsWith("user:")) return selection.slice("user:".length);
+        const option = token.options.find(opt => opt.id === selection);
+        return option?.label ?? token.surface;
+      })
+      .join("");
 
-    // Optional: advance to next line or go to notebook
+    appendNotebook(compiled + "\n");
+
+    // Advance to next line or go to notebook if this was the last line
     if (currentLineIdx < explodedLines.length - 1) {
       setCurrentLine(currentLineIdx + 1);
     } else {
       setCurrentView("notebook");
     }
-  };
+  }, [currentLine, currentLineIdx, explodedLines.length, appendNotebook, setCurrentLine, setCurrentView]);
 
   const handlePrevLine = () => {
     if (currentLineIdx > 0) {
