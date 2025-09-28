@@ -18,6 +18,12 @@ const STRINGS: Record<string, Record<string, string>> = {
     audienceTone: "Audience/Tone",
     setDuringInterview: "Set during the interview once available.",
     couldNotLoadSource: "Could not load source right now.",
+    selectLinesToWork: "Select lines to work on",
+    selectAll: "Select All",
+    clearSelection: "Clear",
+    proceedToWorkshop: "Proceed to Workshop",
+    noSourceLines: "No source lines available",
+    lineSelectionHelp: "Click to select lines, Shift+Click for range, Cmd+Click to toggle. Use Cmd+A to select all, Esc to clear.",
   },
   // add locales incrementally later
 };
