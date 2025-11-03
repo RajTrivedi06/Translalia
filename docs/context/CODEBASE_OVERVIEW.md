@@ -200,20 +200,20 @@ Updated: 2025-09-16
 - TanStack Query for async data, Zustand for client state
 - Supabase for auth (SSR helper), OpenAI for LLM
 
-```17:20:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/package.json
+```17:20:/Users/raaj/Documents/CS/Translalia/Translalia-web/package.json
     "next": "15.4.6",
     "openai": "^4.104.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
 ```
 
-```3:9:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/providers.tsx
+```3:9:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/providers.tsx
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as React from "react";
 import { supabase } from "@/lib/supabaseClient";
 ```
 
-```1:4:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/store/workspace.ts
+```1:4:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/store/workspace.ts
 "use client";
 
 import { create } from "zustand";
@@ -227,7 +227,7 @@ import { Version, CompareNode, JourneyItem } from "@/types/workspace";
 - `src/server/`: server-only helpers (thread state, translator)
 - `src/components/`: UI and providers
 
-```4:10:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/openai.ts
+```4:10:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/openai.ts
 export const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
 });
@@ -246,7 +246,7 @@ export function getOpenAI() {
 - Entry: Workspaces list → Project chats → Thread route (shell swap by flag).
 - V2 center flow: Chat (UI-only for now) → Line Selection → Workshop → Notebook.
 
-```33:41:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```33:41:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 export async function POST(req: Request) {
   if (process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR !== "1") {
     return new NextResponse("Feature disabled", { status: 403 });
@@ -255,7 +255,7 @@ export async function POST(req: Request) {
   const parsed = Body.safeParse(body);
 ```
 
-```121:131:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```121:131:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
   const { displayLabel, projectId } = await allocateDisplayLabel(threadId);
   // Create placeholder node
   const placeholderMeta = {
@@ -270,14 +270,14 @@ export async function POST(req: Request) {
 
 - Create version: `POST /api/versions` with `projectId`, `title`, `lines`, optional `tags`, `meta`, `summary`.
 
-```16:27:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/route.ts
+```16:27:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/route.ts
 export async function POST(req: NextRequest) {
   const guard = await requireUser(req);
   if ("res" in guard) return guard.res;
   const parsed = createVersionSchema.safeParse(await req.json());
 ```
 
-```27:33:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/route.ts
+```27:33:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/route.ts
   const { data: v, error: vErr } = await guard.sb
     .from("versions")
     .insert({
@@ -291,12 +291,12 @@ export async function POST(req: NextRequest) {
 
 ### Auth/session entry points
 
-```1:4:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/middleware.ts
+```1:4:/Users/raaj/Documents/CS/Translalia/Translalia-web/middleware.ts
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 ```
 
-```27:43:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/middleware.ts
+```27:43:/Users/raaj/Documents/CS/Translalia/Translalia-web/middleware.ts
 const needsAuth = pathname.startsWith("/workspaces") || pathname.startsWith("/api/threads") || pathname.startsWith("/api/flow") || pathname.startsWith("/api/versions");
 const hasSupabaseCookies = Array.from(req.cookies.getAll()).some((c) => c.name.startsWith("sb-") || c.name.includes("supabase"));
 if (needsAuth && !hasSupabaseCookies) { /* redirect to sign-in with redirect param */ }
@@ -328,7 +328,7 @@ High-level guide to the structure, tech stack, and major flows in this repositor
 
 ### Monorepo Layout
 
-- `metamorphs-web`: Next.js application (App Router) and all web assets
+- `Translalia-web`: Next.js application (App Router) and all web assets
 
 ### Tech Stack
 
@@ -339,7 +339,7 @@ High-level guide to the structure, tech stack, and major flows in this repositor
 - State: Zustand + TanStack React Query
 - AI: OpenAI client, in-memory cache + rate limit, moderation helper
 
-### Key Directories (in `metamorphs-web/src`)
+### Key Directories (in `Translalia-web/src`)
 
 - `app/`: App Router pages and `route.ts` API handlers
 - `components/`: UI components organized by feature
@@ -385,9 +385,9 @@ Response JSON:
 
 ### Local Development
 
-1. Install dependencies at the repo root and within `metamorphs-web` if needed
+1. Install dependencies at the repo root and within `Translalia-web` if needed
 2. Copy any required env vars (Supabase, OpenAI, etc.) into `.env.local`
-3. Start dev server: `npm run dev` (or `pnpm dev`/`yarn dev`) inside `metamorphs-web`
+3. Start dev server: `npm run dev` (or `pnpm dev`/`yarn dev`) inside `Translalia-web`
 
 ### Build & Lint
 
@@ -421,7 +421,7 @@ Response JSON:
 
 - Explode: split source text into tokenized lines and options for Workshop.
 
-```36:54:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/_utils/useExplodeTokens.ts
+```36:54:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/_utils/useExplodeTokens.ts
 export function useExplodeTokens(sourceLines: string[]): ExplodeTokensResult {
   // explode lines into tokens with equal-weight options (mocked in Phase 2)
 }
@@ -429,43 +429,43 @@ export function useExplodeTokens(sourceLines: string[]): ExplodeTokensResult {
 
 - TokenOption: selectable option for a token (id, label, dialect, from).
 
-```1:20:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/components/TokenCard.tsx
+```1:20:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/components/TokenCard.tsx
 export function TokenCard({ lineId, token, tokenIndex, totalTokens, onGroupWithNext, onUngroup }: { /* … */ })
 ```
 
 - DialectTag: dialect label attached to `TokenOption` (e.g., Std, regional).
 
-```145:150:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/components/TokenCard.tsx
+```145:150:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/components/TokenCard.tsx
 title={`${opt.label} (${opt.dialect})`} aria-label={`${opt.label} (${opt.dialect})`}
 ```
 
 - Workshop: center-pane UI to choose token options and compile lines.
 
-```13:25:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/views/WorkshopView.tsx
+```13:25:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/views/WorkshopView.tsx
 export function WorkshopView() { /* token selection → notebook compile */ }
 ```
 
 - LineSelection: view to pick which lines to work on.
 
-```23:31:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/views/LineSelectionView.tsx
+```23:31:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/views/LineSelectionView.tsx
 export function LineSelectionView({ flowPeek, nodes, onProceed }: LineSelectionViewProps)
 ```
 
 - Journey: recent activity list for thread/project.
 
-```5:13:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/hooks/useJourney.ts
+```5:13:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/hooks/useJourney.ts
 export function useJourney(projectId?: string, limit = 20) { /* … */ }
 ```
 
 - Version / Compare: version nodes and compare overlays.
 
-```23:41:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/versions/VersionCanvas.tsx
+```23:41:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/versions/VersionCanvas.tsx
 export function VersionCanvas() { /* renders version nodes graph */ }
 ```
 
 - Notebook: compiled draft area.
 
-```6:13:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/views/NotebookView.tsx
+```6:13:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/views/NotebookView.tsx
 export function NotebookView() { /* shows compiled draft; copy/clear/back */ }
 ```
 
@@ -476,8 +476,8 @@ export function NotebookView() { /* shows compiled draft; copy/clear/back */ }
 ### 1) Project structure tree
 
 ```
-metamorphs/
-  metamorphs-web/
+Translalia/
+  Translalia-web/
     docs/
       *.md
     public/

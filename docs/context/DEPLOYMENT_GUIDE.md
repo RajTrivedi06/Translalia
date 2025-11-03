@@ -116,7 +116,7 @@ env_vars:
 
 ### Middleware Auth/Session Anchors
 
-```5:13:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/middleware.ts
+```5:13:/Users/raaj/Documents/CS/Translalia/Translalia-web/middleware.ts
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
   const supabase = createServerClient(
@@ -128,7 +128,7 @@ export async function middleware(req: NextRequest) {
   );
 ```
 
-```27:43:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/middleware.ts
+```27:43:/Users/raaj/Documents/CS/Translalia/Translalia-web/middleware.ts
 const needsAuth = pathname.startsWith("/workspaces") || pathname.startsWith("/api/threads") || pathname.startsWith("/api/flow") || pathname.startsWith("/api/versions");
 const hasSupabaseCookies = Array.from(req.cookies.getAll()).some((c) => c.name.startsWith("sb-") || c.name.includes("supabase"));
 if (needsAuth && !hasSupabaseCookies) {

@@ -11,11 +11,11 @@ Common helpers used across the codebase, primarily in `src/lib` and `src/types`.
 - `lib/ai/cache.ts`: Simple AI response cache utilities
 - One-liner: process-memory Map TTL cache used for preview/translate/enhancer
   - Callers:
-    - `metamorphs-web/src/app/api/translator/preview/route.ts:L153–L156`
-    - `metamorphs-web/src/app/api/translate/route.ts:L113–L118`
-    - `metamorphs-web/src/app/api/enhancer/route.ts:L84–L86`
+    - `Translalia-web/src/app/api/translator/preview/route.ts:L153–L156`
+    - `Translalia-web/src/app/api/translate/route.ts:L113–L118`
+    - `Translalia-web/src/app/api/enhancer/route.ts:L84–L86`
   - Anchors:
-    ```13:21:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/cache.ts
+    ```13:21:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/cache.ts
     export async function cacheGet<T>(key: string): Promise<T | null> {
       const item = mem.get(key);
       if (!item) return null;
@@ -29,23 +29,23 @@ Common helpers used across the codebase, primarily in `src/lib` and `src/types`.
 - `lib/ai/moderation.ts`: Moderation checks and policy mapping
 - One-liner: wraps OpenAI moderation; returns `{ flagged, categories }`
   - Callers:
-    - `metamorphs-web/src/app/api/enhancer/route.ts:L44–L49`
-    - `metamorphs-web/src/app/api/translator/preview/route.ts:L112–L119`
-    - `metamorphs-web/src/app/api/translate/route.ts:L81–L86`
-    - `metamorphs-web/src/app/api/translator/accept-lines/route.ts:L48–L60`
+    - `Translalia-web/src/app/api/enhancer/route.ts:L44–L49`
+    - `Translalia-web/src/app/api/translator/preview/route.ts:L112–L119`
+    - `Translalia-web/src/app/api/translate/route.ts:L81–L86`
+    - `Translalia-web/src/app/api/translator/accept-lines/route.ts:L48–L60`
 - `lib/ai/prompts.ts`: Prompt templates and composition helpers
 - `lib/ai/openai.ts`: Client factory and invocation helpers
 - One-liner: central Responses API call; strips unsupported params and retries on temperature errors
   - Callers:
-    - `metamorphs-web/src/app/api/translator/preview/route.ts:L259–L264`
-    - `metamorphs-web/src/lib/ai/enhance.ts:L43–L50`
-    - `metamorphs-web/src/server/flow/intentLLM.ts:L26–L34`
+    - `Translalia-web/src/app/api/translator/preview/route.ts:L259–L264`
+    - `Translalia-web/src/lib/ai/enhance.ts:L43–L50`
+    - `Translalia-web/src/server/flow/intentLLM.ts:L26–L34`
 - `lib/ai/ratelimit.ts`: Rate limiting helpers
 - One-liner: in-memory token bucket per-key
   - Callers:
-    - `metamorphs-web/src/app/api/translator/preview/route.ts:L55–L58`
+    - `Translalia-web/src/app/api/translator/preview/route.ts:L55–L58`
   - Anchors:
-    ```1:13:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/ratelimit.ts
+    ```1:13:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/ratelimit.ts
     export function rateLimit(key: string, limit = 30, windowMs = 60_000) {
       const now = Date.now();
       const b = buckets.get(key);
@@ -60,7 +60,7 @@ Common helpers used across the codebase, primarily in `src/lib` and `src/types`.
     ```
 - `lib/ratelimit/redis.ts`: Upstash/Redis-backed daily limits
   - Anchors:
-    ```26:40:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ratelimit/redis.ts
+    ```26:40:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ratelimit/redis.ts
     export async function checkDailyLimit(
       userId: string,
       key: string,
@@ -80,8 +80,8 @@ Common helpers used across the codebase, primarily in `src/lib` and `src/types`.
 - `lib/apiGuard.ts`: Request guards (auth, rate limit, permissions)
 - One-liner: SSR cookie or Bearer Supabase session guard for Next API routes
   - Callers:
-    - `metamorphs-web/src/app/api/versions/nodes/route.ts:L17–L25`
-    - `metamorphs-web/src/app/api/versions/route.ts:L16–L23`
+    - `Translalia-web/src/app/api/versions/nodes/route.ts:L17–L25`
+    - `Translalia-web/src/app/api/versions/route.ts:L16–L23`
 - `lib/authHelpers.ts`: Supabase auth helpers
 - `lib/constraints.ts`: Constraint validation and normalization
 - `lib/generation.ts`: Shared generation utilities
@@ -94,14 +94,14 @@ Common helpers used across the codebase, primarily in `src/lib` and `src/types`.
 - `server/threadState.ts`: Server-side session state helpers
 - One-liner: load/merge/persist `chat_threads.state` JSONB; cadence-aware ledger append
   - Callers:
-    - `metamorphs-web/src/app/api/translator/accept-lines/route.ts:L72–L76`
-    - `metamorphs-web/src/app/api/enhancer/route.ts:L58–L65`
+    - `Translalia-web/src/app/api/translator/accept-lines/route.ts:L72–L76`
+    - `Translalia-web/src/app/api/enhancer/route.ts:L58–L65`
 - `server/translator/bundle.ts`: Input bundling for translator
 - `server/translator/parse.ts`: Output parsing for translator
 - One-liner: parse `---VERSION A---` and `---NOTES---` into `{ lines, notes }`
   - Callers:
-    - `metamorphs-web/src/app/api/translator/preview/route.ts:L274–L279`
-    - `metamorphs-web/src/app/api/translator/instruct/route.ts:L186–L194`
+    - `Translalia-web/src/app/api/translator/preview/route.ts:L274–L279`
+    - `Translalia-web/src/app/api/translator/instruct/route.ts:L186–L194`
 
 ### Types
 
@@ -146,7 +146,7 @@ Common helpers used across the codebase, primarily in `src/lib` and `src/types`.
 - `getSourceLines({ flowPeek, nodes }): string[] | null`
   - Purpose: Extract source lines from `flowPeek.state.source_text|poem_text`; fallback to latest node `overviewLines`. Returns `null` if unavailable.
 
-```42:74:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/_utils/data.ts
+```42:74:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/_utils/data.ts
 export function getSourceLines({ flowPeek, nodes }: GetSourceArgs): string[] | null {
   // peek → state.source_text/poem_text; fallback to nodes.overviewLines
 }
@@ -155,7 +155,7 @@ export function getSourceLines({ flowPeek, nodes }: GetSourceArgs): string[] | n
 - `getAnalysisSnapshot({ flowPeek, nodeMeta }): { language?: string; form?: string; themes?: string[]; audienceOrTone?: string }`
   - Purpose: Build lightweight analysis snapshot from `flowPeek.state.analysis` with fallback to latest node meta fields.
 
-```76:129:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/_utils/data.ts
+```76:129:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/_utils/data.ts
 export function getAnalysisSnapshot({ flowPeek, nodeMeta }: { flowPeek?: unknown; nodeMeta?: unknown }): AnalysisSnapshot {
   // merges from flowPeek.state.analysis; falls back to node meta
 }
@@ -268,7 +268,7 @@ Common Patterns:
 Notes:
 
 - `stableHash` sorts object keys before hashing to ensure deterministic keys.
-  ```5:11:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/cache.ts
+  ```5:11:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/cache.ts
   export function stableHash(obj: unknown): string {
     const json = JSON.stringify(
       obj,

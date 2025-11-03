@@ -124,14 +124,14 @@ function analyzeSpecificFiles() {
   console.log('\n🔍 Analyzing specific problematic files...\n');
 
   const problematicFiles = [
-    '/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/policy.ts',
-    '/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/schemas.ts',
-    '/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/flags/verify.ts',
-    '/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/flags/interview.ts',
-    '/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/featureFlags.ts',
-    '/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/state/uiLang.ts',
-    '/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/state/uploads.ts',
-    '/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/store/workspace.ts'
+    '/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/policy.ts',
+    '/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/schemas.ts',
+    '/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/flags/verify.ts',
+    '/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/flags/interview.ts',
+    '/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/featureFlags.ts',
+    '/Users/raaj/Documents/CS/metamorphs/translalia-web/src/state/uiLang.ts',
+    '/Users/raaj/Documents/CS/metamorphs/translalia-web/src/state/uploads.ts',
+    '/Users/raaj/Documents/CS/metamorphs/translalia-web/src/store/workspace.ts'
   ];
 
   problematicFiles.forEach(file => {

@@ -53,7 +53,7 @@ Compare/Legacy: legacy `WorkspaceShell` remains behind flag.
 
 - Dialog focus trap and Escape-to-close in sheet content:
 
-```87:106:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/ui/sheet.tsx
+```87:106:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/ui/sheet.tsx
 return (
   <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-labelledby={ariaLabelledby}>
     <div className="absolute inset-0 bg-black/40" onClick={() => ctx.onOpenChange(false)} />
@@ -66,13 +66,13 @@ return (
 
 - Chat log region with polite announcements:
 
-```11:15:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/chat/ChatView.tsx
+```11:15:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/chat/ChatView.tsx
 <div role="log" aria-live="polite" className="flex-1 overflow-y-auto" />
 ```
 
 - Token options expose pressed state and dialect in labels:
 
-```138:147:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/components/TokenCard.tsx
+```138:147:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/components/TokenCard.tsx
 onClick={() => setTokenSelection(lineId, token.tokenId, opt.id)} aria-pressed={active} title={`${opt.label} (${opt.dialect})`} aria-label={`${opt.label} (${opt.dialect})`}
 ```
 
@@ -80,11 +80,11 @@ onClick={() => setTokenSelection(lineId, token.tokenId, opt.id)} aria-pressed={a
 
 | Component                 | File                                                         | Reads/Writes                                                                               | Flags                            | Anchors                                                                               |
 | ------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------ | -------------------------------- | ------------------------------------------------------------------------------------- |
-| ChatPanel                 | `src/components/workspace/chat/ChatPanel.tsx`                | Reads: nodes/messages via hooks; Writes: chat messages, flow actions, instruct             | Router (optional), Translator    | `metamorphs-web/src/components/workspace/chat/ChatPanel.tsx:L519–L523`                |
-| PlanBuilderOverviewSheet  | `src/components/workspace/flow/PlanBuilderOverviewSheet.tsx` | Reads: nodes, thread state; Writes: `chat_threads.state`, calls preview; invalidates nodes | Prismatic, Verify, Backtranslate | `metamorphs-web/src/components/workspace/flow/PlanBuilderOverviewSheet.tsx:L160–L174` |
-| VersionCanvas             | `src/components/workspace/versions/VersionCanvas.tsx`        | Reads: `useNodes`; Writes: positions via PATCH `/api/versions/positions`                   | —                                | `metamorphs-web/src/components/workspace/versions/VersionCanvas.tsx:L52–L52`          |
-| ThreadsDrawer             | `src/components/workspace/chat/ThreadsDrawer.tsx`            | Writes: create thread messages; Reads: Supabase lists                                      | —                                | `metamorphs-web/src/components/workspace/chat/ThreadsDrawer.tsx:L28–L28`              |
-| NodeCard/FullPoemOverview | `src/components/workspace/translate/*`                       | Reads: selected node overview                                                              | —                                | `metamorphs-web/src/components/workspace/flow/PlanBuilderOverviewSheet.tsx:L525–L543` |
+| ChatPanel                 | `src/components/workspace/chat/ChatPanel.tsx`                | Reads: nodes/messages via hooks; Writes: chat messages, flow actions, instruct             | Router (optional), Translator    | `Translalia-web/src/components/workspace/chat/ChatPanel.tsx:L519–L523`                |
+| PlanBuilderOverviewSheet  | `src/components/workspace/flow/PlanBuilderOverviewSheet.tsx` | Reads: nodes, thread state; Writes: `chat_threads.state`, calls preview; invalidates nodes | Prismatic, Verify, Backtranslate | `Translalia-web/src/components/workspace/flow/PlanBuilderOverviewSheet.tsx:L160–L174` |
+| VersionCanvas             | `src/components/workspace/versions/VersionCanvas.tsx`        | Reads: `useNodes`; Writes: positions via PATCH `/api/versions/positions`                   | —                                | `Translalia-web/src/components/workspace/versions/VersionCanvas.tsx:L52–L52`          |
+| ThreadsDrawer             | `src/components/workspace/chat/ThreadsDrawer.tsx`            | Writes: create thread messages; Reads: Supabase lists                                      | —                                | `Translalia-web/src/components/workspace/chat/ThreadsDrawer.tsx:L28–L28`              |
+| NodeCard/FullPoemOverview | `src/components/workspace/translate/*`                       | Reads: selected node overview                                                              | —                                | `Translalia-web/src/components/workspace/flow/PlanBuilderOverviewSheet.tsx:L525–L543` |
 
 Notes:
 
@@ -232,7 +232,7 @@ export function CompareSheet({ open, onOpenChange, left, right }: { open: boolea
 
 - Edges are generated from `parent_version_id → id` and rendered with closed arrow markers.
 
-```151:161:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/versions/VersionCanvas.tsx
+```151:161:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/versions/VersionCanvas.tsx
 const lineage: Edge[] = (apiNodes || [])
   .filter((n) => !!n.parent_version_id)
   .map((n) => ({
@@ -246,7 +246,7 @@ const lineage: Edge[] = (apiNodes || [])
 
 - Default edge styling uses thicker strokes and arrow markers.
 
-```327:331:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/versions/VersionCanvas.tsx
+```327:331:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/versions/VersionCanvas.tsx
 defaultEdgeOptions={{
   animated: true,
   markerEnd: { type: MarkerType.ArrowClosed },
@@ -256,7 +256,7 @@ defaultEdgeOptions={{
 
 - Node layout is vertical with equal spacing; nodes expose top/bottom connection positions.
 
-```117:130:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/versions/VersionCanvas.tsx
+```117:130:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/versions/VersionCanvas.tsx
 return {
   id: api.id,
   type: "versionCard" as const,

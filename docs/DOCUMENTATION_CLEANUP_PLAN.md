@@ -11,7 +11,7 @@
 
 These are long-term reference docs that document the system architecture:
 
-**From `metamorphs-web/docs/context/`:**
+**From `Translalia-web/docs/context/`:**
 
 - `API_ROUTES.md` → `docs/context/API_ROUTES.md`
 - `ARCHITECTURE_DECISIONS.md` → `docs/context/ARCHITECTURE_DECISIONS.md`
@@ -36,21 +36,21 @@ These are long-term reference docs that document the system architecture:
 
 ### API Documentation
 
-**From `metamorphs-web/docs/`:**
+**From `Translalia-web/docs/`:**
 
 - `llm-api.md` → `docs/api/llm-api.md`
 - `flow-api.md` → `docs/api/flow-api.md`
 
 ### Policy Documentation
 
-**From `metamorphs-web/docs/`:**
+**From `Translalia-web/docs/`:**
 
 - `moderation-policy.md` → `docs/policies/moderation-policy.md`
 - `spend-and-cache-policy.md` → `docs/policies/spend-and-cache-policy.md`
 
 ### Configuration Documentation
 
-**From `metamorphs-web/docs/`:**
+**From `Translalia-web/docs/`:**
 
 - `flags-and-models.md` → `docs/configuration/flags-and-models.md`
 
@@ -67,11 +67,11 @@ These are long-term reference docs that document the system architecture:
 ### Project README Files
 
 - `README.md` (root) - Main project README
-- `metamorphs-web/README.md` - Web app README
+- `Translalia-web/README.md` - Web app README
 
 ### Component Documentation
 
-- `metamorphs-web/src/components/guide/README.md` - Component-specific guide
+- `Translalia-web/src/components/guide/README.md` - Component-specific guide
 
 ### Style Guides
 
@@ -105,17 +105,17 @@ These are long-term reference docs that document the system architecture:
 18. `VERIFICATION_COMPLETE.md` - Verification report
 19. `VERIFICATION_REPORT.md` - Verification report
 
-### Metamorphs-web/docs Phase Documentation
+### Translalia-web/docs Phase Documentation
 
-**From `metamorphs-web/docs/`:** 20. `DND_PHASE1_INVESTIGATION.md` - Phase investigation 21. `DND_PHASE2_DRAG_SOURCE.md` - Phase implementation 22. `DND_PHASE3_DROP_ZONE.md` - Phase implementation 23. `DND_PHASE4_EDIT_MODE.md` - Phase implementation 24. `DND_PHASE5_AI_ASSISTANT_IMPLEMENTATION.md` - Phase implementation 25. `DND_PHASE5_AI_ASSISTANT_PLAN.md` - Phase planning 26. `PHASE6_COMPLETE.md` - Phase completion 27. `PHASE6_SUMMARY.md` - Phase summary 28. `PHASE7_COMPLETE.md` - Phase completion 29. `PHASE7_SUMMARY.md` - Phase summary 30. `PHASE8_COMPLETE.md` - Phase completion 31. `POEM_LINE_SEPARATION_REPORT.md` - Implementation report 32. `PROJECT_COMPLETE_SUMMARY.md` - Project summary
+**From `Translalia-web/docs/`:** 20. `DND_PHASE1_INVESTIGATION.md` - Phase investigation 21. `DND_PHASE2_DRAG_SOURCE.md` - Phase implementation 22. `DND_PHASE3_DROP_ZONE.md` - Phase implementation 23. `DND_PHASE4_EDIT_MODE.md` - Phase implementation 24. `DND_PHASE5_AI_ASSISTANT_IMPLEMENTATION.md` - Phase implementation 25. `DND_PHASE5_AI_ASSISTANT_PLAN.md` - Phase planning 26. `PHASE6_COMPLETE.md` - Phase completion 27. `PHASE6_SUMMARY.md` - Phase summary 28. `PHASE7_COMPLETE.md` - Phase completion 29. `PHASE7_SUMMARY.md` - Phase summary 30. `PHASE8_COMPLETE.md` - Phase completion 31. `POEM_LINE_SEPARATION_REPORT.md` - Implementation report 32. `PROJECT_COMPLETE_SUMMARY.md` - Project summary
 
 ### Archive (Can be Deleted - Historical)
 
-**From `metamorphs-web/docs/archive/`:** 33. `phase-0.2-0.3-audit.md` - Old audit (archived) 34. `security-mvp-followups.md` - Old followups (archived)
+**From `Translalia-web/docs/archive/`:** 33. `phase-0.2-0.3-audit.md` - Old audit (archived) 34. `security-mvp-followups.md` - Old followups (archived)
 
 ### Duplicate .context Files (Old Location)
 
-**From `metamorphs-web/.context/`:** 35. `API_ROUTES.md` - Duplicate (moved to docs/context/) 36. `ARCHITECTURE_DECISIONS.md` - Duplicate 37. `CODEBASE_OVERVIEW.md` - Duplicate 38. `COMPONENTS_STRUCTURE.md` - Duplicate 39. `CURRENT_ISSUES.md` - Duplicate 40. `DATABASE_SCHEMA.md` - Duplicate 41. `SERVICES_INTEGRATIONS.md` - Duplicate 42. `STATE_MANAGEMENT.md` - Duplicate 43. `UTILITIES_HELPERS.md` - Duplicate
+**From `Translalia-web/.context/`:** 35. `API_ROUTES.md` - Duplicate (moved to docs/context/) 36. `ARCHITECTURE_DECISIONS.md` - Duplicate 37. `CODEBASE_OVERVIEW.md` - Duplicate 38. `COMPONENTS_STRUCTURE.md` - Duplicate 39. `CURRENT_ISSUES.md` - Duplicate 40. `DATABASE_SCHEMA.md` - Duplicate 41. `SERVICES_INTEGRATIONS.md` - Duplicate 42. `STATE_MANAGEMENT.md` - Duplicate 43. `UTILITIES_HELPERS.md` - Duplicate
 
 **Total to delete:** 43 files
 
@@ -175,6 +175,6 @@ These are long-term reference docs that document the system architecture:
 ## Notes
 
 - All session summaries, implementation reports, and phase completion docs are temporary and should be deleted once features are complete
-- The architectural documentation in `metamorphs-web/docs/context/` represents the permanent knowledge base
+- The architectural documentation in `Translalia-web/docs/context/` represents the permanent knowledge base
 - API and policy docs are long-term reference materials
 - The `.context/` directory appears to be an old location and contains duplicates

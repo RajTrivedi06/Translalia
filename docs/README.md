@@ -1,6 +1,6 @@
 # Documentation Directory
 
-This directory contains all permanent documentation for the Metamorphs project.
+This directory contains all permanent documentation for the Translalia project.
 
 ## Structure
 

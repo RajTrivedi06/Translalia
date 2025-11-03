@@ -36,7 +36,7 @@ How to use this documentation set to generate accurate code across APIs, flows, 
 
 Anchors:
 
-```1:33:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/server/flow/intentLLM.ts
+```1:33:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/server/flow/intentLLM.ts
 import { ROUTER_SYSTEM } from "@/lib/ai/prompts";
 // …
 messages: [
@@ -109,13 +109,13 @@ await cacheSet(key, parsed.data, 3600);
 
 - Preview: rate limit key `preview:${threadId}`; cache key `translator_preview:` + stable hash of bundle (may include placeholder id in code paths to reflect persisted overview).
 
-```55:59:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```55:59:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 const rl = rateLimit(`preview:${threadId}`, 30, 60_000);
 if (!rl.ok)
   return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 ```
 
-```153:161:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```153:161:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 const key = "translator_preview:" + stableHash({ ...bundle, placeholderId });
 const cached = await cacheGet<unknown>(key);
 if (cached) {
@@ -128,7 +128,7 @@ if (cached) {
 
 - Client posts auth changes to `/api/auth`; middleware ensures SSR cookies for protected routes; use `requireUser` for write routes.
 
-```20:27:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/auth/route.ts
+```20:27:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/auth/route.ts
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const { event, session } = body as {
@@ -138,7 +138,7 @@ export async function POST(req: NextRequest) {
   const res = NextResponse.json({ ok: true });
 ```
 
-```12:20:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/apiGuard.ts
+```12:20:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/apiGuard.ts
 export async function requireUser(
   req: NextRequest
 ): Promise<GuardOk | GuardFail> {
@@ -168,19 +168,19 @@ export async function requireUser(
 
 Anchors:
 
-```3:13:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/ratelimit.ts
+```3:13:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/ratelimit.ts
 export function rateLimit(key: string, limit = 30, windowMs = 60_000) {
   const now = Date.now();
   const b = buckets.get(key);
 ```
 
-```13:21:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/cache.ts
+```13:21:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/cache.ts
 export async function cacheGet<T>(key: string): Promise<T | null> {
   const item = mem.get(key);
   if (!item) return null;
 ```
 
-```100:110:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/promptHash.ts
+```100:110:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/promptHash.ts
 export function logLLMRequestPreview(args: LogArgs) {
   const DEBUG =
     process.env.DEBUG_PROMPTS === "1" ||
@@ -206,7 +206,7 @@ The translator bundle collects recent journey items scoped to the active thread 
 
 Evidence (bundle query and return):
 
-```57:66:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/server/translator/bundle.ts
+```57:66:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/server/translator/bundle.ts
 // Fetch recent journey items scoped to this thread
 const { data: jrows } = await supabase
   .from("journey_items")
@@ -216,7 +216,7 @@ const { data: jrows } = await supabase
   .limit(5);
 ```
 
-```66:83:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/server/translator/bundle.ts
+```66:83:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/server/translator/bundle.ts
 const journeySummaries = (jrows || []).map((r) => {
   const s = String(r.summary || "").replace(/\s+/g, " ").slice(0, 200);
   const maybeLen = (r.meta as { selections?: { length?: number } } | undefined)?.selections?.length;
@@ -227,14 +227,14 @@ const journeySummaries = (jrows || []).map((r) => {
 
 Insertion into prompts:
 
-```228:234:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```228:234:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 bundle.journeySummaries?.length
   ? "JOURNEY (most recent → older):\n" +
     bundle.journeySummaries.map((s) => `- ${s}`).join("\n")
   : "",
 ```
 
-```194:201:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+```194:201:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
 bundle.journeySummaries?.length
   ? "JOURNEY (most recent → older):\n" +
     bundle.journeySummaries.map((s) => `- ${s}`).join("\n")
@@ -256,7 +256,7 @@ JOURNEY (most recent → older):
 
 Parent resolution (thread-scoped latest or cited):
 
-```44:62:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+```44:62:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
 const rawMode = (parsed.data.mode as string) || "balanced";
 const effectiveMode = /* ... */
 let parentVersionId: string | null = null;
@@ -276,7 +276,7 @@ if (citeVersionId) {
 
 Bundle inputs include `journeySummaries` (last ~5):
 
-```43:72:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/server/translator/bundle.ts
+```43:72:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/server/translator/bundle.ts
 const summary = state.summary ?? "";
 const ledger = (state.decisions_ledger ?? []).slice(-5);
 // ...
@@ -292,14 +292,14 @@ const journeySummaries = (jrows || []).map(/* ... */);
 
 Both routes include a JOURNEY block in the prompt:
 
-```206:224:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```206:224:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 const userPrompt = [ /* ... */, bundle.journeySummaries?.length
   ? "JOURNEY (most recent → older):\n" +
     bundle.journeySummaries.map((s) => `- ${s}`).join("\n")
   : "", ].filter(Boolean).join("\n\n")
 ```
 
-```148:161:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+```148:161:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
 const bundleUser = [ /* ... */, bundle.journeySummaries?.length
   ? "JOURNEY (most recent → older):\n" +
     bundle.journeySummaries.map((s) => `- ${s}`).join("\n")
@@ -331,18 +331,18 @@ JOURNEY (most recent → older):
 
 Anchors:
 
-```55:59:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```55:59:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 const rl = rateLimit(`preview:${threadId}`, 30, 60_000);
 if (!rl.ok)
   return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 ```
 
-```157:161:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```157:161:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 const key = "translator_preview:" + stableHash({ ...bundle, placeholderId });
 const cached = await cacheGet<unknown>(key);
 ```
 
-```208:216:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```208:216:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 const prompt_hash = buildPromptHash({ route: "translator", model: TRANSLATOR_MODEL, system: getTranslatorSystem(effectiveMode), user: userPrompt });
 logLLMRequestPreview({ route: "translator", model: TRANSLATOR_MODEL, system: getTranslatorSystem(effectiveMode), user: userPrompt, hash: prompt_hash });
 ```
@@ -395,7 +395,7 @@ export async function POST(req: NextRequest) {
 
 - Prompt‑hash integration (redacted debug preview)
 
-```12:20:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/promptHash.ts
+```12:20:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/promptHash.ts
 export function buildPromptHash(args: {
   route: string; model: string; system: string; user: string; schema?: string;
 }) {
@@ -404,7 +404,7 @@ export function buildPromptHash(args: {
 }
 ```
 
-```30:43:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/promptHash.ts
+```30:43:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/promptHash.ts
 const DEBUG = process.env.DEBUG_PROMPTS === "1" || process.env.NEXT_PUBLIC_DEBUG_PROMPTS === "1";
 if (!DEBUG) return;
 // Avoid printing full poem/user content in logs
@@ -413,7 +413,7 @@ console.info("[LLM]", { route: args.route, model: args.model, hash: args.hash, s
 
 - Redacted debug preview pattern in a route
 
-```236:249:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```236:249:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 logLLMRequestPreview({
   route: "translator",
   model: TRANSLATOR_MODEL,
@@ -434,13 +434,13 @@ logLLMRequestPreview({
 
 Anchors:
 
-```3:13:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/ratelimit.ts
+```3:13:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/ratelimit.ts
 export function rateLimit(key: string, limit = 30, windowMs = 60_000) {
   const now = Date.now();
   const b = buckets.get(key);
 ```
 
-```13:21:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/cache.ts
+```13:21:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/cache.ts
 export async function cacheGet<T>(key: string): Promise<T | null> {
   const item = mem.get(key);
   if (!item) return null;
@@ -478,11 +478,11 @@ export async function cacheGet<T>(key: string): Promise<T | null> {
 
 Example (wiring from Preview):
 
-```55:59:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```55:59:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 const rl = rateLimit(`preview:${threadId}`, 30, 60_000);
 ```
 
-```153:161:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```153:161:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 const key = "translator_preview:" + stableHash({ ...bundle, placeholderId });
 ```
 

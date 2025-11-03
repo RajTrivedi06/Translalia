@@ -10,18 +10,18 @@
 
 | Field          | Source            | Reads (anchors)                                                 | Writes (anchors)                                                  |
 | -------------- | ----------------- | --------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `display_name` | user input/UI     | `metamorphs-web/src/hooks/useProfile.ts:L29–L36`                | `metamorphs-web/src/hooks/useProfile.ts:L45–L55`                  |
-| `username`     | user input/UI     | `metamorphs-web/src/hooks/useProfile.ts:L29–L36`                | `metamorphs-web/src/hooks/useProfile.ts:L45–L55`                  |
-| `email`        | Supabase session  | `metamorphs-web/src/hooks/useProfile.ts:L29–L36`                | —                                                                 |
-| `avatar_url`   | upload to storage | `metamorphs-web/src/components/account/ProfileForm.tsx:L63–L70` | `metamorphs-web/src/components/account/ProfileForm.tsx:L107–L114` |
-| `locale`       | user input/UI     | `metamorphs-web/src/hooks/useProfile.ts:L29–L36`                | `metamorphs-web/src/hooks/useProfile.ts:L45–L55`                  |
-| `created_at`   | database default  | `metamorphs-web/src/hooks/useProfile.ts:L31–L36`                | —                                                                 |
+| `display_name` | user input/UI     | `Translalia-web/src/hooks/useProfile.ts:L29–L36`                | `Translalia-web/src/hooks/useProfile.ts:L45–L55`                  |
+| `username`     | user input/UI     | `Translalia-web/src/hooks/useProfile.ts:L29–L36`                | `Translalia-web/src/hooks/useProfile.ts:L45–L55`                  |
+| `email`        | Supabase session  | `Translalia-web/src/hooks/useProfile.ts:L29–L36`                | —                                                                 |
+| `avatar_url`   | upload to storage | `Translalia-web/src/components/account/ProfileForm.tsx:L63–L70` | `Translalia-web/src/components/account/ProfileForm.tsx:L107–L114` |
+| `locale`       | user input/UI     | `Translalia-web/src/hooks/useProfile.ts:L29–L36`                | `Translalia-web/src/hooks/useProfile.ts:L45–L55`                  |
+| `created_at`   | database default  | `Translalia-web/src/hooks/useProfile.ts:L31–L36`                | —                                                                 |
 
 ### Auth → Profile flow
 
 - On sign-in or profile open, `useProfile(user)` selects `profiles` by `id` and shows editable fields; on save, it upserts the row.
 
-```29:36:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/hooks/useProfile.ts
+```29:36:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/hooks/useProfile.ts
 const { data } = await supabase
   .from("profiles")
   .select("id, display_name, username, email, avatar_url, locale, created_at")
@@ -29,7 +29,7 @@ const { data } = await supabase
   .single();
 ```
 
-```48:55:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/hooks/useProfile.ts
+```48:55:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/hooks/useProfile.ts
 const { data } = await supabase
   .from("profiles")
   .upsert(payload)
@@ -50,7 +50,7 @@ const { data } = await supabase
 
 Anchors:
 
-```22:28:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/hooks/useProfile.ts
+```22:28:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/hooks/useProfile.ts
 const { data } = await supabase
   .from("profiles")
   .select("id, display_name, username, email, avatar_url, locale, created_at")
@@ -58,7 +58,7 @@ const { data } = await supabase
   .single();
 ```
 
-```48:55:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/hooks/useProfile.ts
+```48:55:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/hooks/useProfile.ts
 const { data } = await supabase
   .from("profiles")
   .upsert(payload)
@@ -68,7 +68,7 @@ const { data } = await supabase
 
 Scenario: Avatar upload then save
 
-```40:51:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/account/ProfileForm.tsx
+```40:51:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/account/ProfileForm.tsx
 const path = `${user.id}/${Date.now()}_${file.name}`;
 const { error: upErr } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
 if (!upErr) {

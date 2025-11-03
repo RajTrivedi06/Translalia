@@ -42,26 +42,26 @@ Defines how we minimize spend with caching, rate limiting, and disciplined API p
 
 | Surface        | Default model           | Anchor                                                                          |
 | -------------- | ----------------------- | ------------------------------------------------------------------------------- |
-| Translator     | "gpt-5"                 | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/models.ts#L2-L2      |
-| Enhancer       | "gpt-5-mini"            | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/models.ts#L4-L5      |
-| Router         | "gpt-5-nano-2025-08-07" | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/models.ts#L7-L8      |
-| Verifier       | fallback Router         | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/verify.ts#L12-L13 |
-| Back-translate | fallback Enhancer       | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/verify.ts#L13-L15 |
+| Translator     | "gpt-5"                 | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/models.ts#L2-L2      |
+| Enhancer       | "gpt-5-mini"            | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/models.ts#L4-L5      |
+| Router         | "gpt-5-nano-2025-08-07" | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/models.ts#L7-L8      |
+| Verifier       | fallback Router         | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/verify.ts#L12-L13 |
+| Back-translate | fallback Enhancer       | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/verify.ts#L13-L15 |
 
 #### FLAGS_MAP (cost gating)
 
 | Flag                                | Default | Effect                          | Anchor                                                                                                   |
 | ----------------------------------- | ------- | ------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `NEXT_PUBLIC_FEATURE_TRANSLATOR`    | 0       | Blocks translator calls (403)   | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts#L16-L18                |
-| `NEXT_PUBLIC_FEATURE_ENHANCER`      | 0       | Blocks enhancer calls (403)     | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/enhancer/route.ts#L14-L16                 |
-| `NEXT_PUBLIC_FEATURE_VERIFY`        | 0       | Blocks verify (404 impl)        | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/verify/route.ts#L10-L12        |
-| `NEXT_PUBLIC_FEATURE_BACKTRANSLATE` | 0       | Blocks backtranslate (404 impl) | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/backtranslate/route.ts#L13-L15 |
+| `NEXT_PUBLIC_FEATURE_TRANSLATOR`    | 0       | Blocks translator calls (403)   | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translate/route.ts#L16-L18                |
+| `NEXT_PUBLIC_FEATURE_ENHANCER`      | 0       | Blocks enhancer calls (403)     | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/enhancer/route.ts#L14-L16                 |
+| `NEXT_PUBLIC_FEATURE_VERIFY`        | 0       | Blocks verify (404 impl)        | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/verify/route.ts#L10-L12        |
+| `NEXT_PUBLIC_FEATURE_BACKTRANSLATE` | 0       | Blocks backtranslate (404 impl) | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/backtranslate/route.ts#L13-L15 |
 
 ### LLM API Patterns (responses.create, hashing, previews)
 
 - Helper handles non‑generative models and retry on unsupported temperature.
 
-```38:51:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/openai.ts
+```38:51:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/openai.ts
 const args: Record<string, unknown> = { model };
 const nonGen = isNonGenerative(model);
 if (!nonGen && typeof temperature === "number")
@@ -75,7 +75,7 @@ if (typeof user === "string") {
 }
 ```
 
-```68:83:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/openai.ts
+```68:83:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/openai.ts
 const unsupportedTemp = /Unsupported parameter:\s*'temperature'/i.test(msg);
 if (unsupportedTemp) {
   const retryArgs: Record<string, unknown> = { ...args };
@@ -93,7 +93,7 @@ if (unsupportedTemp) {
 
 - Cache implementation: in‑process Map with per‑entry expiry.
 
-```13:21:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/cache.ts
+```13:21:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/cache.ts
 export async function cacheGet<T>(key: string): Promise<T | null> {
   const item = mem.get(key);
   if (!item) return null;
@@ -107,21 +107,21 @@ export async function cacheGet<T>(key: string): Promise<T | null> {
 
 - Key construction and TTL usage in routes:
 
-```89:97:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts
+```89:97:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translate/route.ts
 const key = "translate:" + stableHash(bundle);
 const cached = await cacheGet<unknown>(key);
 // ...
 await cacheSet(key, result, 3600);
 ```
 
-```157:165:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```157:165:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 const key = "translator_preview:" + stableHash({ ...bundle, placeholderId });
 const cached = await cacheGet<unknown>(key);
 // ...
 await cacheSet(key, preview, 3600);
 ```
 
-```52:59:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/enhancer/route.ts
+```52:59:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/enhancer/route.ts
 const key = "enhancer:" + stableHash(payload);
 const cached = await cacheGet<unknown>(key);
 // ...
@@ -130,13 +130,13 @@ await cacheSet(key, plan, 3600);
 
 - Rate limiting and quotas:
 
-```3:12:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/ratelimit.ts
+```3:12:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/ratelimit.ts
 export function rateLimit(key: string, limit = 30, windowMs = 60_000) {
   // in-memory sliding window
 }
 ```
 
-```21:39:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ratelimit/redis.ts
+```21:39:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ratelimit/redis.ts
 if (!limiter)
   limiter = new Ratelimit({
     redis: client,
@@ -144,7 +144,7 @@ if (!limiter)
   });
 ```
 
-```26:39:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ratelimit/redis.ts
+```26:39:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ratelimit/redis.ts
 export async function checkDailyLimit(
   userId: string,
   key: string,
@@ -166,15 +166,15 @@ export async function checkDailyLimit(
 
 | Prefix                | Inputs (hashed)                                     | TTL (sec) | Anchor                                                                                               |
 | --------------------- | --------------------------------------------------- | --------- | ---------------------------------------------------------------------------------------------------- |
-| `translator_preview:` | bundle + placeholderId                              | 3600      | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts#L157-L165 |
-| `translate:`          | poem, enhanced, summary, ledger, accepted, glossary | 3600      | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts#L89-L93            |
-| `enhancer:`           | poem, fields                                        | 3600      | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/enhancer/route.ts#L52-L56             |
+| `translator_preview:` | bundle + placeholderId                              | 3600      | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts#L157-L165 |
+| `translate:`          | poem, enhanced, summary, ledger, accepted, glossary | 3600      | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translate/route.ts#L89-L93            |
+| `enhancer:`           | poem, fields                                        | 3600      | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/enhancer/route.ts#L52-L56             |
 
 ### Known Gaps / TODOs
 
 - Add `Retry-After` headers on 429 from preview minute bucket and Redis quotas for consistency.
 
-```157:161:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/http/errors.ts
+```157:161:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/http/errors.ts
 const res = NextResponse.json(body, { status });
 if (retryAfter) res.headers.set("Retry-After", String(retryAfter));
 ```
@@ -192,7 +192,7 @@ Updated: 2025-09-16
 
 - Translator: single `responses.create` call at `temperature ≈ 0.6`.
 
-```98:104:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts
+```98:104:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translate/route.ts
 const reqPayload = {
   model: TRANSLATOR_MODEL,
   temperature: 0.6,
@@ -201,7 +201,7 @@ const reqPayload = {
 
 - Prismatic mode (when enabled) remains a single call; sections A/B/C parsed server-side.
 
-```216:219:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```216:219:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 const sections =
   isPrismaticEnabled() && effectiveMode === "prismatic"
     ? parsePrismatic(raw)
@@ -210,7 +210,7 @@ const sections =
 
 - Enhancer (planner): single call with JSON output; may retry once with stricter system prompt.
 
-```38:45:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/enhance.ts
+```38:45:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/enhance.ts
 const base = {
   model: ENHANCER_MODEL,
   temperature: 0.2,
@@ -218,7 +218,7 @@ const base = {
 };
 ```
 
-```58:66:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/enhance.ts
+```58:66:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/enhance.ts
 const r2 = await openai.responses.create({
   ...base,
   temperature: 0.1,
@@ -228,14 +228,14 @@ const r2 = await openai.responses.create({
 
 - Verifier / Back-translate: user-initiated JSON calls (`temperature ≈ 0.2` / `0.3`).
 
-```41:47:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/verify.ts
+```41:47:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/verify.ts
 const r = await openai.responses.create({
   model: VERIFIER_MODEL,
   temperature: 0.2,
   response_format: { type: "json_object" },
 ```
 
-```83:90:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/verify.ts
+```83:90:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/verify.ts
 const r = await openai.responses.create({
   model: BACKTRANSLATE_MODEL,
   temperature: 0.3,
@@ -246,7 +246,7 @@ const r = await openai.responses.create({
 
 - Prompt hash inputs: `{ route, model, system, user, schema? }`.
 
-```11:20:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/promptHash.ts
+```11:20:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/promptHash.ts
 export function buildPromptHash(args: {
   route: string;
   model: string;
@@ -261,7 +261,7 @@ export function buildPromptHash(args: {
 
 - Cache keys: stable hash of inputs; process memory Map with TTL seconds.
 
-```5:11:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/cache.ts
+```5:11:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/cache.ts
 export function stableHash(obj: unknown): string {
   const json = JSON.stringify(
     obj,
@@ -271,7 +271,7 @@ export function stableHash(obj: unknown): string {
 }
 ```
 
-```23:29:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/cache.ts
+```23:29:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/cache.ts
 export async function cacheSet<T>(
   key: string,
   value: T,
@@ -283,7 +283,7 @@ export async function cacheSet<T>(
 
 - Example usage (preview):
 
-```101:109:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```101:109:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 const key = "translator_preview:" + stableHash({ ...bundle, placeholderId });
 const cached = await cacheGet<unknown>(key);
 if (cached) {
@@ -293,7 +293,7 @@ if (cached) {
 
 - Example usage (translate):
 
-```74:79:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts
+```74:79:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translate/route.ts
 const key = "translate:" + stableHash(bundle);
 const cached = await cacheGet<unknown>(key);
 if (cached)
@@ -304,14 +304,14 @@ if (cached)
 
 - Minute bucket (preview): in-memory token bucket keyed by thread; returns 429 JSON when exceeded.
 
-```3:12:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/ratelimit.ts
+```3:12:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/ratelimit.ts
 export function rateLimit(key: string, limit = 30, windowMs = 60_000) {
   // ... in-memory bucket
   if (b.count >= limit) return { ok: false, remaining: 0 } as const;
 }
 ```
 
-```49:52:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```49:52:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 const rl = rateLimit(`preview:${threadId}`, 30, 60_000);
 if (!rl.ok)
   return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
@@ -319,12 +319,12 @@ if (!rl.ok)
 
 - Daily quotas (verify/backtranslate): Upstash Redis sliding window with 429 JSON on exceed.
 
-```1:7:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ratelimit/redis.ts
+```1:7:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ratelimit/redis.ts
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 ```
 
-```18:21:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/verify/route.ts
+```18:21:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/verify/route.ts
 const rl = await checkDailyLimit(user.id, "verify", VERIFY_DAILY_LIMIT);
 if (!rl.allowed)
   return NextResponse.json(
@@ -337,7 +337,7 @@ if (!rl.allowed)
 
 - Policy intent: include `Retry-After` for local minute bucket (60s) and daily quotas (86400s). Current routes return 429 JSON without explicit headers; upstream LLM 429s preserve headers.
 
-```3:10:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/http/errors.ts
+```3:10:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/http/errors.ts
 /** Convert LLM client errors to concise HTTP responses, preserving Retry-After on 429. */
 const res = NextResponse.json(body, { status });
 if (retryAfter) res.headers.set("Retry-After", String(retryAfter));
@@ -347,13 +347,13 @@ if (retryAfter) res.headers.set("Retry-After", String(retryAfter));
 
 | Cache Key Prefix      | Inputs (hashed)                                                     | TTL (sec) | Eviction         | Anchor                                                             |
 | --------------------- | ------------------------------------------------------------------- | --------- | ---------------- | ------------------------------------------------------------------ |
-| `translator_preview:` | bundle (poem, enhanced, glossary, summary, accepted, placeholderId) | 3600      | TTL expiry (mem) | `metamorphs-web/src/app/api/translator/preview/route.ts:L153–L156` |
-| `translate:`          | poem, enhanced, summary, ledger, accepted, glossary                 | 3600      | TTL expiry (mem) | `metamorphs-web/src/app/api/translate/route.ts:L89–L93`            |
-| `enhancer:`           | poem, fields                                                        | 3600      | TTL expiry (mem) | `metamorphs-web/src/app/api/enhancer/route.ts:L52–L56`             |
+| `translator_preview:` | bundle (poem, enhanced, glossary, summary, accepted, placeholderId) | 3600      | TTL expiry (mem) | `Translalia-web/src/app/api/translator/preview/route.ts:L153–L156` |
+| `translate:`          | poem, enhanced, summary, ledger, accepted, glossary                 | 3600      | TTL expiry (mem) | `Translalia-web/src/app/api/translate/route.ts:L89–L93`            |
+| `enhancer:`           | poem, fields                                                        | 3600      | TTL expiry (mem) | `Translalia-web/src/app/api/enhancer/route.ts:L52–L56`             |
 
 Implementation
 
-```13:21:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/cache.ts
+```13:21:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/cache.ts
 export async function cacheGet<T>(key: string): Promise<T | null> {
   const item = mem.get(key);
   if (!item) return null;
@@ -365,7 +365,7 @@ export async function cacheGet<T>(key: string): Promise<T | null> {
 }
 ```
 
-```23:29:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/cache.ts
+```23:29:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/cache.ts
 export async function cacheSet<T>(
   key: string,
   value: T,
@@ -379,7 +379,7 @@ export async function cacheSet<T>(
 
 - Preview minute bucket: 30 requests per 60 seconds per `threadId`.
 
-```55:58:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```55:58:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 const rl = rateLimit(`preview:${threadId}`, 30, 60_000);
 if (!rl.ok)
   return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
@@ -387,7 +387,7 @@ if (!rl.ok)
 
 - Token bucket helper (in-memory):
 
-```3:12:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/ratelimit.ts
+```3:12:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/ratelimit.ts
 export function rateLimit(key: string, limit = 30, windowMs = 60_000) {
   const now = Date.now();
   const b = buckets.get(key);
@@ -403,7 +403,7 @@ export function rateLimit(key: string, limit = 30, windowMs = 60_000) {
 
 - Daily quotas (verify/backtranslate): service-backed (Upstash) helper.
 
-```1:7:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ratelimit/redis.ts
+```1:7:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ratelimit/redis.ts
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 ```

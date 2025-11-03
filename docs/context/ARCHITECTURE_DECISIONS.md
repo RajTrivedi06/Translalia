@@ -4,7 +4,7 @@ Updated: 2025-09-16
 
 - Use Next.js App Router API routes for server handlers and SSR helpers.
 
-```4:10:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/auth/route.ts
+```4:10:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/auth/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
 
 - Prefer cookie-bound SSR via helper; fall back to Authorization Bearer when present.
 
-```4:12:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/supabaseServer.ts
+```4:12:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/supabaseServer.ts
 export function supabaseServer() {
   const cookieStore = cookies() as any;
   return createServerClient(
@@ -24,7 +24,7 @@ export function supabaseServer() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
 ```
 
-```35:50:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/apiGuard.ts
+```35:50:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/apiGuard.ts
   if (authH.toLowerCase().startsWith("bearer ")) {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -38,7 +38,7 @@ export function supabaseServer() {
 
 - In-memory per-process cache for LLM previews; simple token-bucket rate limiting.
 
-```23:29:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/cache.ts
+```23:29:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/cache.ts
 export async function cacheSet<
   key: string,
   value: T,
@@ -48,7 +48,7 @@ export async function cacheSet<
 }
 ```
 
-```3:10:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/ratelimit.ts
+```3:10:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/ratelimit.ts
 export function rateLimit(key: string, limit = 30, windowMs = 60_000) {
   const now = Date.now();
   const b = buckets.get(key);
@@ -59,7 +59,7 @@ export function rateLimit(key: string, limit = 30, windowMs = 60_000) {
 
 - Thread `state` JSONB merged and persisted server-side; ledger cadence support.
 
-```60:71:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/server/threadState.ts
+```60:71:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/server/threadState.ts
 export async function patchThreadState(
   threadId: string,
   patch: Partial<SessionState>
@@ -76,14 +76,14 @@ export async function patchThreadState(
 
 - Public flags `NEXT_PUBLIC_FEATURE_*` gate routes; off defaults to 403/404.
 
-```33:36:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```33:36:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 export async function POST(req: Request) {
   if (process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR !== "1") {
     return new NextResponse("Feature disabled", { status: 403 });
   }
 ```
 
-```1:4:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/flags/verify.ts
+```1:4:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/flags/verify.ts
 export const isVerifyEnabled = () =>
   process.env.NEXT_PUBLIC_FEATURE_VERIFY === "1";
 export const isBacktranslateEnabled = () =>
@@ -312,7 +312,7 @@ if (!parsed.success)
 - Consequences: Co-located APIs and UI; simple deployment. Ensure SSR cookies are respected.
 - Anchor:
 
-  ```4:10:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/auth/route.ts
+  ```4:10:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/auth/route.ts
   export const runtime = "nodejs";
   export const dynamic = "force-dynamic";
   export const revalidate = 0;
@@ -326,14 +326,14 @@ if (!parsed.success)
 - Status: Accepted
 - Consequences: Works for browser and programmatic clients; requires secure cookie handling.
 - Anchors:
-  ```4:12:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/supabaseServer.ts
+  ```4:12:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/supabaseServer.ts
   export function supabaseServer() {
     const cookieStore = cookies() as any;
     return createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   ```
-  ```35:50:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/apiGuard.ts
+  ```35:50:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/apiGuard.ts
   if (authH.toLowerCase().startsWith("bearer ")) {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -348,7 +348,7 @@ if (!parsed.success)
 - Status: Accepted
 - Consequences: Great latency/cost wins; per‑process only; resets on deploy. Consider Redis later.
 - Anchors:
-  ```23:29:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/cache.ts
+  ```23:29:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/cache.ts
   export async function cacheSet<T>(
     key: string,
     value: T,
@@ -357,7 +357,7 @@ if (!parsed.success)
     mem.set(key, { expires: Date.now() + ttlSec * 1000, value });
   }
   ```
-  ```157:165:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+  ```157:165:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
   const key = "translator_preview:" + stableHash({ ...bundle, placeholderId });
   const cached = await cacheGet<unknown>(key);
   ```
@@ -368,13 +368,13 @@ if (!parsed.success)
 - Status: Accepted
 - Consequences: MVP friendly; not distributed unless Redis-backed; tune per route.
 - Anchors:
-  ```3:13:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/ratelimit.ts
+  ```3:13:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/ratelimit.ts
   export function rateLimit(key: string, limit = 30, windowMs = 60_000) {
     const now = Date.now();
     const b = buckets.get(key);
   }
   ```
-  ```26:40:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ratelimit/redis.ts
+  ```26:40:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ratelimit/redis.ts
   export async function checkDailyLimit(
     userId: string,
     key: string,
@@ -392,7 +392,7 @@ if (!parsed.success)
 - Status: Accepted
 - Consequences: Durable, RLS‑protected, auditable; requires schema and careful merges.
 - Anchor:
-  ```60:71:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/server/threadState.ts
+  ```60:71:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/server/threadState.ts
   export async function patchThreadState(
     threadId: string,
     patch: Partial<SessionState>
@@ -412,7 +412,7 @@ if (!parsed.success)
 - Status: Accepted
 - Consequences: Reliable SSR session; minimal client coupling.
 - Anchor:
-  ```20:29:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/auth/route.ts
+  ```20:29:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/auth/route.ts
   export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const { event, session } = body as { event?: string; session?: any };

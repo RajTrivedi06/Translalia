@@ -13,7 +13,7 @@
 - Server routes use one of two guards:
   - Simple guard (SSR cookie only):
 
-```4:11:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/auth/requireUser.ts
+```4:11:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/auth/requireUser.ts
 /** Ensures a user session exists; returns 401 JSON response otherwise. */
 export async function requireUser() {
   const supabase = await supabaseServer();
@@ -24,7 +24,7 @@ export async function requireUser() {
 
 - Full guard (SSR cookie or Authorization header):
 
-```35:50:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/apiGuard.ts
+```35:50:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/apiGuard.ts
 if (authH.toLowerCase().startsWith("bearer ")) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -39,7 +39,7 @@ if (authH.toLowerCase().startsWith("bearer ")) {
 
 - Cookie-based SSR client:
 
-```7:13:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/supabaseServer.ts
+```7:13:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/supabaseServer.ts
 return createServerClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -51,7 +51,7 @@ return createServerClient(
 
 ### Sample protected-route template
 
-```16:25:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/route.ts
+```16:25:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/route.ts
 export async function POST(req: NextRequest) {
   const guard = await requireUser(req);
   if ("res" in guard) return guard.res;
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
 
 - Auth debug route returns cookie names and user id when present:
 
-```6:15:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/auth/debug-cookies/route.ts
+```6:15:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/auth/debug-cookies/route.ts
 export async function GET() {
   const cookieStore = await cookies();
   const supabase = await supabaseServer();
@@ -77,7 +77,7 @@ export async function GET() {
 
 | Entry point       | Guard type          | Failure behavior      | Anchor                                                                                 |
 | ----------------- | ------------------- | --------------------- | -------------------------------------------------------------------------------------- |
-| Cookie SSR helper | SSR cookie (server) | 401 JSON when missing | ```4:11:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/auth/requireUser.ts |
+| Cookie SSR helper | SSR cookie (server) | 401 JSON when missing | ```4:11:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/auth/requireUser.ts |
 
 /\*_ Ensures a user session exists; returns 401 JSON response otherwise. _/
 export async function requireUser() {
@@ -91,7 +91,7 @@ response: NextResponse.json({ error: "Unauthenticated" }, { status: 401 }),
 }
 
 ````|
-| API guard (cookie → Bearer) | SSR cookie or Authorization: Bearer | 401 JSON when none | ```35:45:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/apiGuard.ts
+| API guard (cookie → Bearer) | SSR cookie or Authorization: Bearer | 401 JSON when none | ```35:45:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/apiGuard.ts
 if (authH.toLowerCase().startsWith("bearer ")) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -100,7 +100,7 @@ if (authH.toLowerCase().startsWith("bearer ")) {
   }) as unknown as SupabaseClient;
 }
 ``` |
-| Supabase SSR client | Cookie wiring | Reads/writes cookies | ```4:13:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/supabaseServer.ts
+| Supabase SSR client | Cookie wiring | Reads/writes cookies | ```4:13:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/supabaseServer.ts
 export function supabaseServer() {
   const cookieStore = cookies() as any;
   return createServerClient(
@@ -113,7 +113,7 @@ export function supabaseServer() {
 
 Example (protected list route):
 
-```16:21:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/nodes/route.ts
+```16:21:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/nodes/route.ts
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const threadId = searchParams.get("threadId");
@@ -169,7 +169,7 @@ export async function POST(req: NextRequest) {
 
 Scenario: Bearer token present but invalid → 401
 
-```36:50:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/apiGuard.ts
+```36:50:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/apiGuard.ts
 const authH = req.headers.get("authorization") || "";
 if (authH.toLowerCase().startsWith("bearer ")) {
   const { data: u2, error: e2 } = await sbBearer.auth.getUser();

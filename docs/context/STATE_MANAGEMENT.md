@@ -34,7 +34,7 @@ Persistence:
 
 - `tokensSelections` and `workshopDraft.notebookText` are hydrated/saved per-thread via localStorage in the Workshop view.
 
-```64:73:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/views/WorkshopView.tsx
+```64:73:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/views/WorkshopView.tsx
 // Hydrate from localStorage on thread change
 React.useEffect(() => {
   const saved = loadLocal<{ tokenSelections: any; notebookText: string }>(threadId);
@@ -50,7 +50,7 @@ React.useEffect(() => {
 }, [threadId]);
 ```
 
-```82:88:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/views/WorkshopView.tsx
+```82:88:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/views/WorkshopView.tsx
 // Throttled save to localStorage
 React.useEffect(() => {
   const id = window.setTimeout(
@@ -65,7 +65,7 @@ Polling rules (TanStack Query):
 
 - `useNodes` polls every ~1.5s when `projectId` and `threadId` are present. Prefer gating polling by view (e.g., poll in `workshop` and pause in others) to reduce load.
 
-```56:62:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/hooks/useNodes.ts
+```56:62:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/hooks/useNodes.ts
 return useQuery({
   queryKey: ["nodes", projectId, threadId],
   queryFn: () => fetchNodes(threadId!),
@@ -83,13 +83,13 @@ return useQuery({
 
 | Data                                                  | Source of truth          | Transport (hook/route)                                           | Client cache/store                                   | Persistence    | Anchors                                                                                                                                                                                                               |
 | ----------------------------------------------------- | ------------------------ | ---------------------------------------------------------------- | ---------------------------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Thread flow snapshot (phase, next question, snapshot) | DB: `chat_threads.state` | `useInterviewFlow().peek` → `GET /api/flow/peek?threadId=`       | React Query `["flow_peek", threadId]`                | Supabase JSONB | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/hooks/useInterviewFlow.ts#L10-L21; /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/flow/peek/route.ts#L73-L83                                   |
-| Thread state edits (poem, collected_fields)           | DB: `chat_threads.state` | Plan sheet writes via Supabase client                            | n/a (write-through)                                  | Supabase JSONB | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/flow/PlanBuilderOverviewSheet.tsx#L108-L116                                                                                               |
-| Versions list (nodes for a thread)                    | DB: `versions`           | `useNodes(projectId, threadId)` → `GET /api/versions/nodes`      | React Query `["nodes", projectId, threadId]`         | Supabase rows  | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/hooks/useNodes.ts#L34-L41; /Users/raaj/Documents/CS/metamorphs-met amorphs-web/src/app/api/versions/nodes/route.ts#L63-L69                                     |
-| Journey timeline                                      | DB: `journey_items`      | `useJourney(projectId)` → `GET /api/journey/list`                | React Query `["journey", projectId, limit]`          | Supabase rows  | /Users/raaj/Documents/CS/metamorphs-met amorphs-web/src/hooks/useJourney.ts#L5-L12; /Users/raaj/Documents/CS/metamorphs-met amorphs-web/src/app/api/journey/list/route.ts#L15-L23                                     |
-| Chat messages                                         | DB: `chat_messages`      | `useThreadMessages(projectId, threadId)` (browser Supabase read) | React Query `["chat_messages", projectId, threadId]` | Supabase rows  | /Users/raaj/Documents/CS/metamorphs-met amorphs-web/src/hooks/useThreadMessages.ts#L20-L25                                                                                                                            |
-| Version positions                                     | DB: `versions.pos`       | Canvas PATCH `/api/versions/positions`                           | n/a                                                  | Supabase rows  | /Users/raaj/Documents/CS/metamorphs-met amorphs-web/src/components/workspace/versions/VersionCanvas.tsx#L99-L104; /Users/raaj/Documents/CS/metamorphs-met amorphs-web/src/app/api/versions/positions/route.ts#L17-L23 |
-| Compare nodes                                         | DB: `compares`           | Canvas `POST /api/compares`                                      | Zustand `useWorkspace` compares                      | Supabase rows  | /Users/raaj/Documents/CS/metamorphs-met amorphs-web/src/components/workspace/versions/VersionCanvas.tsx#L236-L249; /Users/raaj/Documents/CS/metamorphs-met amorphs-web/src/store/workspace.ts#L55-L63                 |
+| Thread flow snapshot (phase, next question, snapshot) | DB: `chat_threads.state` | `useInterviewFlow().peek` → `GET /api/flow/peek?threadId=`       | React Query `["flow_peek", threadId]`                | Supabase JSONB | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/hooks/useInterviewFlow.ts#L10-L21; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/flow/peek/route.ts#L73-L83                                   |
+| Thread state edits (poem, collected_fields)           | DB: `chat_threads.state` | Plan sheet writes via Supabase client                            | n/a (write-through)                                  | Supabase JSONB | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/flow/PlanBuilderOverviewSheet.tsx#L108-L116                                                                                               |
+| Versions list (nodes for a thread)                    | DB: `versions`           | `useNodes(projectId, threadId)` → `GET /api/versions/nodes`      | React Query `["nodes", projectId, threadId]`         | Supabase rows  | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/hooks/useNodes.ts#L34-L41; /Users/raaj/Documents/CS/Translalia-met amorphs-web/src/app/api/versions/nodes/route.ts#L63-L69                                     |
+| Journey timeline                                      | DB: `journey_items`      | `useJourney(projectId)` → `GET /api/journey/list`                | React Query `["journey", projectId, limit]`          | Supabase rows  | /Users/raaj/Documents/CS/Translalia-met amorphs-web/src/hooks/useJourney.ts#L5-L12; /Users/raaj/Documents/CS/Translalia-met amorphs-web/src/app/api/journey/list/route.ts#L15-L23                                     |
+| Chat messages                                         | DB: `chat_messages`      | `useThreadMessages(projectId, threadId)` (browser Supabase read) | React Query `["chat_messages", projectId, threadId]` | Supabase rows  | /Users/raaj/Documents/CS/Translalia-met amorphs-web/src/hooks/useThreadMessages.ts#L20-L25                                                                                                                            |
+| Version positions                                     | DB: `versions.pos`       | Canvas PATCH `/api/versions/positions`                           | n/a                                                  | Supabase rows  | /Users/raaj/Documents/CS/Translalia-met amorphs-web/src/components/workspace/versions/VersionCanvas.tsx#L99-L104; /Users/raaj/Documents/CS/Translalia-met amorphs-web/src/app/api/versions/positions/route.ts#L17-L23 |
+| Compare nodes                                         | DB: `compares`           | Canvas `POST /api/compares`                                      | Zustand `useWorkspace` compares                      | Supabase rows  | /Users/raaj/Documents/CS/Translalia-met amorphs-web/src/components/workspace/versions/VersionCanvas.tsx#L236-L249; /Users/raaj/Documents/CS/Translalia-met amorphs-web/src/store/workspace.ts#L55-L63                 |
 
 ### Patterns
 
@@ -104,13 +104,13 @@ We use TanStack Query keys like `["nodes", projectId, threadId]` for thread-scop
 
 | Query Key                     | Params                  | Reader(s)                                | Writer(s) / Invalidators                                       | Anchors                                                                                                                                                                                             |
 | ----------------------------- | ----------------------- | ---------------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `["nodes", pId, tId]`         | `projectId`, `threadId` | `useNodes(projectId, threadId)` in UI    | API writes update `versions` then polling refresh              | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/hooks/useNodes.ts#L38-L45                                                                                                                    |
-| `["chat_messages", pId, tId]` | `projectId`, `threadId` | `useThreadMessages(projectId, threadId)` | Writes via `/api/chat/[threadId]/messages`; refetch after send | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/hooks/useThreadMessages.ts#L20-L25; /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/chat/ChatPanel.tsx#L348-L361 |
-| `["journey", pId, limit]`     | `projectId`, `limit`    | `useJourney(projectId, limit)`           | Invalidated on accept-lines; also loaded in `WorkspaceShell`   | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/hooks/useJourney.ts#L5-L12; /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/versions/VersionCanvas.tsx#L351-L365 |
-| `["flow_peek", threadId]`     | `threadId`              | `useInterviewFlow().peek`                | Invalidated on start/answer/confirm                            | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/hooks/useInterviewFlow.ts#L10-L16; /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/hooks/useInterviewFlow.ts#L44-L46                  |
-| `["citations", pId]`          | `projectId`             | none (placeholder)                       | Invalidated on thread change to avoid stale overlays           | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/WorkspaceShell.tsx#L71-L74                                                                                              |
+| `["nodes", pId, tId]`         | `projectId`, `threadId` | `useNodes(projectId, threadId)` in UI    | API writes update `versions` then polling refresh              | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/hooks/useNodes.ts#L38-L45                                                                                                                    |
+| `["chat_messages", pId, tId]` | `projectId`, `threadId` | `useThreadMessages(projectId, threadId)` | Writes via `/api/chat/[threadId]/messages`; refetch after send | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/hooks/useThreadMessages.ts#L20-L25; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/chat/ChatPanel.tsx#L348-L361 |
+| `["journey", pId, limit]`     | `projectId`, `limit`    | `useJourney(projectId, limit)`           | Invalidated on accept-lines; also loaded in `WorkspaceShell`   | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/hooks/useJourney.ts#L5-L12; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/versions/VersionCanvas.tsx#L351-L365 |
+| `["flow_peek", threadId]`     | `threadId`              | `useInterviewFlow().peek`                | Invalidated on start/answer/confirm                            | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/hooks/useInterviewFlow.ts#L10-L16; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/hooks/useInterviewFlow.ts#L44-L46                  |
+| `["citations", pId]`          | `projectId`             | none (placeholder)                       | Invalidated on thread change to avoid stale overlays           | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/WorkspaceShell.tsx#L71-L74                                                                                              |
 
-```38:45:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/hooks/useNodes.ts
+```38:45:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/hooks/useNodes.ts
 return useQuery({
   queryKey: ["nodes", projectId, threadId],
   queryFn: () => fetchNodes(threadId!),
@@ -127,7 +127,7 @@ return useQuery({
 
 #### Key mutation flows (client → API)
 
-```346:361:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/chat/ChatPanel.tsx
+```346:361:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/chat/ChatPanel.tsx
 const res = await fetch(`/api/chat/${threadId}/messages`, {
   method: "POST",
   headers: { "Content-Type": "application/json", ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
@@ -135,7 +135,7 @@ const res = await fetch(`/api/chat/${threadId}/messages`, {
 });
 ```
 
-```160:174:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/flow/PlanBuilderOverviewSheet.tsx
+```160:174:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/flow/PlanBuilderOverviewSheet.tsx
 const res = await fetch("/api/translator/preview", {
   method: "POST",
   headers,
@@ -144,7 +144,7 @@ const res = await fetch("/api/translator/preview", {
 });
 ```
 
-```46:52:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/translate/NodeCard.tsx
+```46:52:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/translate/NodeCard.tsx
 const res = await fetch("/api/translator/accept-lines", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
@@ -203,7 +203,7 @@ type WorkspaceState = {
 
 Anchors:
 
-```40:49:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/store/workspace.ts
+```40:49:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/store/workspace.ts
 export const useWorkspace = create<WorkspaceState>((set) => ({
   projectId: undefined,
   threadId: undefined,

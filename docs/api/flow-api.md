@@ -11,19 +11,19 @@ All endpoints are thread-scoped (`projectId`, `threadId`) and auth-guarded unles
 
 | Route                         | Method | Request schema                                                                                          | Response schema                                                                | Error codes                       | Flags                               | Anchors                                                                                                                                                                                                            |
 | ----------------------------- | ------ | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | --------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| /api/flow/answer              | POST   | `{ threadId: uuid, questionId: enum, answer: string }`                                                  | `{ ok: true, phase, nextQuestion?, snapshot? }`                                | 400, 404                          | —                                   | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/flow/answer/route.ts#L13-L26; /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/flow/answer/route.ts#L86-L108                          |
-| /api/flow/start               | POST   | `{ threadId: uuid, poem: string }`                                                                      | `{ ok: true, phase: "interviewing", nextQuestion }`                            | 400, 404                          | —                                   | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/flow/start/route.ts#L8-L12; /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/flow/start/route.ts#L55-L59                              |
-| /api/flow/confirm             | POST   | `{ threadId: uuid }`                                                                                    | `{ ok: true, phase: "translating" }`                                           | 400, 404, 409                     | —                                   | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/flow/confirm/route.ts#L7-L15; /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/flow/confirm/route.ts#L28-L31                          |
-| /api/flow/intent              | POST   | `{ message: string, phase: string }`                                                                    | `{ intent: string                                                              | null }`                           | 400                                 | `NEXT_PUBLIC_FEATURE_ROUTER` (indirect)                                                                                                                                                                            | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/flow/intent/route.ts#L5-L12; /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/server/flow/intentLLM.ts#L11-L18 |
-| /api/translator/preview       | POST   | `{ threadId: uuid, forceTranslate?: boolean, mode?: enum }`                                             | `{ ok: true, preview, mode, sections?, versionId, displayLabel, prompt_hash }` | 400, 401, 403, 409, 429, 500, 502 | `NEXT_PUBLIC_FEATURE_TRANSLATOR`    | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts#L33-L41; /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts#L268-L276           |
-| /api/translator/instruct      | POST   | `{ threadId: uuid, instruction: string, citeVersionId?: uuid, mode?: enum }`                            | `{ ok: true, versionId, displayLabel, prompt_hash, mode, sections? }`          | 400, 401, 403, 409, 500, 502      | `NEXT_PUBLIC_FEATURE_TRANSLATOR`    | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts#L24-L32; /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts#L445-L456         |
-| /api/translate                | POST   | `{ threadId: uuid }`                                                                                    | `{ ok: true, result, usage? }`                                                 | 400, 403, 404, 409, 422, 502      | `NEXT_PUBLIC_FEATURE_TRANSLATOR`    | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts#L13-L21; /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts#L149-L153                             |
-| /api/enhancer                 | POST   | `{ threadId: uuid }`                                                                                    | `{ ok: true, plan, prompt_hash }`                                              | 400, 403, 404, 502                | `NEXT_PUBLIC_FEATURE_ENHANCER`      | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/enhancer/route.ts#L11-L16; /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/enhancer/route.ts#L86-L86                                 |
-| /api/translator/verify        | POST   | `{ projectId: uuid, threadId: uuid, source: string, candidate: string }`                                | `{ data, prompt_hash }`                                                        | 400, 404, 429, 502                | `NEXT_PUBLIC_FEATURE_VERIFY`        | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/verify/route.ts#L7-L16; /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/verify/route.ts#L25-L31                |
-| /api/translator/backtranslate | POST   | `{ projectId: uuid, threadId: uuid, candidate: string }`                                                | `{ data, prompt_hash }`                                                        | 400, 404, 429, 502                | `NEXT_PUBLIC_FEATURE_BACKTRANSLATE` | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/backtranslate/route.ts#L10-L19; /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/backtranslate/route.ts#L32-L39 |
-| /api/versions                 | POST   | `{ projectId: uuid, title: string, lines: string[], tags?: string[], meta?: object, summary?: string }` | `{ version }`                                                                  | 400                               | —                                   | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/route.ts#L16-L24; /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/route.ts#L51-L51                                 |
-| /api/versions/nodes           | GET    | `?threadId=uuid`                                                                                        | `{ ok: true, nodes: [] }`                                                      | 400, 403, 404, 500                | —                                   | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/nodes/route.ts#L8-L15; /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/nodes/route.ts#L63-L69                      |
-| /api/versions/positions       | PATCH  | `{ projectId, positions: [{id, pos:{x,y}}...] }`                                                        | `{ ok: true }`                                                                 | 400                               | —                                   | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/positions/route.ts#L5-L15; /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/positions/route.ts#L31-L34              |
+| /api/flow/answer              | POST   | `{ threadId: uuid, questionId: enum, answer: string }`                                                  | `{ ok: true, phase, nextQuestion?, snapshot? }`                                | 400, 404                          | —                                   | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/flow/answer/route.ts#L13-L26; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/flow/answer/route.ts#L86-L108                          |
+| /api/flow/start               | POST   | `{ threadId: uuid, poem: string }`                                                                      | `{ ok: true, phase: "interviewing", nextQuestion }`                            | 400, 404                          | —                                   | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/flow/start/route.ts#L8-L12; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/flow/start/route.ts#L55-L59                              |
+| /api/flow/confirm             | POST   | `{ threadId: uuid }`                                                                                    | `{ ok: true, phase: "translating" }`                                           | 400, 404, 409                     | —                                   | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/flow/confirm/route.ts#L7-L15; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/flow/confirm/route.ts#L28-L31                          |
+| /api/flow/intent              | POST   | `{ message: string, phase: string }`                                                                    | `{ intent: string                                                              | null }`                           | 400                                 | `NEXT_PUBLIC_FEATURE_ROUTER` (indirect)                                                                                                                                                                            | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/flow/intent/route.ts#L5-L12; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/server/flow/intentLLM.ts#L11-L18 |
+| /api/translator/preview       | POST   | `{ threadId: uuid, forceTranslate?: boolean, mode?: enum }`                                             | `{ ok: true, preview, mode, sections?, versionId, displayLabel, prompt_hash }` | 400, 401, 403, 409, 429, 500, 502 | `NEXT_PUBLIC_FEATURE_TRANSLATOR`    | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts#L33-L41; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts#L268-L276           |
+| /api/translator/instruct      | POST   | `{ threadId: uuid, instruction: string, citeVersionId?: uuid, mode?: enum }`                            | `{ ok: true, versionId, displayLabel, prompt_hash, mode, sections? }`          | 400, 401, 403, 409, 500, 502      | `NEXT_PUBLIC_FEATURE_TRANSLATOR`    | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts#L24-L32; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts#L445-L456         |
+| /api/translate                | POST   | `{ threadId: uuid }`                                                                                    | `{ ok: true, result, usage? }`                                                 | 400, 403, 404, 409, 422, 502      | `NEXT_PUBLIC_FEATURE_TRANSLATOR`    | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translate/route.ts#L13-L21; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translate/route.ts#L149-L153                             |
+| /api/enhancer                 | POST   | `{ threadId: uuid }`                                                                                    | `{ ok: true, plan, prompt_hash }`                                              | 400, 403, 404, 502                | `NEXT_PUBLIC_FEATURE_ENHANCER`      | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/enhancer/route.ts#L11-L16; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/enhancer/route.ts#L86-L86                                 |
+| /api/translator/verify        | POST   | `{ projectId: uuid, threadId: uuid, source: string, candidate: string }`                                | `{ data, prompt_hash }`                                                        | 400, 404, 429, 502                | `NEXT_PUBLIC_FEATURE_VERIFY`        | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/verify/route.ts#L7-L16; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/verify/route.ts#L25-L31                |
+| /api/translator/backtranslate | POST   | `{ projectId: uuid, threadId: uuid, candidate: string }`                                                | `{ data, prompt_hash }`                                                        | 400, 404, 429, 502                | `NEXT_PUBLIC_FEATURE_BACKTRANSLATE` | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/backtranslate/route.ts#L10-L19; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/backtranslate/route.ts#L32-L39 |
+| /api/versions                 | POST   | `{ projectId: uuid, title: string, lines: string[], tags?: string[], meta?: object, summary?: string }` | `{ version }`                                                                  | 400                               | —                                   | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/route.ts#L16-L24; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/route.ts#L51-L51                                 |
+| /api/versions/nodes           | GET    | `?threadId=uuid`                                                                                        | `{ ok: true, nodes: [] }`                                                      | 400, 403, 404, 500                | —                                   | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/nodes/route.ts#L8-L15; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/nodes/route.ts#L63-L69                      |
+| /api/versions/positions       | PATCH  | `{ projectId, positions: [{id, pos:{x,y}}...] }`                                                        | `{ ok: true }`                                                                 | 400                               | —                                   | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/positions/route.ts#L5-L15; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/positions/route.ts#L31-L34              |
 
 ## Translator (Preview)
 
@@ -31,7 +31,7 @@ All endpoints are thread-scoped (`projectId`, `threadId`) and auth-guarded unles
 
 - Flags: `NEXT_PUBLIC_FEATURE_TRANSLATOR` (OFF → 403)
 
-```28:30:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```28:30:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 if (process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR !== "1") {
   return new NextResponse("Feature disabled", { status: 403 });
 }
@@ -41,12 +41,12 @@ if (process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR !== "1") {
 - Returns: `{ ok, preview, sections?, mode, versionId, displayLabel, prompt_hash }`
 - Errors: `400` invalid, `401` unauthenticated, `403` feature-off, `409` echo guard, `429` rate limit, `500` DB errors, `502` LLM contract
 
-```49:52:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```49:52:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 if (!rl.ok)
   return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 ```
 
-```220:231:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```220:231:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 if (!forceTranslate && looksLikeEcho(sourceLines, outLines)) {
   return NextResponse.json({ ok: false, code: "PREVIEW_ECHOED_SOURCE", error: "Model echoed source text." }, { status: 409 });
 }
@@ -54,7 +54,7 @@ if (!forceTranslate && looksLikeEcho(sourceLines, outLines)) {
 
 - Placeholder node behavior: inserts `versions` row with `status: "placeholder"`, updates to `generated` with `overview` upon success; if cache hit, flips status from cached preview.
 
-```124:141:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```124:141:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 const { data: inserted, error: insErr } = await sb
   .from("versions")
   .insert({
@@ -68,7 +68,7 @@ const { data: inserted, error: insErr } = await sb
   .single();
 ```
 
-```161:169:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```161:169:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 const updatedMeta: Record<string, unknown> = {
   ...placeholderMeta,
   status: "generated" as const,
@@ -87,19 +87,19 @@ const updatedMeta: Record<string, unknown> = {
 - Auth: uses `requireUser()` (401 on missing)
 - Creates placeholder node; updates on success
 
-```22:24:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+```22:24:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
 if (process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR !== "1") {
   return new NextResponse("Feature disabled", { status: 403 });
 }
 ```
 
-```43:45:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+```43:45:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
 if (!me?.user) {
   return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 }
 ```
 
-```252:266:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+```252:266:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
 const updatedMeta: Record<string, unknown> = {
   ...placeholderMeta,
   status: "generated" as const,
@@ -123,13 +123,13 @@ if (upErr)
 - Flags: `NEXT_PUBLIC_FEATURE_TRANSLATOR` (OFF → 403)
 - Requires thread phase readiness; else 409
 
-```16:18:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts
+```16:18:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translate/route.ts
 if (process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR !== "1") {
   return new NextResponse("Feature disabled", { status: 403 });
 }
 ```
 
-```41:43:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts
+```41:43:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translate/route.ts
 return NextResponse.json(
   { error: "Not ready to translate" },
   { status: 409 }
@@ -143,13 +143,13 @@ return NextResponse.json(
 - Flags: `NEXT_PUBLIC_FEATURE_ENHANCER` (OFF → 403)
 - Returns: `{ ok, plan, prompt_hash }` or `{ error, prompt_hash }`
 
-```14:16:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/enhancer/route.ts
+```14:16:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/enhancer/route.ts
 if (process.env.NEXT_PUBLIC_FEATURE_ENHANCER !== "1") {
   return new NextResponse("Feature disabled", { status: 403 });
 }
 ```
 
-```70:76:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/enhancer/route.ts
+```70:76:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/enhancer/route.ts
 if (!r.ok) {
   return NextResponse.json(
     { error: r.error, prompt_hash: r.prompt_hash },
@@ -165,12 +165,12 @@ if (!r.ok) {
 - Flags: `NEXT_PUBLIC_FEATURE_VERIFY` (OFF → 404 implementation)
 - Daily limit with 429 on exceed
 
-```10:12:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/verify/route.ts
+```10:12:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/verify/route.ts
 if (!isVerifyEnabled())
   return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
 ```
 
-```18:23:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/verify/route.ts
+```18:23:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/verify/route.ts
 const rl = await checkDailyLimit(user.id, "verify", VERIFY_DAILY_LIMIT);
 if (!rl.allowed)
   return NextResponse.json(
@@ -186,12 +186,12 @@ if (!rl.allowed)
 - Flags: `NEXT_PUBLIC_FEATURE_BACKTRANSLATE` (OFF → 404 implementation)
 - Daily limit with 429 on exceed
 
-```13:15:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/backtranslate/route.ts
+```13:15:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/backtranslate/route.ts
 if (!isBacktranslateEnabled())
   return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
 ```
 
-```21:29:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/backtranslate/route.ts
+```21:29:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/backtranslate/route.ts
 const rl = await checkDailyLimit(
   user.id,
   "backtranslate",
@@ -212,7 +212,7 @@ Deprecated. Interview itself (Q1) collects the target variety; the clarifier LLM
 
 - Preview produces Version A; `meta.parent_version_id = null`.
 
-```129:135:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```129:135:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 const placeholderMeta = {
   thread_id: threadId,
   display_label: displayLabel,
@@ -225,7 +225,7 @@ const placeholderMeta = {
   - If `citeVersionId` provided, use that.
   - Else use latest version in the same `thread_id` (most recent by `created_at`).
 
-```60:72:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+```60:72:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
 let parentVersionId: string | null = null;
 if (citeVersionId) {
   parentVersionId = citeVersionId;
@@ -243,7 +243,7 @@ if (citeVersionId) {
 
 - When a cited or implicit parent exists, Instruct includes a whole‑text block to evolve from the prior version.
 
-```125:142:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+```125:142:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
 if (cited) {
   const m = ((cited.meta ?? null) as Record<string, unknown>) || {};
   const ov = (m["overview"] as { lines?: string[] } | null) || null;
@@ -260,14 +260,14 @@ if (cited) {
 
 - Preview and Instruct append JOURNEY context into prompts.
 
-```228:234:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```228:234:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 bundle.journeySummaries?.length
   ? "JOURNEY (most recent → older):\n" +
     bundle.journeySummaries.map((s) => `- ${s}`).join("\n")
   : "",
 ```
 
-```194:201:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+```194:201:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
 bundle.journeySummaries?.length
   ? "JOURNEY (most recent → older):\n" +
     bundle.journeySummaries.map((s) => `- ${s}`).join("\n")
@@ -282,7 +282,7 @@ bundle.journeySummaries?.length
   - `meta.overview.line_policy` (preview)
   - `meta.status = "generated"`
 
-```438:447:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```438:447:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 const updatedMeta: Record<string, unknown> = {
   ...placeholderMeta,
   status: "generated" as const,
@@ -294,7 +294,7 @@ const updatedMeta: Record<string, unknown> = {
 };
 ```
 
-```428:436:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+```428:436:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
 const updatedMeta: Record<string, unknown> = {
   ...placeholderMeta,
   status: "generated" as const,
@@ -315,28 +315,28 @@ const updatedMeta: Record<string, unknown> = {
 | INSTRUCT_PARSE_RETRY_FAILED   | 502  | Retry output could not be parsed           |
 | REQUIRED_TOKENS_MISSING       | 409  | Tokens still missing after must_keep retry |
 
-```332:346:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+```332:346:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
 return NextResponse.json(
   { ok: false, code: "INSTRUCT_ECHO_OR_UNTRANSLATED", retryable: true },
   { status: 409 }
 );
 ```
 
-```283:297:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+```283:297:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
 return NextResponse.json(
   { ok: false, code: "INSTRUCT_RETRY_EMPTY", retryable: true },
   { status: 502 }
 );
 ```
 
-```304:317:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+```304:317:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
 return NextResponse.json(
   { ok: false, code: "INSTRUCT_PARSE_RETRY_FAILED", retryable: true },
   { status: 502 }
 );
 ```
 
-```399:409:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+```399:409:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
 return NextResponse.json(
   {
     ok: false,

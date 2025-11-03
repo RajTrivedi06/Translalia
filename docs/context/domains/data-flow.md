@@ -14,31 +14,31 @@ Input (source text via Welcome/Upload) → `getSourceLines()`
 
 Anchors:
 
-```42:74:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/_utils/data.ts
+```42:74:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/_utils/data.ts
 export function getSourceLines({ flowPeek, nodes }: GetSourceArgs): string[] | null {
   // peek → state.source_text/poem_text; fallback to nodes.overviewLines
 }
 ```
 
-```23:37:/Users/raaj/Documents/CS/metamorphs-met amorphs-web/src/components/workspace/v2/views/LineSelectionView.tsx
+```23:37:/Users/raaj/Documents/CS/Translalia-met amorphs-web/src/components/workspace/v2/views/LineSelectionView.tsx
 export function LineSelectionView({ flowPeek, nodes, onProceed }: LineSelectionViewProps) {
   // keyboard range selection and checkboxes
 }
 ```
 
-```36:54:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/_utils/useExplodeTokens.ts
+```36:54:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/_utils/useExplodeTokens.ts
 export function useExplodeTokens(sourceLines: string[]): ExplodeTokensResult {
   // explode lines into tokens with equal-weight options (mocked in Phase 2)
 }
 ```
 
-```111:140:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/views/WorkshopView.tsx
+```111:140:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/views/WorkshopView.tsx
 const handleCompileLine = React.useCallback(() => {
   // assemble selected options → append to notebook; advance to next or notebook view
 }, [/* ... */]);
 ```
 
-```11:43:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/views/NotebookView.tsx
+```11:43:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/views/NotebookView.tsx
 export function NotebookView() {
   // shows compiled draft; copy/clear/back actions
 }
@@ -68,7 +68,7 @@ flowchart LR
 
 1. Interview (collect fields in `chat_threads.state`)
 
-```60:71:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/flow/peek/route.ts
+```60:71:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/flow/peek/route.ts
 const phase = state.phase || (has_poem ? "interviewing" : "welcome");
 if (phase === "interviewing") {
   const q = computeNextQuestion({ ...state, collected_fields: state.collected_fields || {} });
@@ -77,7 +77,7 @@ if (phase === "interviewing") {
 
 2. Plan (confirm gate → translating)
 
-```28:34:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/flow/confirm/route.ts
+```28:34:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/flow/confirm/route.ts
 if (state.phase !== "await_plan_confirm") {
   return NextResponse.json({ error: "Not at plan gate" }, { status: 409 });
 }
@@ -86,33 +86,33 @@ await patchThreadState(threadId, { phase: "translating" });
 
 3. Preview (LLM + anti-echo + cache; placeholder node → generated)
 
-```55:58:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```55:58:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 const rl = rateLimit(`preview:${threadId}`, 30, 60_000);
 if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 ```
 
-```124:134:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```124:134:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 const { data: inserted } = await sb.from("versions").insert({ project_id: projectId, title: displayLabel, lines: [], meta: placeholderMeta, tags: ["translation"] }).select("id").single();
 ```
 
-```361:396:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```361:396:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 await cacheSet(key, preview, 3600);
 const { error: upErr2 } = await sb.from("versions").update({ meta: updatedMeta }).eq("id", placeholderId);
 ```
 
 4. Accept (merge lines via RPC and append ledger)
 
-```63:71:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/accept-lines/route.ts
+```63:71:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/accept-lines/route.ts
 for (const s of selections) { await supabase.rpc("accept_line", { p_thread_id: threadId, p_line_index: s.index + 1, p_new_text: s.text, p_actor: userId }); }
 ```
 
-```72:76:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/accept-lines/route.ts
+```72:76:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/accept-lines/route.ts
 await appendLedger(threadId, { ts, kind: "accept", note: `Accepted ${selections.length} line(s)` });
 ```
 
 5. Canvas (React Query lists nodes by thread)
 
-```33:38:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/nodes/route.ts
+```33:38:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/nodes/route.ts
 .from("versions").select("id, tags, meta, created_at").eq("project_id", th.project_id).filter("meta->>thread_id", "eq", threadId)
 ```
 
@@ -143,44 +143,44 @@ await appendLedger(threadId, { ts, kind: "accept", note: `Accepted ${selections.
       "stage": "Interview",
       "affected_entities": ["chat_threads"],
       "anchors": [
-        "/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/flow/answer/route.ts#L86-L108"
+        "/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/flow/answer/route.ts#L86-L108"
       ]
     },
     {
       "stage": "Plan Confirm",
       "affected_entities": ["chat_threads", "journey_items"],
       "anchors": [
-        "/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/flow/confirm/route.ts#L28-L48"
+        "/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/flow/confirm/route.ts#L28-L48"
       ]
     },
     {
       "stage": "Preview",
       "affected_entities": ["versions", "journey_items"],
       "anchors": [
-        "/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts#L124-L146",
-        "/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts#L472-L487"
+        "/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts#L124-L146",
+        "/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts#L472-L487"
       ]
     },
     {
       "stage": "Accept Lines",
       "affected_entities": ["chat_threads", "journey_items"],
       "anchors": [
-        "/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/accept-lines/route.ts#L63-L71",
-        "/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/accept-lines/route.ts#L78-L84"
+        "/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/accept-lines/route.ts#L63-L71",
+        "/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/accept-lines/route.ts#L78-L84"
       ]
     },
     {
       "stage": "Canvas",
       "affected_entities": ["versions"],
       "anchors": [
-        "/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/nodes/route.ts#L33-L40"
+        "/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/nodes/route.ts#L33-L40"
       ]
     }
   ]
 }
 ```
 
-```103:121:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts
+```103:121:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translate/route.ts
 const hasTarget = Boolean(state.collected_fields?.target_lang_or_variety || enhanced?.target);
 if (!hasTarget) return NextResponse.json({ error: "MISSING_TARGET_VARIETY" }, { status: 422 });
 ```

@@ -48,17 +48,17 @@ Rollout: All flags are reversible; no database migrations required.
 
 | Surface                                 | ENV/Const             | Default                  | Fallbacks                    | Anchor                                                                          |
 | --------------------------------------- | --------------------- | ------------------------ | ---------------------------- | ------------------------------------------------------------------------------- |
-| Translator (Preview/Translate/Instruct) | `TRANSLATOR_MODEL`    | "gpt-5"                  | —                            | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/models.ts#L2-L2      |
-| Enhancer (planner JSON)                 | `ENHANCER_MODEL`      | "gpt-5-mini"             | —                            | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/models.ts#L4-L5      |
-| Router / Classifier                     | `ROUTER_MODEL`        | "gpt-5-nano-2025-08-07"  | —                            | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/models.ts#L7-L8      |
-| Verifier (JSON)                         | `VERIFIER_MODEL`      | —                        | defaults to `ROUTER_MODEL`   | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/verify.ts#L12-L13 |
-| Back-translate (JSON)                   | `BACKTRANSLATE_MODEL` | —                        | defaults to `ENHANCER_MODEL` | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/verify.ts#L13-L15 |
-| Moderation                              | `MODERATION_MODEL`    | "omni-moderation-latest" | —                            | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/models.ts#L15-L15    |
-| Embeddings                              | `EMBEDDINGS_MODEL`    | "text-embedding-3-large" | —                            | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/models.ts#L11-L12    |
+| Translator (Preview/Translate/Instruct) | `TRANSLATOR_MODEL`    | "gpt-5"                  | —                            | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/models.ts#L2-L2      |
+| Enhancer (planner JSON)                 | `ENHANCER_MODEL`      | "gpt-5-mini"             | —                            | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/models.ts#L4-L5      |
+| Router / Classifier                     | `ROUTER_MODEL`        | "gpt-5-nano-2025-08-07"  | —                            | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/models.ts#L7-L8      |
+| Verifier (JSON)                         | `VERIFIER_MODEL`      | —                        | defaults to `ROUTER_MODEL`   | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/verify.ts#L12-L13 |
+| Back-translate (JSON)                   | `BACKTRANSLATE_MODEL` | —                        | defaults to `ENHANCER_MODEL` | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/verify.ts#L13-L15 |
+| Moderation                              | `MODERATION_MODEL`    | "omni-moderation-latest" | —                            | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/models.ts#L15-L15    |
+| Embeddings                              | `EMBEDDINGS_MODEL`    | "text-embedding-3-large" | —                            | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/models.ts#L11-L12    |
 
 Evidence:
 
-```2:15:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/models.ts
+```2:15:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/models.ts
 export const TRANSLATOR_MODEL = process.env.TRANSLATOR_MODEL?.trim() || "gpt-5";
 
 export const ENHANCER_MODEL =
@@ -73,7 +73,7 @@ export const EMBEDDINGS_MODEL =
 export const MODERATION_MODEL = "omni-moderation-latest";
 ```
 
-```12:15:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/verify.ts
+```12:15:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/verify.ts
 const VERIFIER_MODEL = process.env.VERIFIER_MODEL?.trim() || ROUTER_MODEL;
 const BACKTRANSLATE_MODEL =
   process.env.BACKTRANSLATE_MODEL?.trim() || ENHANCER_MODEL;
@@ -83,37 +83,37 @@ const BACKTRANSLATE_MODEL =
 
 | Flag                            | Env var                                        | Default | Allowed values | Effect when OFF              | Anchor                                                                                             |
 | ------------------------------- | ---------------------------------------------- | ------- | -------------- | ---------------------------- | -------------------------------------------------------------------------------------------------- |
-| Translator features             | `NEXT_PUBLIC_FEATURE_TRANSLATOR`               | 0       | {0,1}          | 403 from translator routes   | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts#L34-L36 |
-| Enhancer (planner)              | `NEXT_PUBLIC_FEATURE_ENHANCER`                 | 0       | {0,1}          | 403 from enhancer route      | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/enhancer/route.ts#L14-L16           |
-| Prismatic variants              | `NEXT_PUBLIC_FEATURE_PRISMATIC`                | 0       | {0,1}          | Mode coerces to balanced     | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/flags/prismatic.ts#L1-L3                |
-| Router intent                   | `NEXT_PUBLIC_FEATURE_ROUTER`                   | 0       | {0,1}          | Router returns null          | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/server/flow/intentLLM.ts#L11-L11            |
-| Verify                          | `NEXT_PUBLIC_FEATURE_VERIFY`                   | 0       | {0,1}          | 404 from verify route        | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/flags/verify.ts#L1-L2                   |
-| Back-translate                  | `NEXT_PUBLIC_FEATURE_BACKTRANSLATE`            | 0       | {0,1}          | 404 from backtranslate route | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/flags/verify.ts#L3-L4                   |
-| Debug prompt previews           | `DEBUG_PROMPTS` or `NEXT_PUBLIC_DEBUG_PROMPTS` | 0       | {0,1}          | No redacted logs             | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/promptHash.ts#L30-L33                |
-| Deprecated: Smart Interview LLM | `NEXT_PUBLIC_FEATURE_SMART_INTERVIEW_LLM`      | —       | —              | always disabled              | /Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/flags/interview.ts#L1-L2                |
+| Translator features             | `NEXT_PUBLIC_FEATURE_TRANSLATOR`               | 0       | {0,1}          | 403 from translator routes   | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts#L34-L36 |
+| Enhancer (planner)              | `NEXT_PUBLIC_FEATURE_ENHANCER`                 | 0       | {0,1}          | 403 from enhancer route      | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/enhancer/route.ts#L14-L16           |
+| Prismatic variants              | `NEXT_PUBLIC_FEATURE_PRISMATIC`                | 0       | {0,1}          | Mode coerces to balanced     | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/flags/prismatic.ts#L1-L3                |
+| Router intent                   | `NEXT_PUBLIC_FEATURE_ROUTER`                   | 0       | {0,1}          | Router returns null          | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/server/flow/intentLLM.ts#L11-L11            |
+| Verify                          | `NEXT_PUBLIC_FEATURE_VERIFY`                   | 0       | {0,1}          | 404 from verify route        | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/flags/verify.ts#L1-L2                   |
+| Back-translate                  | `NEXT_PUBLIC_FEATURE_BACKTRANSLATE`            | 0       | {0,1}          | 404 from backtranslate route | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/flags/verify.ts#L3-L4                   |
+| Debug prompt previews           | `DEBUG_PROMPTS` or `NEXT_PUBLIC_DEBUG_PROMPTS` | 0       | {0,1}          | No redacted logs             | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/promptHash.ts#L30-L33                |
+| Deprecated: Smart Interview LLM | `NEXT_PUBLIC_FEATURE_SMART_INTERVIEW_LLM`      | —       | —              | always disabled              | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/flags/interview.ts#L1-L2                |
 
 Evidence:
 
-```33:36:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```33:36:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 export async function POST(req: Request) {
   if (process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR !== "1") {
     return new NextResponse("Feature disabled", { status: 403 });
   }
 ```
 
-```14:16:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/enhancer/route.ts
+```14:16:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/enhancer/route.ts
 if (process.env.NEXT_PUBLIC_FEATURE_ENHANCER !== "1") {
   return new NextResponse("Feature disabled", { status: 403 });
 }
 ```
 
-```1:3:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/flags/prismatic.ts
+```1:3:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/flags/prismatic.ts
 export function isPrismaticEnabled() {
   return process.env.NEXT_PUBLIC_FEATURE_PRISMATIC === "1";
 }
 ```
 
-```10:12:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/server/flow/intentLLM.ts
+```10:12:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/server/flow/intentLLM.ts
 export async function classifyIntentLLM(
   msg: string,
   phase: string
@@ -121,7 +121,7 @@ export async function classifyIntentLLM(
   if (process.env.NEXT_PUBLIC_FEATURE_ROUTER !== "1") return null;
 ```
 
-```1:8:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/flags/verify.ts
+```1:8:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/flags/verify.ts
 export const isVerifyEnabled = () =>
   process.env.NEXT_PUBLIC_FEATURE_VERIFY === "1";
 export const isBacktranslateEnabled = () =>
@@ -132,14 +132,14 @@ export const BACKTRANSLATE_DAILY_LIMIT = Number(
 );
 ```
 
-```30:43:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/promptHash.ts
+```30:43:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/promptHash.ts
 const DEBUG =
   process.env.DEBUG_PROMPTS === "1" ||
   process.env.NEXT_PUBLIC_DEBUG_PROMPTS === "1";
 if (!DEBUG) return;
 ```
 
-```1:2:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/flags/interview.ts
+```1:2:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/flags/interview.ts
 // Deprecated: interview clarifier removed from client usage.
 export const isSmartInterviewLLMEnabled = () => false;
 ```
@@ -148,7 +148,7 @@ export const isSmartInterviewLLMEnabled = () => false;
 
 - All surfaces use OpenAI Responses API; helpers ensure non‑generative models drop unsupported params and add fallback when `temperature` is rejected.
 
-```38:61:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/openai.ts
+```38:61:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/openai.ts
 export async function responsesCall({
   model,
   system,
@@ -177,7 +177,7 @@ export async function responsesCall({
     // fallback on unsupported temperature
 ```
 
-```68:83:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/openai.ts
+```68:83:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/openai.ts
     const unsupportedTemp = /Unsupported parameter:\s*'temperature'/i.test(msg);
     if (unsupportedTemp) {
       const retryArgs: Record<string, unknown> = { ...args };
@@ -208,7 +208,7 @@ export async function responsesCall({
 
 - Moderation call site uses a literal model string; consider wiring `MODERATION_MODEL` constant.
 
-```45:49:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/moderation.ts
+```45:49:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/moderation.ts
 const res = await client.moderations.create({
   model: "omni-moderation-latest",
   input: text.slice(0, 20000),
@@ -217,19 +217,19 @@ const res = await client.moderations.create({
 
 - `EMBEDDINGS_MODEL` exported but not referenced in call‑sites (confirm future use).
 
-```11:12:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/models.ts
+```11:12:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/models.ts
 export const EMBEDDINGS_MODEL =
   process.env.EMBEDDINGS_MODEL?.trim() || "text-embedding-3-large";
 ```
 
 - Verify/Backtranslate return 404 when disabled, while other features use 403; align policy.
 
-```10:15:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/verify/route.ts
+```10:15:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/verify/route.ts
 if (!isVerifyEnabled())
   return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
 ```
 
-```13:15:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/backtranslate/route.ts
+```13:15:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/backtranslate/route.ts
 if (!isBacktranslateEnabled())
   return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
 ```
@@ -247,7 +247,7 @@ Updated: 2025-09-16
 
 - Centralized defaults with env overrides:
 
-```2:15:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/models.ts
+```2:15:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/models.ts
 export const TRANSLATOR_MODEL = process.env.TRANSLATOR_MODEL?.trim() || "gpt-5";
 
 export const ENHANCER_MODEL =
@@ -278,11 +278,11 @@ export const MODERATION_MODEL = "omni-moderation-latest";
 
 - We export `MODERATION_MODEL` but the call site uses a literal string.
 
-```2:15:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/models.ts
+```2:15:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/models.ts
 export const MODERATION_MODEL = "omni-moderation-latest";
 ```
 
-```9:13:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/moderation.ts
+```9:13:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/moderation.ts
 const res = await client.moderations.create({
   model: "omni-moderation-latest",
   input: text.slice(0, 20000),
@@ -309,35 +309,35 @@ const res = await client.moderations.create({
 
 Evidence:
 
-```28:30:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```28:30:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 if (process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR !== "1") {
   return new NextResponse("Feature disabled", { status: 403 });
 }
 ```
 
-```14:16:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/enhancer/route.ts
+```14:16:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/enhancer/route.ts
 if (process.env.NEXT_PUBLIC_FEATURE_ENHANCER !== "1") {
   return new NextResponse("Feature disabled", { status: 403 });
 }
 ```
 
-```10:15:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/verify/route.ts
+```10:15:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/verify/route.ts
 if (!isVerifyEnabled())
   return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
 ```
 
-```13:15:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/backtranslate/route.ts
+```13:15:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/backtranslate/route.ts
 if (!isBacktranslateEnabled())
   return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
 ```
 
-```1:3:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/flags/prismatic.ts
+```1:3:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/flags/prismatic.ts
 export function isPrismaticEnabled() {
   return process.env.NEXT_PUBLIC_FEATURE_PRISMATIC === "1";
 }
 ```
 
-```1:2:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/flags/interview.ts
+```1:2:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/flags/interview.ts
 // Deprecated: interview clarifier removed from client usage.
 export const isSmartInterviewLLMEnabled = () => false;
 ```
@@ -352,14 +352,14 @@ Deprecated: server endpoint remains but is unused by client.
 
 Evidence:
 
-```99:104:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts
+```99:104:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translate/route.ts
 const reqPayload = {
   model: TRANSLATOR_MODEL,
   temperature: 0.6,
   messages: [
 ```
 
-```38:41:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/enhance.ts
+```38:41:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/enhance.ts
 const base = {
   model: ENHANCER_MODEL,
   temperature: 0.2,
@@ -367,27 +367,27 @@ const base = {
 };
 ```
 
-```60:61:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/enhance.ts
+```60:61:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/enhance.ts
 return openai.responses.create({
   ...base,
   temperature: 0.1,
 ```
 
-```28:33:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/server/flow/intentLLM.ts
+```28:33:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/server/flow/intentLLM.ts
 const r = await openai.responses.create({
   model: ROUTER_MODEL,
   temperature: 0.2,
   response_format: { type: "json_object" },
 ```
 
-```41:44:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/verify.ts
+```41:44:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/verify.ts
 const r = await openai.responses.create({
   model: VERIFIER_MODEL,
   temperature: 0.2,
   response_format: { type: "json_object" },
 ```
 
-```83:87:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/verify.ts
+```83:87:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/verify.ts
 const r = await openai.responses.create({
   model: BACKTRANSLATE_MODEL,
   temperature: 0.3,
@@ -399,12 +399,12 @@ const r = await openai.responses.create({
 - Policy: When a public feature flag is OFF, endpoints should return 403.
 - Implementation differences:
 
-```10:15:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/verify/route.ts
+```10:15:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/verify/route.ts
 if (!isVerifyEnabled())
   return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
 ```
 
-```13:15:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/backtranslate/route.ts
+```13:15:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/backtranslate/route.ts
 if (!isBacktranslateEnabled())
   return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
 ```
@@ -414,7 +414,7 @@ if (!isBacktranslateEnabled())
 - `TRANSLATOR_MODEL`
   - Preview: evidence of call and temp
 
-```176:183:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```176:183:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 const reqPayload = {
   model: TRANSLATOR_MODEL,
   temperature: 0.6,
@@ -425,7 +425,7 @@ const reqPayload = {
 }
 ```
 
-```197:199:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```197:199:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 const respUnknown: unknown = await openai.responses.create(
   reqPayload as unknown as Parameters<typeof openai.responses.create>[0]
 );
@@ -433,7 +433,7 @@ const respUnknown: unknown = await openai.responses.create(
 
 - Translate:
 
-```99:106:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts
+```99:106:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translate/route.ts
 const reqPayload = {
   model: TRANSLATOR_MODEL,
   temperature: 0.6,
@@ -445,7 +445,7 @@ const reqPayload = {
 
 - Instruct:
 
-```147:154:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+```147:154:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
 const reqPayload = {
   model: TRANSLATOR_MODEL,
   temperature: 0.6,
@@ -459,7 +459,7 @@ const reqPayload = {
 - `ENHANCER_MODEL`
   - Enhance JSON (with retry):
 
-```38:45:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/enhance.ts
+```38:45:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/enhance.ts
 const base = {
   model: ENHANCER_MODEL,
   temperature: 0.2,
@@ -474,7 +474,7 @@ const r1 = await openai.responses.create({
 - `ROUTER_MODEL`
   - Interview clarifier:
 
-```23:27:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/interview/next/route.ts
+```23:27:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/interview/next/route.ts
 const r = await openai.responses.create({
   model: ROUTER_MODEL,
   temperature: 0.2,
@@ -483,7 +483,7 @@ const r = await openai.responses.create({
 
 - Router intent (server and lib):
 
-```26:33:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/server/flow/intentLLM.ts
+```26:33:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/server/flow/intentLLM.ts
 const r = await openai.responses.create({
   model: ROUTER_MODEL,
   temperature: 0.2,
@@ -491,7 +491,7 @@ const r = await openai.responses.create({
   messages: [
 ```
 
-```29:33:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/routeIntent.ts
+```29:33:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/routeIntent.ts
 const r = await openai.responses.create({
   model: ROUTER_MODEL,
   temperature: 0.2,
@@ -500,7 +500,7 @@ const r = await openai.responses.create({
 
 - `VERIFIER_MODEL` / `BACKTRANSLATE_MODEL` (fallbacks from Router/Enhancer):
 
-```12:15:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/verify.ts
+```12:15:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/verify.ts
 const VERIFIER_MODEL = process.env.VERIFIER_MODEL?.trim() || ROUTER_MODEL;
 const BACKTRANSLATE_MODEL =
   process.env.BACKTRANSLATE_MODEL?.trim() || ENHANCER_MODEL;
@@ -520,13 +520,13 @@ const BACKTRANSLATE_MODEL =
 
 Evidence:
 
-```7:12:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/featureFlags.ts
+```7:12:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/featureFlags.ts
 export function isSidebarLayoutEnabled() {
   return process.env.NEXT_PUBLIC_FEATURE_SIDEBAR_LAYOUT === "1";
 }
 ```
 
-```1:16:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/(app)/workspaces/[projectId]/threads/[threadId]/page.tsx
+```1:16:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/(app)/workspaces/[projectId]/threads/[threadId]/page.tsx
 import { WorkspaceShell } from "@/components/workspace/WorkspaceShell";
 import { isSidebarLayoutEnabled } from "@/lib/featureFlags";
 import { WorkspaceV2Shell } from "@/components/workspace/v2/WorkspaceV2Shell";

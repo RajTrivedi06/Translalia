@@ -11,19 +11,19 @@
 - Symptoms: Preview nodes sometimes show echoed lines even though server retry should replace them.
 - Scope: Translator Preview route; echo detection helper; DB meta persistence.
 - Evidence (≥2 anchors from different layers):
-  ```298:306:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+  ```298:306:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
   if (!forceTranslate && (echoish || untranslated)) {
     const hardReq = `\n\nHARD REQUIREMENT: Output must be fully in the target language (English if requested).\nDo NOT echo or quote SOURCE_POEM lines or reproduce Urdu/Arabic script.`;
     const respRetryUnknown: unknown = await responsesCall({ /* ... */ });
   }
   ```
-  ```59:75:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/text/similarity.ts
+  ```59:75:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/text/similarity.ts
   export function looksLikeEcho(source: string[], output: string[]): boolean {
     // ... lineRatio & character-level similarity
     return lineRatio >= 0.5 || charSimilarity >= 0.8;
   }
   ```
-  ```438:447:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+  ```438:447:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
   const updatedMeta: Record<string, unknown> = {
     ...placeholderMeta,
     status: "generated" as const,
@@ -46,10 +46,10 @@
 - Symptoms: Canvas shows 403 until manual refresh or next poll.
 - Scope: `useNodes` hook; `versions/nodes` API guard; thread switch behavior.
 - Evidence (≥2 anchors from different layers):
-  ```38:45:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/hooks/useNodes.ts
+  ```38:45:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/hooks/useNodes.ts
   return useQuery({ queryKey: ["nodes", projectId, threadId], queryFn: () => fetchNodes(threadId!), enabled: !!projectId && !!threadId, refetchInterval: 1500 });
   ```
-  ```21:30:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/nodes/route.ts
+  ```21:30:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/nodes/route.ts
   const { data: th, error: thErr } = await sb.from("chat_threads").select("id, project_id").eq("id", threadId).single();
   if (thErr || !th) return NextResponse.json({ ok: false, error: "FORBIDDEN_OR_NOT_FOUND" }, { status: 403 });
   ```
@@ -68,17 +68,17 @@
 - Symptoms: Drawer closes, but overview lines are not visible until reopening or after another poll.
 - Scope: Plan Builder drawer; nodes polling/invalidation; preview meta persistence.
 - Evidence (≥2 anchors from different layers):
-  ```221:251:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/flow/PlanBuilderOverviewSheet.tsx
+  ```221:251:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/flow/PlanBuilderOverviewSheet.tsx
   // loop waits for nodes to include generated status + overview lines; invalidates queries every 250ms
   ```
-  ```104:113:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+  ```104:113:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
   const updatedMeta: Record<string, unknown> = {
     ...placeholderMeta,
     status: "generated" as const,
     overview: { lines: preview.lines, notes: preview.notes, line_policy: bundle.line_policy },
   };
   ```
-  ```120:137:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/versions/VersionCanvas.tsx
+  ```120:137:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/versions/VersionCanvas.tsx
   const overviewLines: string[] = Array.isArray(api.overview?.lines) ? (api.overview!.lines as string[]) : [];
   // rendered in node card; shows "No overview yet" otherwise
   ```

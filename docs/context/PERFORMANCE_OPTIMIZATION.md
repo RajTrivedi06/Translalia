@@ -18,7 +18,7 @@
 
   Evidence:
 
-  ```35:53:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/hooks/useNodes.ts
+  ```35:53:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/hooks/useNodes.ts
   export function useNodes(
     projectId: string | undefined,
     threadId: string | undefined,
@@ -36,7 +36,7 @@
   }
   ```
 
-  ```110:116:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/store/workspace.ts
+  ```110:116:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/store/workspace.ts
   ui: {
     currentView: "chat",
     targetLang: "en",
@@ -48,7 +48,7 @@
 
   Evidence:
 
-  ```35:53:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/hooks/useNodes.ts
+  ```35:53:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/hooks/useNodes.ts
   export function useNodes(
     projectId: string | undefined,
     threadId: string | undefined,
@@ -70,7 +70,7 @@
 
   - Use placeholder version update + cached overview to minimize repeated model calls.
 
-  ```101:109:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+  ```101:109:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
   const key = "translator_preview:" + stableHash({ ...bundle, placeholderId });
   const cached = await cacheGet<unknown>(key);
   if (cached) {
@@ -82,24 +82,24 @@
 
 | Bottleneck                            | Metric (before → after)        | Mitigation                                             | Evidence                                                                                              |
 | ------------------------------------- | ------------------------------ | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| Translator preview repeated LLM calls | p95 ~6.5s → ~1.2s on cache hit | In-memory TTL cache with stable key; early return path | ```157:165:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts |
+| Translator preview repeated LLM calls | p95 ~6.5s → ~1.2s on cache hit | In-memory TTL cache with stable key; early return path | ```157:165:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts |
 
 const key = "translator*preview:" + stableHash({ ...bundle, placeholderId });
 const cached = await cacheGet<unknown>(key);
 if (cached) { /* return \_/ }
 
 ````|
-| Enhancer repeated calls | p95 ~3.2s → ~0.9s hit | Cache by payload hash | ```52:56:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/enhancer/route.ts
+| Enhancer repeated calls | p95 ~3.2s → ~0.9s hit | Cache by payload hash | ```52:56:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/enhancer/route.ts
 const payload = { poem, fields };
 const key = "enhancer:" + stableHash(payload);
 const cached = await cacheGet<unknown>(key);
 ``` |
-| Translate endpoint | p95 ~5.7s → ~1.1s hit | Cache by bundle hash | ```89:93:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts
+| Translate endpoint | p95 ~5.7s → ~1.1s hit | Cache by bundle hash | ```89:93:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translate/route.ts
 const bundle = { poem, enhanced, summary, ledger, acceptedLines, glossary };
 const key = "translate:" + stableHash(bundle);
 const cached = await cacheGet<unknown>(key);
 ``` |
-| Preview spam | 429s enforced | In-memory sliding window rate limit | ```55:57:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+| Preview spam | 429s enforced | In-memory sliding window rate limit | ```55:57:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 const rl = rateLimit(`preview:${threadId}`, 30, 60_000);
 if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 ``` |
@@ -110,7 +110,7 @@ if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status:
 
   - Implementation
 
-  ```23:29:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/cache.ts
+  ```23:29:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/cache.ts
   export async function cacheSet<T>(
     key: string,
     value: T,
@@ -130,7 +130,7 @@ if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status:
   - Default: 3600s
   - Preview TTL constant: see `PREVIEW_CACHE_TTL_SEC`
 
-```4:6:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/policy.ts
+```4:6:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/policy.ts
 /** Cache TTL for identical preview requests (seconds). */
 export const PREVIEW_CACHE_TTL_SEC = 3600;
 ```
@@ -157,7 +157,7 @@ return result;
 
 - Sliding window (in-memory) for preview endpoint
 
-```1:13:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/ratelimit.ts
+```1:13:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/ratelimit.ts
 export function rateLimit(key: string, limit = 30, windowMs = 60_000) {
   const now = Date.now();
   const b = buckets.get(key);
@@ -173,7 +173,7 @@ export function rateLimit(key: string, limit = 30, windowMs = 60_000) {
 
 - Daily per-user verification limit via Upstash Redis
 
-```26:40:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ratelimit/redis.ts
+```26:40:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ratelimit/redis.ts
 export async function checkDailyLimit(
   userId: string,
   key: string,
@@ -197,7 +197,7 @@ export async function checkDailyLimit(
 
   - Preview cache keyed by stable bundle hash; aligns with persisted `versions.meta.overview`.
 
-  ```23:29:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/cache.ts
+  ```23:29:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/cache.ts
   export async function cacheSet<T>(
     key: string,
     value: T,
@@ -217,7 +217,7 @@ export async function checkDailyLimit(
 - Use React Query for caching and background refetch
 - Keep components pure; lift effects into hooks
 
-  ```3:9:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/providers.tsx
+  ```3:9:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/providers.tsx
   import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
   export function Providers({ children }: { children: React.ReactNode }) {
     const [client] = React.useState(() => new QueryClient());
@@ -228,7 +228,7 @@ export async function checkDailyLimit(
 
 - Nodes list polling (`useNodes`):
 
-```44:50:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/hooks/useNodes.ts
+```44:50:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/hooks/useNodes.ts
 return useQuery({
   queryKey: ["nodes", projectId, threadId],
   queryFn: () => fetchNodes(threadId!),
@@ -245,7 +245,7 @@ return useQuery({
 
 - Version canvas renders via React Flow with fit/controls and thick edges:
 
-```195:206:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/versions/VersionCanvas.tsx
+```195:206:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/versions/VersionCanvas.tsx
 <ReactFlow
   nodes={nodes}
   edges={edges}
@@ -265,7 +265,7 @@ return useQuery({
 - FullPoemOverview and side overlays: no virtualization noted; consider windowing if performance degrades with large poems.
 - Journey list (overlay) renders a small window of recent items:
 
-```229:239:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/versions/VersionCanvas.tsx
+```229:239:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/versions/VersionCanvas.tsx
 <JourneyList items={(journeyData?.items || []).map(/* … */)} />
 ```
 
@@ -273,27 +273,27 @@ return useQuery({
 
 - Nodes and edges are memoized; lineage computed once per data change:
 
-```45:75:/Users/raaj/Documents/CS/metamorphs-met amorphs-web/src/components/workspace/versions/VersionCanvas.tsx
+```45:75:/Users/raaj/Documents/CS/Translalia-met amorphs-web/src/components/workspace/versions/VersionCanvas.tsx
 const apiNodes: NodeRow[] = React.useMemo(() => nodesData || [], [nodesData]);
 const lineageIds = React.useMemo(() => { /* … */ }, [apiNodes]);
 ```
 
-```80:116:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/versions/VersionCanvas.tsx
+```80:116:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/versions/VersionCanvas.tsx
 const nodes = React.useMemo<Node[]>(() => { /* map apiNodes→reactflow nodes */ }, [apiNodes, lineageIds]);
 ```
 
-```117:131:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/versions/VersionCanvas.tsx
+```117:131:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/versions/VersionCanvas.tsx
 const edges = React.useMemo<Edge[]>(() => { /* build lineage edges */ }, [apiNodes]);
 ```
 
 - SourceTextCard stanza split & filtering are memoized; windowing when >400 lines:
 
-```28:41:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/sidebar/SourceTextCard.tsx
+```28:41:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/sidebar/SourceTextCard.tsx
 const stanzas = React.useMemo(() => { /* splitStanzas */ }, [hasSource, sourceLines]);
 const filtered = React.useMemo(() => { /* filter per query */ }, [stanzas, query]);
 ```
 
-```54:56:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/sidebar/SourceTextCard.tsx
+```54:56:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/sidebar/SourceTextCard.tsx
 const { visible, canLoadMore, loadMore, count, total } = useWindowedList(flatLines, 400);
 const shouldUseWindowing = total > 400;
 ```
@@ -302,7 +302,7 @@ const shouldUseWindowing = total > 400;
 
 - Stanza split: memoize stanza groups and filtered views.
 
-  ```28:36:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/sidebar/SourceTextCard.tsx
+  ```28:36:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/sidebar/SourceTextCard.tsx
   const stanzas = React.useMemo(() => {
     if (!hasSource || !sourceLines) return [];
     const sourceText = sourceLines.join('\n');
@@ -312,7 +312,7 @@ const shouldUseWindowing = total > 400;
 
 - Token lists: memoize exploded tokens and visible slices.
 
-  ```53:61:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/views/WorkshopView.tsx
+  ```53:61:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/views/WorkshopView.tsx
   const tokens = React.useMemo(() => currentLine?.tokens ?? [], [currentLine]);
   const WINDOW = 150;
   const [tokenCount, setTokenCount] = React.useState(WINDOW);
@@ -324,7 +324,7 @@ const shouldUseWindowing = total > 400;
 
 - Selectors: prefer narrow store selectors to avoid re-renders.
 
-  ```16:25:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/views/WorkshopView.tsx
+  ```16:25:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/views/WorkshopView.tsx
   const currentLineIdx = useWorkspace((s) => s.ui.currentLine);
   const includeDialectOptions = useWorkspace((s) => s.ui.includeDialectOptions);
   const threadId = useWorkspace((s) => s.threadId);
@@ -338,12 +338,12 @@ const shouldUseWindowing = total > 400;
 
   Evidence:
 
-  ```54:56:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/sidebar/SourceTextCard.tsx
+  ```54:56:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/sidebar/SourceTextCard.tsx
   const { visible: visibleLines, canLoadMore, loadMore, count, total } = useWindowedList(flatLines, 400);
   const shouldUseWindowing = total > 400;
   ```
 
-  ```55:61:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/views/WorkshopView.tsx
+  ```55:61:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/views/WorkshopView.tsx
   const WINDOW = 150;
   const [tokenCount, setTokenCount] = React.useState(WINDOW);
   const visibleTokens = React.useMemo(() =>
@@ -356,7 +356,7 @@ const shouldUseWindowing = total > 400;
 
 - Track cache hit rate, request latencies, and error rates
 
-  ```3:10:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/ratelimit.ts
+  ```3:10:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/ratelimit.ts
   export function rateLimit(key: string, limit = 30, windowMs = 60_000) {
     const now = Date.now();
     const b = buckets.get(key);

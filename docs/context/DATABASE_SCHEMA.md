@@ -11,7 +11,7 @@ Note: This document reflects tables/columns referenced in code. For full schema 
 
 - Columns used: `id`, `owner_id`
 
-```21:25:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/threads/list/route.ts
+```21:25:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/threads/list/route.ts
 const { data: proj } = await sb
   .from("projects")
   .select("id, owner_id")
@@ -24,7 +24,7 @@ const { data: proj } = await sb
 - Columns used: `id`, `project_id`, `title`, `state`, `created_at`
 - Notable jsonb column with default `{}`: `state` (validated by server schema)
 
-```33:50:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/server/threadState.ts
+```33:50:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/server/threadState.ts
 /** Load thread.state as SessionState (schema-validated, with defaults). */
 export async function getThreadState(threadId: string): Promise<SessionState> {
   const { data, error } = await supabase
@@ -41,7 +41,7 @@ export async function getThreadState(threadId: string): Promise<SessionState> {
 }
 ```
 
-```21:25:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/nodes/route.ts
+```21:25:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/nodes/route.ts
 const { data: th } = await sb
   .from("chat_threads")
   .select("id, project_id")
@@ -49,14 +49,14 @@ const { data: th } = await sb
   .single();
 ```
 
-```38:42:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/threads/list/route.ts
+```38:42:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/threads/list/route.ts
 const { data, error } = await sb
   .from("chat_threads")
   .select("id, title, created_at")
   .eq("project_id", projectId)
 ```
 
-```47:49:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/instruct/route.ts
+```47:49:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
 const { data: th } = await supabase
   .from("chat_threads")
   .select("id, project_id, state")
@@ -67,7 +67,7 @@ const { data: th } = await supabase
 - Columns used: `id`, `project_id`, `title`, `lines`, `tags`, `meta`, `created_at`, `pos`
 - `meta` stores: `thread_id`, `display_label`, `status`, `parent_version_id`, `overview{lines,notes,line_policy}`
 
-```124:134:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```124:134:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 const { data: inserted } = await sb
   .from("versions")
   .insert({
@@ -81,14 +81,14 @@ const { data: inserted } = await sb
   .single();
 ```
 
-```33:38:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/nodes/route.ts
+```33:38:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/nodes/route.ts
 const { data, error } = await sb
   .from("versions")
   .select("id, tags, meta, created_at")
   .eq("project_id", th.project_id)
 ```
 
-```28:33:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/positions/route.ts
+```28:33:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/positions/route.ts
 const { error } = await sb
   .from("versions")
   .upsert(updates, { onConflict: "id" });
@@ -98,7 +98,7 @@ const { error } = await sb
 
 - Columns used: `project_id`, `kind`, `summary`, `compare_id`, `created_at`
 
-```43:45:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/route.ts
+```43:45:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/route.ts
 await guard.sb.from("journey_items").insert({
   project_id: v.project_id,
 ```
@@ -107,7 +107,7 @@ await guard.sb.from("journey_items").insert({
 
 - Columns used: `id`, `project_id`, `left_version_id`, `right_version_id`, `lens`, `granularity`, `created_at`
 
-```31:33:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/compares/route.ts
+```31:33:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/compares/route.ts
 const { data: c, error } = await guard.sb
   .from("compares")
   .insert({
@@ -117,7 +117,7 @@ const { data: c, error } = await guard.sb
 
 - `get_accepted_version(p_thread_id uuid)`
 
-```61:64:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translate/route.ts
+```61:64:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translate/route.ts
 const { data: accepted } = await supabase.rpc("get_accepted_version", {
   p_thread_id: threadId,
 });
@@ -129,7 +129,7 @@ const { data: accepted } = await supabase.rpc("get_accepted_version", {
 
 - Ownership: `projects.owner_id` checked before listing threads; thread listings and version reads are scoped by `project_id` and `meta->>thread_id`.
 
-```31:35:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/threads/list/route.ts
+```31:35:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/threads/list/route.ts
 if (proj.owner_id !== user.id) {
   return NextResponse.json(
     { ok: false, code: "FORBIDDEN_PROJECT" },
@@ -138,7 +138,7 @@ if (proj.owner_id !== user.id) {
 }
 ```
 
-```33:40:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/nodes/route.ts
+```33:40:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/nodes/route.ts
 const { data, error } = await sb
   .from("versions")
   .select("id, tags, meta, created_at")
@@ -147,7 +147,7 @@ const { data, error } = await sb
   .order("created_at", { ascending: true });
 ```
 
-```63:69:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/accept-lines/route.ts
+```63:69:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/accept-lines/route.ts
 for (const s of selections) {
   await supabase.rpc("accept_line", {
     p_thread_id: threadId,
@@ -162,7 +162,7 @@ for (const s of selections) {
 
 - Project ownership is enforced by checking `projects.owner_id` before listing threads.
 
-```31:35:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/threads/list/route.ts
+```31:35:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/threads/list/route.ts
 if (proj.owner_id !== user.id) {
   return NextResponse.json(
     { ok: false, code: "FORBIDDEN_PROJECT" },
@@ -173,7 +173,7 @@ if (proj.owner_id !== user.id) {
 
 - Thread-to-project join is used to scope versions queries via `project_id` and `meta->>thread_id` filter.
 
-```33:38:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/nodes/route.ts
+```33:38:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/nodes/route.ts
 .from("versions")
 .select("id, tags, meta, created_at")
 .eq("project_id", th.project_id)
@@ -185,7 +185,7 @@ if (proj.owner_id !== user.id) {
 - `thread_id`: identifies the thread; used with `meta->>thread_id` filter in nodes API.
 - `parent_version_id`: links a version to its parent; used by UI to render lineage edges.
 
-```33:40:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/nodes/route.ts
+```33:40:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/nodes/route.ts
 const { data, error } = await sb
   .from("versions")
   .select("id, tags, meta, created_at")
@@ -198,7 +198,7 @@ const { data, error } = await sb
 
 Currently filtered by `meta->>thread_id`:
 
-```59:66:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/server/translator/bundle.ts
+```59:66:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/server/translator/bundle.ts
 const { data: jrows } = await supabase
   .from("journey_items")
   .select("id, kind, summary, created_at, meta")

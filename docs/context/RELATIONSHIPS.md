@@ -132,7 +132,7 @@ Notes:
 
 Reads (nodes API uses thread-scoped filter):
 
-```33:38:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/versions/nodes/route.ts
+```33:38:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/nodes/route.ts
 .from("versions")
 .select("id, tags, meta, created_at")
 .eq("project_id", th.project_id)
@@ -141,7 +141,7 @@ Reads (nodes API uses thread-scoped filter):
 
 Journey items are currently read by `meta->>thread_id`:
 
-```59:66:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/server/translator/bundle.ts
+```59:66:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/server/translator/bundle.ts
 const { data: jrows } = await supabase
   .from("journey_items")
   .select("id, kind, summary, created_at, meta")

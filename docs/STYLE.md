@@ -48,7 +48,7 @@ role: CursorDocs
 
 - When citing code that exists in the repo (evidence), use file:line anchors with no language tag:
 
-```27:30:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```27:30:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 if (process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR !== "1") {
   return new NextResponse("Feature disabled", { status: 403 });
 }
@@ -69,7 +69,7 @@ if (process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR !== "1") {
   >
   > **Implementation**: Translator preview currently returns 403 when disabled:
 
-```27:30:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/api/translator/preview/route.ts
+```27:30:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
 if (process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR !== "1") {
   return new NextResponse("Feature disabled", { status: 403 });
 }
@@ -92,12 +92,12 @@ if (process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR !== "1") {
 - Always include `startLine:endLine:absolute_path` as the first line in the fenced block.
 - Do not add a language tag for evidence blocks.
 - Keep line ranges tight (≤ ~20 lines).
-- Prefer absolute paths under `/Users/raaj/Documents/CS/metamorphs/...` for consistency.
+- Prefer absolute paths under `/Users/raaj/Documents/CS/Translalia/...` for consistency.
 
 #### Anchors (inline references)
 
 - When referring to evidence inline (not as a fenced block), use the short form: `path:Lstart–Lend`.
-- Example inline mention: `metamorphs-web/package.json:L12–L24`.
+- Example inline mention: `Translalia-web/package.json:L12–L24`.
 
 ### Feature flags (documentation policy)
 
