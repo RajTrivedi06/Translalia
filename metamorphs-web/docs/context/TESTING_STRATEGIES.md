@@ -217,3 +217,126 @@ const lineage: Edge[] = (apiNodes || [])
 ```327:331:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/versions/VersionCanvas.tsx
 defaultEdgeOptions={{ animated: true, markerEnd: { type: MarkerType.ArrowClosed }, style: { strokeWidth: 3 } }}
 ```
+
+### Phase 2 Stabilization Tests
+
+Unit:
+
+- useWorkspace actions
+  - `setTokenSelection(lineId, tokenId, selectionId)` updates `tokensSelections` map
+  - `appendNotebook(text)` appends to `workshopDraft.notebookText`
+
+```124:133:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/store/workspace.ts
+setTokenSelection: (lineId, tokenId, selectionId) =>
+  set((s) => {
+    const next = { ...(s.tokensSelections as Record<string, Record<string, string>>) };
+    const line = { ...(next[lineId] || {}) };
+    line[tokenId] = selectionId;
+    next[lineId] = line;
+    return { tokensSelections: next } as Partial<WorkspaceState>;
+  }),
+```
+
+```139:144:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/store/workspace.ts
+appendNotebook: (text) =>
+  set((s) => ({
+    workshopDraft: {
+      notebookText: (s.workshopDraft?.notebookText || "") + text,
+    },
+  })),
+```
+
+- Grouping utilities
+  - `groupWithNext(line, idx)` creates phrase token from adjacent words
+  - `ungroup(line, idx)` splits phrase back into words
+
+```4:15:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/_utils/grouping.ts
+export function groupWithNext(line: ExplodedLine, atIndex: number): ExplodedLine {
+  // merges tokens[atIndex] and tokens[atIndex+1]
+}
+```
+
+```18:29:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/_utils/grouping.ts
+export function ungroup(line: ExplodedLine, atIndex: number): ExplodedLine {
+  // splits phrase token into words
+}
+```
+
+- Selection reducer
+  - Range selection, toggle, select-all/clear
+
+```15:38:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/_utils/selection.ts
+export function selectionReducer(state: SelectionState, action: SelectionAction): SelectionState {
+  // SELECT_SINGLE, SELECT_RANGE, TOGGLE_SINGLE, SELECT_ALL, CLEAR_ALL
+}
+```
+
+Integration (UI):
+
+- Line selection keyboard behavior and roles
+
+```203:216:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/views/LineSelectionView.tsx
+onKeyDown={(e) => {
+  if (e.key === "Enter" || e.key === " ") {
+    e.preventDefault();
+    // Create a synthetic mouse event for keyboard interaction
+    const syntheticEvent = {
+      shiftKey: e.shiftKey,
+      metaKey: e.metaKey,
+      ctrlKey: e.ctrlKey,
+      preventDefault: () => {},
+      stopPropagation: () => {},
+    } as React.MouseEvent;
+    handleLineClick(lineId, syntheticEvent);
+  }
+}}
+```
+
+- Token chip `aria-pressed` reflects selection; click updates store
+
+```133:141:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/components/TokenCard.tsx
+const active = selected === opt.id;
+return (
+  <button
+    onClick={() => setTokenSelection(lineId, token.tokenId, opt.id)}
+    aria-pressed={active}
+  >
+```
+
+- Drawer focus trap and Escape to close
+
+```49:76:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/ui/sheet.tsx
+function onKeyDown(e: KeyboardEvent) {
+  if (e.key === "Escape") {
+    ctx?.onOpenChange(false);
+  }
+  if (e.key === "Tab") {
+    // basic focus trap
+    const fEls = el?.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    // …
+  }
+}
+```
+
+Contract:
+
+- Nodes query key remains stable
+
+```44:49:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/hooks/useNodes.ts
+return useQuery({
+  queryKey: ["nodes", projectId, threadId],
+  queryFn: () => fetchNodes(threadId!),
+  enabled,
+  staleTime: 0,
+});
+```
+
+- Mock `useExplodeTokens` to provide deterministic `ExplodedLine[]`
+
+```36:54:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/_utils/useExplodeTokens.ts
+export function useExplodeTokens(sourceLines: string[]): ExplodeTokensResult {
+  // explode lines into tokens with equal-weight options (mockable in tests)
+}
+```

@@ -1,6 +1,4 @@
 // src/lib/storage.ts
-"use server";
-
 import { createAdminClient } from "./supabaseAdmin";
 
 export const BUCKET = process.env.STORAGE_BUCKETS_CORPORA ?? "corpora";
@@ -12,25 +10,32 @@ export type BuildPathInput = {
   objectId: string; // caller supplies crypto.randomUUID()
 };
 
-export function buildPath({
+// Not a server action - utility function
+const buildPath = ({
   userId,
   threadId,
   fileName,
   objectId,
-}: BuildPathInput) {
+}: BuildPathInput) => {
   const safeName = fileName.replace(/[^\w.\-]+/g, "_");
   const folder = threadId?.trim() ? threadId : "root";
   return `${BUCKET}/${userId}/${folder}/${objectId}-${safeName}`;
-}
+};
 
-export function toBucketRelative(fullPath: string) {
+export { buildPath };
+
+// Not a server action - used internally
+const toBucketRelative = (fullPath: string) => {
   if (!fullPath.startsWith(`${BUCKET}/`)) {
     throw new Error(`Path must start with '${BUCKET}/'`);
   }
   return fullPath.slice(BUCKET.length + 1);
-}
+};
+
+export { toBucketRelative };
 
 export async function getSignedUrl(path: string, expiresInSec = 300) {
+  "use server";
   const admin = createAdminClient();
   const relativePath = toBucketRelative(path);
   const { data, error } = await admin.storage
@@ -44,6 +49,7 @@ export async function getSignedUrl(path: string, expiresInSec = 300) {
 }
 
 export async function removeObject(path: string) {
+  "use server";
   const admin = createAdminClient();
   const relativePath = toBucketRelative(path);
   const { error } = await admin.storage.from(BUCKET).remove([relativePath]);

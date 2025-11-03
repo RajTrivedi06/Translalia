@@ -89,7 +89,21 @@
 - Status: open
 - Observability hooks:
   - Measure time from preview response to first nodes payload with non-empty overview.
-  - Log cases where the loop exceeds threshold (e.g., 8s) with threadId/versionId.
+- Log cases where the loop exceeds threshold (e.g., 8s) with threadId/versionId.
+
+### Open Questions (Phase 2)
+
+- How/where to host real `/api/explode` (model vs lexical hybrid)?
+- Token grouping persistence schema?
+- Nodes polling interval tuning and visibility gating edge cases?
+- Notebook draft sync to thread or project? Versioning?
+- Chat-First rollout: migrate legacy `ChatPanel` or keep both behind flag?
+
+### Next Reads
+
+- `src/store/workspace.ts`
+- `src/hooks/useNodes.ts`
+- `src/components/workspace/chat/ChatPanel.tsx`
 
 ### JSON patch skeleton (LLM consumption)
 

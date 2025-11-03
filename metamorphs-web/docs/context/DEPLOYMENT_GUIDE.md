@@ -23,6 +23,25 @@
   - Optional flags: `NEXT_PUBLIC_FEATURE_PRISMATIC`, `NEXT_PUBLIC_FEATURE_VERIFY`, `NEXT_PUBLIC_FEATURE_BACKTRANSLATE`
   - UI layout flag: `NEXT_PUBLIC_FEATURE_SIDEBAR_LAYOUT` (V2 shell). Set to "1" to enable, "0" to use legacy shell.
 
+### Feature Flag Toggles (rollout/rollback)
+
+- `NEXT_PUBLIC_FEATURE_SIDEBAR_LAYOUT`
+
+  - When "1": Thread route renders the V2 two-column shell (`WorkspaceV2Shell`).
+  - When "0": Legacy `WorkspaceShell` remains.
+  - Reversible rollout; no database migrations required.
+
+- `NEXT_PUBLIC_FEATURE_CHAT_FIRST`
+
+  - When "1": Enables Chat-First surface (full-screen chat shell) as a UI-only swap.
+  - When "0": Uses standard center flow (Chat → Line Selection → Workshop → Notebook).
+  - Reversible; no database migrations required.
+
+- `NEXT_PUBLIC_FEATURE_EXPLODE_DRAWER`
+  - When "1": Enables Explode tokens drawer in Workshop; drawer is focus-trapped.
+  - When "0": Drawer and related token UI remain hidden.
+  - Reversible; no database migrations required.
+
 ### Environment Variables (YAML for LLM consumption)
 
 ```yaml

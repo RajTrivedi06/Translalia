@@ -20,9 +20,15 @@ export default function WorkspaceChatsPage() {
     enabled: !!projectId,
     queryKey: ["chat_threads", projectId],
     queryFn: async () => {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+      const headers: HeadersInit = accessToken
+        ? { Authorization: `Bearer ${accessToken}` }
+        : {};
       const res = await fetch(`/api/threads/list?projectId=${projectId}`, {
         cache: "no-store",
         credentials: "include",
+        headers,
       });
       const payload = await res.json();
       if (!res.ok) {

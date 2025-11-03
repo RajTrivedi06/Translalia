@@ -1,6 +1,149 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Merriweather:wght@400;700&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Phase 7: Animations and Polish */
+
+/* Smooth view transitions */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Confetti animation for completion */
+@keyframes confetti-fall {
+  0% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100vh) rotate(720deg);
+    opacity: 0;
+  }
+}
+
+/* Pulse animation for notifications */
+@keyframes pulse-subtle {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.02);
+  }
+}
+
+/* Shimmer effect for loading states */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+/* Progress bar fill animation */
+@keyframes progress-fill {
+  from {
+    transform: scaleX(0);
+    transform-origin: left;
+  }
+  to {
+    transform: scaleX(1);
+    transform-origin: left;
+  }
+}
+
+/* Utility classes */
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.4s ease-out forwards;
+}
+
+.animate-slide-in-left {
+  animation: slideInLeft 0.4s ease-out forwards;
+}
+
+.animate-confetti {
+  animation: confetti-fall 3s ease-out forwards;
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 2s ease-in-out infinite;
+}
+
+.animate-shimmer {
+  animation: shimmer 2s linear infinite;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.6) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  background-size: 1000px 100%;
+}
+
+/* Smooth transitions for all interactive elements */
+@layer components {
+  .smooth-transition {
+    transition: all 0.2s ease-in-out;
+  }
+
+  .smooth-transition-slow {
+    transition: all 0.4s ease-in-out;
+  }
+
+  /* Print-friendly styles for PDF exports */
+  @media print {
+    .no-print {
+      display: none !important;
+    }
+
+    .print-page-break {
+      page-break-after: always;
+    }
+
+    .print-avoid-break {
+      page-break-inside: avoid;
+    }
+  }
+}
 
 :root {
   --bg: 255 255 255;
@@ -17,10 +160,124 @@
 html,
 body {
   min-height: 100%;
+  font-family: "Inter", system-ui, sans-serif;
 }
 body {
   min-height: 100vh;
   background-color: rgb(var(--bg));
   color: rgb(var(--fg));
   overflow-x: hidden;
+}
+
+/* Custom Scrollbar Styles */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Contenteditable Focus States */
+[contenteditable]:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+@layer components {
+  /* Button Styles */
+  .btn-primary {
+    @apply bg-gradient-to-r from-blue-500 to-blue-600 text-white px-4 py-2 rounded-lg font-medium shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all duration-smooth;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn-primary::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.3),
+      transparent
+    );
+    transition: left 0.5s;
+  }
+
+  .btn-primary:hover::before {
+    left: 100%;
+  }
+
+  .btn-secondary {
+    @apply bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 px-4 py-2 rounded-lg font-medium shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-smooth;
+  }
+
+  .btn-hover {
+    @apply hover:-translate-y-0.5 transition-transform duration-smooth;
+  }
+
+  /* Message Bubbles */
+  .message-bubble {
+    @apply p-4 rounded-lg mb-3 shadow-sm;
+  }
+
+  .message-bubble.user {
+    @apply bg-blue-50 border-l-4 border-blue-500;
+  }
+
+  .message-bubble.assistant {
+    @apply bg-gray-50 border-l-4 border-gray-400;
+  }
+
+  /* Workshop Components */
+  .token-card {
+    @apply bg-white border border-gray-200 rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow duration-smooth;
+  }
+
+  .option-btn {
+    @apply px-3 py-2 rounded-md border transition-all duration-smooth cursor-pointer;
+  }
+
+  .option-btn.high {
+    @apply border-green-400 bg-green-50 hover:bg-green-100;
+  }
+
+  .option-btn.medium {
+    @apply border-yellow-400 bg-yellow-50 hover:bg-yellow-100;
+  }
+
+  .option-btn.low {
+    @apply border-orange-400 bg-orange-50 hover:bg-orange-100;
+  }
+
+  .option-btn.selected {
+    @apply ring-2 ring-blue-500 bg-blue-50;
+  }
+
+  .note-card {
+    @apply bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm;
+  }
+
+  .cultural-note {
+    @apply bg-amber-50 border-l-4 border-amber-400 p-3 rounded-r-lg text-sm;
+  }
+
+  /* Smooth Transition Utility */
+  .smooth-transition {
+    @apply transition-all duration-smooth ease-smooth;
+  }
 }

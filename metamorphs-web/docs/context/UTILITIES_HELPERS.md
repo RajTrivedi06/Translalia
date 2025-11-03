@@ -141,6 +141,26 @@ Common helpers used across the codebase, primarily in `src/lib` and `src/types`.
 - `hooks/useNodes.ts`: list nodes for current thread (polling)
 - `hooks/useJourney.ts`: activity/journey list
 
+### Phase-1 UI fallback utils (V2)
+
+- `getSourceLines({ flowPeek, nodes }): string[] | null`
+  - Purpose: Extract source lines from `flowPeek.state.source_text|poem_text`; fallback to latest node `overviewLines`. Returns `null` if unavailable.
+
+```42:74:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/_utils/data.ts
+export function getSourceLines({ flowPeek, nodes }: GetSourceArgs): string[] | null {
+  // peek → state.source_text/poem_text; fallback to nodes.overviewLines
+}
+```
+
+- `getAnalysisSnapshot({ flowPeek, nodeMeta }): { language?: string; form?: string; themes?: string[]; audienceOrTone?: string }`
+  - Purpose: Build lightweight analysis snapshot from `flowPeek.state.analysis` with fallback to latest node meta fields.
+
+```76:129:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/_utils/data.ts
+export function getAnalysisSnapshot({ flowPeek, nodeMeta }: { flowPeek?: unknown; nodeMeta?: unknown }): AnalysisSnapshot {
+  // merges from flowPeek.state.analysis; falls back to node meta
+}
+```
+
 ### 3) Constants and configurations
 
 - Feature flags: `NEXT_PUBLIC_FEATURE_TRANSLATOR`, `NEXT_PUBLIC_FEATURE_ROUTER`, `NEXT_PUBLIC_FEATURE_ENHANCER`

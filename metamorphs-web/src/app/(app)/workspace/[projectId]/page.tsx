@@ -1,14 +1,14 @@
 import { redirect } from "next/navigation";
 
-export default function LegacyWorkspacePage({
+export default async function LegacyWorkspacePage({
   params,
   searchParams,
 }: {
-  params: { projectId: string };
-  searchParams: { thread?: string };
+  params: Promise<{ projectId: string }>;
+  searchParams: Promise<{ thread?: string }>;
 }) {
-  const { projectId } = params;
-  const tid = searchParams?.thread;
+  const { projectId } = await params;
+  const { thread: tid } = await searchParams;
   if (tid) {
     redirect(`/workspaces/${projectId}/threads/${tid}`);
   }

@@ -1,6 +1,6 @@
 Updated: 2025-09-16
 
-## Metamorphs Web
+## Translalia Web
 
 A Next.js app for AI‑assisted creative poetry translation.
 
@@ -89,7 +89,7 @@ export const openai = new OpenAI({
 
 ```17:22:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/app/layout.tsx
 export const metadata: Metadata = {
-  title: "Metamorphs",
+  title: "Translalia",
   description:
     "A decolonial, AI-assisted creative poetry translation workspace.",
   icons: { icon: "/favicon.ico" },

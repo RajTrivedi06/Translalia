@@ -32,8 +32,7 @@ function isNonGenerative(model: string): boolean {
   );
 }
 
-// Exported only for dev logging at route layer
-export const __isNonGenerativeForDebug = isNonGenerative;
+// dev-only debug export removed (unused)
 
 export async function responsesCall({
   model,

@@ -18,16 +18,18 @@ export default function Pane({
   className = "",
 }: Props) {
   return (
-    <Card
-      id={id}
+    <div
       className={className + (collapsible ? " hidden lg:block" : "")}
       role="region"
       aria-label={title}
+      {...(id ? { id } : {})}
     >
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-      </CardHeader>
-      <CardContent>{children}</CardContent>
-    </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>{title}</CardTitle>
+        </CardHeader>
+        <CardContent>{children}</CardContent>
+      </Card>
+    </div>
   );
 }

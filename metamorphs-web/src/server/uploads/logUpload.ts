@@ -13,7 +13,7 @@ export type LogUploadInput = {
 };
 
 export async function logUpload(input: LogUploadInput) {
-  const supa = getServerClient();
+  const supa = await getServerClient();
   const { data: userCtx } = await supa.auth.getUser();
   if (!userCtx.user) throw new Error("Unauthorized");
 

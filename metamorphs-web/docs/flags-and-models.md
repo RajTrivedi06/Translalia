@@ -8,6 +8,22 @@ evidence_policy: "anchors-required"
 
 Centralized inventory of model defaults, environment overrides, and feature flags used across translator, enhancer, router, verifier, and back-translation surfaces. Values here mirror `src/lib/models.ts` and flag helpers; tables include anchors to definitions and call-sites.
 
+## Feature Flags Matrix (current)
+
+| Flag                                 | Default | Read In                                                                                                      | Gates                            | Impacted UI/APIs                                 | Notes                                 |
+| ------------------------------------ | ------: | ------------------------------------------------------------------------------------------------------------ | -------------------------------- | ------------------------------------------------ | ------------------------------------- |
+| `NEXT_PUBLIC_FEATURE_TRANSLATOR`     |       0 | `src/app/api/translator/preview/route.ts#L32-L36`, `instruct/route.ts#L23-L27`, `translate/route.ts#L14-L18` | Translator preview/instruct APIs | `ChatPanel` flows; Plan Builder preview/instruct | Returns 403 when off.                 |
+| `NEXT_PUBLIC_FEATURE_ENHANCER`       |       0 | `src/app/api/enhancer/route.ts#L12-L16`                                                                      | Enhancer API                     | Interview confirm/enhance steps                  | Returns 403 when off.                 |
+| `NEXT_PUBLIC_FEATURE_PRISMATIC`      |       0 | `src/lib/flags/prismatic.ts#L1-L3`                                                                           | Prismatic mode UI                | Plan/Mode selectors                              | Coerces to balanced when off.         |
+| `NEXT_PUBLIC_FEATURE_VERIFY`         |       0 | `src/lib/flags/verify.ts#L1-L2`, `src/app/api/translator/verify/route.ts#L10-L12`                            | Verify UI                        | Plan builder                                     | 404 when off (impl).                  |
+| `NEXT_PUBLIC_FEATURE_BACKTRANSLATE`  |       0 | `src/lib/flags/verify.ts#L3-L4`, `src/app/api/translator/backtranslate/route.ts#L13-L15`                     | Back-translate UI                | Plan builder                                     | 404 when off (impl).                  |
+| `NEXT_PUBLIC_FEATURE_ROUTER`         |       0 | `src/server/flow/intentLLM.ts#L11-L11`, `src/components/workspace/chat/ChatPanel.tsx#L403-L406`              | Server-assisted intent routing   | Chat intent only                                 | Fallback to local router if off.      |
+| `NEXT_PUBLIC_FEATURE_SIDEBAR_LAYOUT` |       0 | `src/lib/featureFlags.ts#L7-L9`, `src/components/workspace/v2/MainWorkspace.tsx#L14-L16`                     | V2 two-column shell              | V2 Workspace layout                              | Reversible rollout.                   |
+| `NEXT_PUBLIC_FEATURE_CHAT_FIRST`     |       0 | `src/lib/featureFlags.ts#L10-L11`                                                                            | Chat-First surface               | Full-screen chat shell                           | Flag-only shell swap (UI only).       |
+| `NEXT_PUBLIC_FEATURE_EXPLODE_DRAWER` |       0 | `src/lib/featureFlags.ts#L10-L11`                                                                            | Explode tokens drawer            | Token options UI                                 | Drawer is focus-trapped when on (UI). |
+
+Rollout: All flags are reversible; no database migrations required.
+
 ### LLM Consumption
 
 - **keys.model**: string (env‑overridable per surface)

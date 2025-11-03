@@ -6,6 +6,76 @@ Last updated: 2025-09-11 by CursorDoc-Editor
 
 Feature-first structure with shared primitives grouped under `src/components`.
 
+## V2 Components Map (Workspace)
+
+| Component            | Path                                                      | Props (key)                 | Children                                         | Notable deps | A11y                                    |
+| -------------------- | --------------------------------------------------------- | --------------------------- | ------------------------------------------------ | ------------ | --------------------------------------- |
+| `WorkspaceV2Shell`   | `src/components/workspace/v2/WorkspaceV2Shell.tsx`        | `{ projectId?, threadId? }` | `ContextSidebar`, `MainWorkspace`                | —            | Landmarks only.                         |
+| `ContextSidebar`     | `src/components/workspace/v2/ContextSidebar.tsx`          | —                           | `SourceTextCard`, `AnalysisCard`, `SettingsCard` | `Separator`  | `role="region"` + `aria-labelledby`.    |
+| `SourceTextCard`     | `src/components/workspace/v2/sidebar/SourceTextCard.tsx`  | `{ projectId, threadId }`   | —                                                | —            | Numbered lines; stanza groups; search.  |
+| `AnalysisCard`       | `src/components/workspace/v2/sidebar/AnalysisCard.tsx`    | `{ projectId, threadId }`   | —                                                | —            | dl/dt/dd with placeholders.             |
+| `SettingsCard`       | `src/components/workspace/v2/sidebar/SettingsCard.tsx`    | —                           | —                                                | Zustand      | Language/style selects; dialect switch. |
+| `MainWorkspace`      | `src/components/workspace/v2/MainWorkspace.tsx`           | —                           | view switch                                      | —            | Keyboard order sane.                    |
+| `LineSelectionView`  | `src/components/workspace/v2/views/LineSelectionView.tsx` | `{ lines }`                 | —                                                | —            | Checkboxes; Shift+range.                |
+| `WorkshopView`       | `src/components/workspace/v2/views/WorkshopView.tsx`      | —                           | `TokenCard` list                                 | —            | `button[aria-pressed]`.                 |
+| `NotebookView`       | `src/components/workspace/v2/views/NotebookView.tsx`      | —                           | `NotebookPanel`                                  | —            | Textarea labeled.                       |
+| `ChatView` (UI-only) | `src/components/workspace/v2/chat/ChatView.tsx`           | —                           | `ChatTimeline`, `ChatComposer`                   | lucide-react | `role="log"`; sticky composer.          |
+
+Compare/Legacy: legacy `WorkspaceShell` remains behind flag.
+
+## Components Props Map (current)
+
+| Export                  | Path                                                        | Props (key)                                                                  | Notable Deps            | A11y                                                             |
+| ----------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------- | ----------------------- | ---------------------------------------------------------------- | ------------------------------------ |
+| `WorkspaceV2Shell`      | `src/components/workspace/v2/WorkspaceV2Shell.tsx`          | `{ projectId: string; threadId: string                                       | null }`                 | Zustand                                                          | Landmarks via `<aside>` and `<main>` |
+| `ContextSidebar`        | `src/components/workspace/v2/ContextSidebar.tsx`            | `{ projectId?, threadId? }`                                                  | —                       | `<aside>`, separators; labeled cards                             |
+| `MainWorkspace`         | `src/components/workspace/v2/MainWorkspace.tsx`             | —                                                                            | Zustand                 | Console debug gated by flag                                      |
+| `LineSelectionView`     | `src/components/workspace/v2/views/LineSelectionView.tsx`   | `{ flowPeek?, nodes?, onProceed? }`                                          | lucide-react, shadcn/ui | `role="checkbox"`, `aria-checked`, keyboard Enter/Space          |
+| `WorkshopView`          | `src/components/workspace/v2/views/WorkshopView.tsx`        | —                                                                            | Zustand                 | SR text for current line                                         |
+| `NotebookView`          | `src/components/workspace/v2/views/NotebookView.tsx`        | —                                                                            | —                       | Buttons with labels; heading                                     |
+| `ChatView`              | `src/components/workspace/v2/chat/ChatView.tsx`             | —                                                                            | —                       | `role="log"`, `aria-live="polite"`; sticky composer              |
+| `ChatTimeline`          | `src/components/workspace/v2/chat/ChatTimeline.tsx`         | —                                                                            | lucide-react            | Buttons have `aria-label`; info sections                         |
+| `ChatComposer`          | `src/components/workspace/v2/chat/ChatComposer.tsx`         | —                                                                            | —                       | Input and send button with aria-labels                           |
+| `WelcomeCard`           | `src/components/workspace/v2/chat/WelcomeCard.tsx`          | —                                                                            | —                       | Headings; readable copy                                          |
+| `WorkspaceShell`        | `src/components/workspace/WorkspaceShell.tsx`               | `{ projectId?, threadId? }`                                                  | react-resizable-panels  | Split panes; region labels                                       |
+| `ChatPanel`             | `src/components/workspace/chat/ChatPanel.tsx`               | `{ projectId?, threadId? }`                                                  | Supabase, Zustand       | Input `aria-label`; buttons labeled                              |
+| `VersionCanvas`         | `src/components/workspace/versions/VersionCanvas.tsx`       | —                                                                            | reactflow               | Edge markers; keyboard nav per reactflow defaults                |
+| `JourneyPanel`          | `src/components/workspace/journey/JourneyPanel.tsx`         | —                                                                            | —                       | List semantics                                                   |
+| `CompareSheet`          | `src/components/workspace/compare/CompareSheet.tsx`         | `{ open, onOpenChange, left, right }`                                        | —                       | Dialog semantics via sheet                                       |
+| `NodeCard`              | `src/components/workspace/translate/NodeCard.tsx`           | `{ node, threadId, onAccepted? }`                                            | —                       | Buttons labeled                                                  |
+| `LineCitationDrawer`    | `src/components/workspace/translate/LineCitationDrawer.tsx` | `{ open, onOpenChange, node, threadId }`                                     | —                       | Drawer behaves as dialog                                         |
+| `FullPoemOverview`      | `src/components/workspace/translate/FullPoemOverview.tsx`   | `{ node }`                                                                   | —                       | Headings and sections                                            |
+| `NotebookPanel`         | `src/components/notebook/NotebookPanel.tsx`                 | `{ initial }`                                                                | —                       | Textarea labeled via context                                     |
+| `TokenCard`             | `src/components/workspace/v2/components/TokenCard.tsx`      | `{ lineId, token, tokenIndex?, totalTokens?, onGroupWithNext?, onUngroup? }` | Zustand                 | `role="group"`, `aria-labelledby`, option buttons `aria-pressed` |
+| `Sheet`, `SheetContent` | `src/components/ui/sheet.tsx`                               | `{ open, onOpenChange }`, `{ side?, className?, ariaLabelledby? }`           | —                       | `role="dialog"`, `aria-modal`, focus trap, Escape to close       |
+
+### A11y Notes
+
+- Dialog focus trap and Escape-to-close in sheet content:
+
+```87:106:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/ui/sheet.tsx
+return (
+  <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-labelledby={ariaLabelledby}>
+    <div className="absolute inset-0 bg-black/40" onClick={() => ctx.onOpenChange(false)} />
+    <div ref={contentRef} tabIndex={-1}>
+      {children}
+    </div>
+  </div>
+)
+```
+
+- Chat log region with polite announcements:
+
+```11:15:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/chat/ChatView.tsx
+<div role="log" aria-live="polite" className="flex-1 overflow-y-auto" />
+```
+
+- Token options expose pressed state and dialect in labels:
+
+```138:147:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/components/TokenCard.tsx
+onClick={() => setTokenSelection(lineId, token.tokenId, opt.id)} aria-pressed={active} title={`${opt.label} (${opt.dialect})`} aria-label={`${opt.label} (${opt.dialect})`}
+```
+
 ### Feature-first map
 
 | Component                 | File                                                         | Reads/Writes                                                                               | Flags                            | Anchors                                                                               |

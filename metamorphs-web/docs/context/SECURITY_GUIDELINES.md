@@ -139,6 +139,31 @@ const post = await moderateText(
 const blocked = post.flagged;
 ```
 
+## Logging & PII (rollout posture)
+
+- QA debug logs must exclude raw user text; use redacted previews and prompt hashes only.
+
+```30:44:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/ai/promptHash.ts
+const DEBUG = process.env.DEBUG_PROMPTS === "1" || process.env.NEXT_PUBLIC_DEBUG_PROMPTS === "1";
+if (!DEBUG) return;
+// Avoid printing full poem/user content in logs
+console.info("[LLM]", { route: args.route, model: args.model, hash: args.hash, systemPreview: squeeze(args.system), userPreview: squeeze(args.user, 300) });
+```
+
+- Remove debug logs and disable `DEBUG_PROMPTS` by Phase 3.
+
+## Supabase Sessions & CSRF (Phase 2)
+
+- Session usage: SSR middleware seeds Supabase cookies; APIs may also accept `Authorization: Bearer <token>` header from client session.
+
+```20:28:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/hooks/useNodes.ts
+const { data: sessionData } = await supabase.auth.getSession();
+const accessToken = sessionData.session?.access_token;
+const res = await fetch(`/api/versions/nodes?threadId=${encodeURIComponent(threadId)}`, { credentials: "include", cache: "no-store", headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {} });
+```
+
+- CSRF posture: Phase 2 UI is read-heavy (UI-only Chat/Workshop) with server writes limited to authenticated routes using cookie+Bearer; continue using same-origin `credentials: "include"` and avoid exposing mutating endpoints without auth checks.
+
 ## Services & Env Names (link-out)
 
 - Supabase: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`

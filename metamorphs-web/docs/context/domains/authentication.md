@@ -2,6 +2,8 @@
 
 ## Authentication
 
+> Status: Phase 2 introduces no changes to auth/user/business logic. UI-only features and flags.
+
 ### Methods
 
 - Supabase Auth (email/password, OAuth) with SSR cookies for API routes and Bearer fallback for client calls.

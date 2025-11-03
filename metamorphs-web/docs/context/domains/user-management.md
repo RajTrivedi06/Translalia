@@ -2,6 +2,8 @@
 
 ## User Management
 
+> Status: Phase 2 introduces no changes to auth/user/business logic. UI-only features and flags.
+
 ### Profiles
 
 - Stored in Supabase table `profiles` keyed by `id` (user id).

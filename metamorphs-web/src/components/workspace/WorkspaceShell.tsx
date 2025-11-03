@@ -2,17 +2,27 @@
 
 import * as React from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import {
+  DndContext,
+  DragOverlay,
+  type DragStartEvent,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import Link from "next/link";
 import { ChatPanel } from "./chat/ChatPanel";
-import { VersionCanvas } from "./versions/VersionCanvas";
-import { JourneyPanel } from "./journey/JourneyPanel";
+import { GuideRail } from "@/components/guide";
+import { WorkshopRail } from "@/components/workshop-rail/WorkshopRail";
+import NotebookPhase6 from "@/components/notebook/NotebookPhase6";
 import { useWorkspace } from "@/store/workspace";
-import { supabase } from "@/lib/supabaseClient";
-import type { Version, JourneyItem } from "@/types/workspace";
-import { CompareSheet } from "./compare/CompareSheet";
 import { useThreadId } from "@/hooks/useThreadId";
 import { useQueryClient } from "@tanstack/react-query";
-import Link from "next/link";
 import { routes } from "@/lib/routers";
+import { LanguageSelector } from "@/components/layout/LanguageSelector";
+import type { DragData } from "@/types/drag";
+import { useNotebookStore } from "@/store/notebookSlice";
+import { createCellFromDragData } from "@/lib/notebook/cellHelpers";
+import { cn } from "@/lib/utils";
+import { setActiveThreadId } from "@/lib/threadStorage";
 
 export function WorkspaceShell({
   projectId,
@@ -21,192 +31,150 @@ export function WorkspaceShell({
   projectId?: string;
   threadId?: string;
 }) {
-  // V2 supersedes this shell behind the NEXT_PUBLIC_FEATURE_SIDEBAR_LAYOUT flag.
   const urlThreadId = useThreadId();
   const effectiveThreadId = urlThreadId || threadId;
   const qc = useQueryClient();
   const setProjectId = useWorkspace((s) => s.setProjectId);
   const setThread = useWorkspace((s) => s.setThreadId);
-  const setVersions = useWorkspace((s) => s.setVersions);
-  const setJourney = useWorkspace((s) => s.setJourney);
-  const setCompares = useWorkspace((s) => s.setCompares);
-  const resetThreadEphemera = useWorkspace((s) => s.resetThreadEphemera);
-  const versions = useWorkspace((s) => s.versions);
-  const compareOpen = useWorkspace((s) => s.compareOpen);
-  const setCompareOpen = useWorkspace((s) => s.setCompareOpen);
-  const active = useWorkspace((s) => s.activeCompare);
+
   React.useEffect(() => setProjectId(projectId), [projectId, setProjectId]);
   React.useEffect(() => {
-    if (effectiveThreadId) setThread(effectiveThreadId);
+    if (effectiveThreadId) {
+      setThread(effectiveThreadId);
+    }
   }, [effectiveThreadId, setThread]);
 
-  // Guard: if thread is not accessible, show small reason and redirect; do not bounce on 5xx
   React.useEffect(() => {
-    if (!projectId || !effectiveThreadId) return;
-    (async () => {
-      try {
-        const res = await fetch(
-          `/api/flow/peek?threadId=${effectiveThreadId}`,
-          {
-            credentials: "include",
-          }
-        );
-        if (res.status === 404 || res.status === 403 || res.status === 401) {
-          let code = String(res.status);
-          try {
-            const json = await res.json();
-            code = json?.code || code;
-          } catch {}
-          alert(`Chat not accessible (${code}). Returning to Chats.`);
-          window.location.href = routes.workspaceChats(projectId);
-        }
-        // For 5xx, stay put; normal UI will surface errors and allow retry
-      } catch {
-        // ignore network errors; normal UI will handle
-      }
-    })();
-  }, [projectId, effectiveThreadId]);
+    setActiveThreadId(effectiveThreadId ?? null);
+  }, [effectiveThreadId]);
 
-  // On thread change: clear nodes cache and selection, and reset local versions to avoid bleed
   React.useEffect(() => {
     if (projectId) {
       qc.invalidateQueries({ queryKey: ["nodes", projectId] });
       qc.invalidateQueries({ queryKey: ["citations", projectId] });
     }
-    resetThreadEphemera();
-    setVersions([]);
-  }, [effectiveThreadId, qc, projectId, resetThreadEphemera, setVersions]);
+  }, [effectiveThreadId, qc, projectId]);
 
-  React.useEffect(() => {
-    if (!projectId) return;
-    (async () => {
-      const [j, c] = await Promise.all([
-        supabase
-          .from("journey_items")
-          .select(
-            "id, kind, summary, from_version_id, to_version_id, compare_id, created_at"
-          )
-          .eq("project_id", projectId)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("compares")
-          .select(
-            "id, left_version_id, right_version_id, lens, granularity, created_at"
-          )
-          .eq("project_id", projectId)
-          .order("created_at", { ascending: true }),
-      ]);
+  const addCell = useNotebookStore((s) => s.addCell);
+  const reorderCells = useNotebookStore((s) => s.reorderCells);
+  const droppedCells = useNotebookStore((s) => s.droppedCells);
 
-      // Load versions for the active thread only
-      let versionsRows: Version[] = [];
-      {
-        const base = await supabase
-          .from("versions")
-          .select("id, title, lines, tags, meta, created_at")
-          .eq("project_id", projectId)
-          .filter("meta->>thread_id", "eq", effectiveThreadId)
-          .order("created_at", { ascending: true });
-        if (!base.error && Array.isArray(base.data)) {
-          versionsRows = base.data as unknown as Version[];
-        }
+  const [activeDrag, setActiveDrag] = React.useState<DragData | null>(null);
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const dragData = event.active.data.current as DragData | undefined;
+    if (dragData) {
+      setActiveDrag(dragData);
+    }
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    const dragData = active.data.current as DragData | undefined;
+
+    if (!over) {
+      setActiveDrag(null);
+      return;
+    }
+
+    if (dragData && over.id === "notebook-dropzone") {
+      const normalizedData =
+        dragData.dragType === "sourceWord"
+          ? { ...dragData, text: dragData.originalWord }
+          : dragData;
+      const newCell = createCellFromDragData(normalizedData);
+      addCell(newCell);
+      setActiveDrag(null);
+      return;
+    }
+
+    if (active.id !== over.id) {
+      const oldIndex = droppedCells.findIndex((c) => c.id === active.id);
+      const newIndex = droppedCells.findIndex((c) => c.id === over.id);
+
+      if (oldIndex !== -1 && newIndex !== -1) {
+        reorderCells(oldIndex, newIndex);
       }
+    }
 
-      setVersions(versionsRows);
-      if (!j.error && Array.isArray(j.data))
-        setJourney(j.data as unknown as JourneyItem[]);
-      if (!c.error && Array.isArray(c.data)) {
-        const mapped = (
-          c.data as Array<{
-            id: string;
-            left_version_id: string;
-            right_version_id: string;
-            lens: string;
-            granularity: string;
-          }>
-        ).map((row) => ({
-          id: row.id,
-          leftVersionId: row.left_version_id,
-          rightVersionId: row.right_version_id,
-          lens:
-            (row.lens as "meaning" | "form" | "tone" | "culture") ?? "meaning",
-          granularity:
-            (row.granularity as "line" | "phrase" | "char") ?? "line",
-        }));
-        setCompares(mapped);
-      }
-    })();
-  }, [projectId, effectiveThreadId, setVersions, setJourney, setCompares]);
+    setActiveDrag(null);
+  };
+
+  const handleDragCancel = () => setActiveDrag(null);
 
   return (
-    // Fill the <main> area completely; use flex column so the panel group gets remaining height
-    <div className="h-full w-full flex flex-col">
-      {/* Thread topbar navigation */}
-      <div className="sticky top-0 z-30 flex items-center justify-between border-b bg-white/80 dark:bg-neutral-950/80 backdrop-blur px-4 py-2">
-        <div className="flex items-center gap-3">
-          <div className="text-sm font-semibold">
-            {useWorkspace.getState().workspaceName || "Workspace"}
-          </div>
-          <span className="text-xs text-neutral-500">/</span>
-          {projectId ? (
-            <Link
-              href={routes.workspaceChats(projectId)}
-              className="text-sm underline"
-            >
-              Chats
-            </Link>
-          ) : null}
-        </div>
-        {projectId ? (
-          <Link href={routes.workspaceChats(projectId)} className="text-xs">
-            <span className="inline-flex items-center rounded-md border px-2 py-1">
-              Back to Chats
-            </span>
+    <DndContext
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
+    >
+      <div className="flex h-screen flex-col min-h-0">
+        <header className="flex items-center justify-between border-b bg-white px-3 py-1.5 dark:border-neutral-700 dark:bg-neutral-900">
+          <Link
+            href={routes.workspaceChats(projectId ?? "")}
+            className="text-xs font-semibold hover:underline"
+          >
+            ← Back to Chats
           </Link>
-        ) : null}
+          <h1 className="text-xs font-semibold">Workspace</h1>
+          <div className="flex items-center gap-2">
+            <LanguageSelector />
+            <div className="w-16" />
+          </div>
+        </header>
+
+        <div className="flex flex-1 overflow-hidden min-h-0">
+          <PanelGroup direction="horizontal" className="flex-1">
+            <Panel
+              defaultSize={18}
+              minSize={12}
+              maxSize={30}
+              collapsible={true}
+              className="border-r"
+            >
+              <GuideRail />
+            </Panel>
+
+            <PanelResizeHandle className="w-1 bg-neutral-200 hover:bg-blue-400 dark:bg-neutral-700" />
+
+            <Panel defaultSize={18} minSize={12} maxSize={30}>
+              <ChatPanel projectId={projectId} threadId={effectiveThreadId} />
+            </Panel>
+
+            <PanelResizeHandle className="w-1 bg-neutral-200 hover:bg-blue-400 dark:bg-neutral-700" />
+
+            <Panel defaultSize={32} minSize={20} maxSize={45}>
+              <WorkshopRail />
+            </Panel>
+
+            <PanelResizeHandle className="w-1 bg-neutral-200 hover:bg-blue-400 dark:bg-neutral-700" />
+
+            <Panel
+              defaultSize={32}
+              minSize={20}
+              maxSize={45}
+              className="border-l bg-background"
+            >
+              <NotebookPhase6 />
+            </Panel>
+          </PanelGroup>
+        </div>
       </div>
-      <PanelGroup direction="horizontal" className="flex-1 min-h-0">
-        {/* Left: Chat */}
-        <Panel
-          defaultSize={24}
-          minSize={18}
-          className="min-h-0 min-w-0 border-r overflow-hidden"
-        >
-          <ChatPanel projectId={projectId} />
-        </Panel>
-        <PanelResizeHandle className="w-2 bg-neutral-200 z-20" />
-        {/* Middle: Versions Canvas */}
-        <Panel
-          key={`${projectId || "no-project"}:${effectiveThreadId || "pending"}`}
-          defaultSize={52}
-          minSize={40}
-          className="min-h-0 min-w-0 border-r overflow-hidden"
-        >
-          <VersionCanvas />
-        </Panel>
-        <PanelResizeHandle className="w-2 bg-neutral-200 z-20" />
-        {/* Right: Journey / Summary */}
-        <Panel
-          defaultSize={24}
-          minSize={18}
-          className="min-h-0 min-w-0 overflow-hidden"
-        >
-          <JourneyPanel />
-        </Panel>
-      </PanelGroup>
-      {/* CompareSheet host */}
-      {(() => {
-        const left = versions.find((v) => v.id === active?.leftId);
-        const right = versions.find((v) => v.id === active?.rightId);
-        if (!left || !right) return null;
-        return (
-          <CompareSheet
-            open={compareOpen}
-            onOpenChange={setCompareOpen}
-            left={left}
-            right={right}
-          />
-        );
-      })()}
-    </div>
+
+      <DragOverlay>
+        {activeDrag ? (
+          <div
+            className={cn(
+              "rounded-lg border-2 px-4 py-2 shadow-2xl text-sm font-semibold",
+              activeDrag.dragType === "sourceWord"
+                ? "bg-blue-50 border-blue-400 text-blue-900"
+                : "bg-white border-gray-300 text-gray-900"
+            )}
+          >
+            {activeDrag.text}
+          </div>
+        ) : null}
+      </DragOverlay>
+    </DndContext>
   );
 }

@@ -4,6 +4,46 @@
 
 End-to-end: Interview → Plan → Preview → Accept → Canvas
 
+### Phase 2 Front-End Flow (UI-first)
+
+Input (source text via Welcome/Upload) → `getSourceLines()`
+→ `LineSelectionView` (select ids)
+→ `useExplodeTokens(lineIds, settings)` [mock]
+→ `WorkshopView` (`TokenCard`, grouping, selections)
+→ `appendNotebook(text)` → `NotebookView`
+
+Anchors:
+
+```42:74:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/_utils/data.ts
+export function getSourceLines({ flowPeek, nodes }: GetSourceArgs): string[] | null {
+  // peek → state.source_text/poem_text; fallback to nodes.overviewLines
+}
+```
+
+```23:37:/Users/raaj/Documents/CS/metamorphs-met amorphs-web/src/components/workspace/v2/views/LineSelectionView.tsx
+export function LineSelectionView({ flowPeek, nodes, onProceed }: LineSelectionViewProps) {
+  // keyboard range selection and checkboxes
+}
+```
+
+```36:54:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/_utils/useExplodeTokens.ts
+export function useExplodeTokens(sourceLines: string[]): ExplodeTokensResult {
+  // explode lines into tokens with equal-weight options (mocked in Phase 2)
+}
+```
+
+```111:140:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/views/WorkshopView.tsx
+const handleCompileLine = React.useCallback(() => {
+  // assemble selected options → append to notebook; advance to next or notebook view
+}, [/* ... */]);
+```
+
+```11:43:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/views/NotebookView.tsx
+export function NotebookView() {
+  // shows compiled draft; copy/clear/back actions
+}
+```
+
 ### Flow Diagram
 
 ```mermaid

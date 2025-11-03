@@ -1,6 +1,6 @@
 Updated: 2025-09-16
 
-## Metamorphs
+## Translalia
 
 **Mission**: A decolonial, AI‑assisted creative poetry translation workspace.
 

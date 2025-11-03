@@ -7,8 +7,6 @@ export function isTranslatorEnabled() {
 export function isSidebarLayoutEnabled() {
   return process.env.NEXT_PUBLIC_FEATURE_SIDEBAR_LAYOUT === "1";
 }
-export const isChatUIOnlyEnabled = () =>
-  process.env.NEXT_PUBLIC_FEATURE_CHAT_UI_ONLY === "1";
 export function inProd() {
   return process.env.NODE_ENV === "production";
 }

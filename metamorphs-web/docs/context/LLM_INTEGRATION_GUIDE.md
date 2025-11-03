@@ -15,6 +15,47 @@ How to use this documentation set to generate accurate code across APIs, flows, 
 - Policies: `docs/moderation-policy.md`, `docs/spend-and-cache-policy.md`, `docs/flags-and-models.md`
 - State & relationships: `docs/context/STATE_MANAGEMENT.md`, `docs/context/RELATIONSHIPS.md`
 
+## Current LLM Flow (Phase 2 ready)
+
+1. Interview (UI-only defaults ok) → establishes targetLang/style/dialect toggle.
+2. Explode (mock or future `/api/explode`) → yields `ExplodedLine[]` with `TokenOption[]` (equal-weight, dialect-tagged).
+3. Workshop → user selects options / adds custom; grouping word↔phrase.
+4. Compile to Notebook → selections → appended draft (no server write in Phase 2).
+
+**Decolonial guardrails:** equal visual weight, visible dialect tags, translanguaging allowed, avoid "best" language.
+
+### Prompt Locations
+
+| Area                           | File                    | Notes                                                                |
+| ------------------------------ | ----------------------- | -------------------------------------------------------------------- |
+| Translator (system + variants) | `src/lib/ai/prompts.ts` | `TRANSLATOR_SYSTEM`, `getTranslatorSystem(mode)`; prismatic addendum |
+| Enhancer (planner JSON)        | `src/lib/ai/prompts.ts` | `ENHANCER_SYSTEM`                                                    |
+| Router / Classifier            | `src/lib/ai/prompts.ts` | `ROUTER_SYSTEM`; consumed in server `intentLLM`                      |
+| Verifier JSON                  | `src/lib/ai/prompts.ts` | `VERIFIER_SYSTEM`                                                    |
+| Back-translate JSON            | `src/lib/ai/prompts.ts` | `BACKTRANSLATE_SYSTEM`                                               |
+
+Anchors:
+
+```1:33:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/server/flow/intentLLM.ts
+import { ROUTER_SYSTEM } from "@/lib/ai/prompts";
+// …
+messages: [
+  { role: "system", content: ROUTER_SYSTEM },
+  { role: "user", content: user },
+],
+```
+
+Guardrails (Phase 2):
+
+- Equal-weight token options; no ranking language; show dialect tags.
+- Preserve line breaks and stanza structure where applicable.
+
+## Prompt Centralization (planned)
+
+- System prompts currently live in `src/lib/ai/prompts.ts` for translator, enhancer, router, verifier, and back-translate.
+- Phase 2/3 plan: centralize prompt variants per mode and surface under a registry with explicit anchors and versioning.
+- TODO: Add a top-level prompt registry and reference docs with anchors for each surface.
+
 ### Code Generation Templates
 
 ```ts

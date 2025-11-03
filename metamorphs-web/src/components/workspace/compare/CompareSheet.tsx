@@ -21,8 +21,6 @@ export function CompareSheet({
   left: Version;
   right: Version;
 }) {
-  const addVersion = useWorkspace((s) => s.addVersion);
-  const pinJourney = useWorkspace((s) => s.pinJourney);
   const projectId = useWorkspace((s) => s.projectId);
 
   const onCreateHybrid = async () => {
@@ -49,18 +47,8 @@ export function CompareSheet({
       alert(json?.error ?? "Failed to create hybrid");
       return;
     }
-    addVersion({
-      id: json.version.id,
-      title: json.version.title,
-      lines: json.version.lines,
-      tags: json.version.tags ?? ["hybrid"],
-    });
-    pinJourney({
-      id: `J-${Date.now()}`,
-      summary: `Created hybrid ${json.version.id} from ${left.id}/${right.id}`,
-      fromId: left.id,
-      toId: json.version.id,
-    });
+    // Hybrid created successfully
+    alert(`Hybrid version created: ${json.version.id}`);
     onOpenChange(false);
   };
   return (

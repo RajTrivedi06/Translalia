@@ -7,7 +7,7 @@ export default function Home() {
         <div className="mx-auto max-w-3xl text-center">
           <h1 className="text-4xl font-bold tracking-tight sm:text-5xl inline-flex items-center justify-center gap-3">
             <img src="/globe.svg" alt="" className="h-9 w-9" />
-            Metamorphs
+            Translalia
           </h1>
           <p className="mt-4 text-balance text-lg text-gray-600">
             A decolonial, AI-assisted creative poetry translation workspace.

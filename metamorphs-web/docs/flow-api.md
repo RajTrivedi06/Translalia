@@ -347,3 +347,9 @@ return NextResponse.json(
   { status: 409 }
 );
 ```
+
+### Planned (prompt centralization & banned-phrases)
+
+- Centralize system/user prompt assembly as constants/functions, reusing `src/lib/ai/prompts.ts` with mode-aware variants.
+- Introduce a banned-phrases check to enforce decolonial guardrails (reject/replace harmful wording before Requests API call).
+- No immediate API contract changes; server routes keep current schemas.

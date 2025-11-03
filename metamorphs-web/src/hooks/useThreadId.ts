@@ -1,8 +1,9 @@
 "use client";
-import { useSearchParams } from "next/navigation";
+import { useParams } from "next/navigation";
 
 export function useThreadId(): string | null {
-  const sp = useSearchParams();
-  const threadId = sp.get("thread");
-  return threadId;
+  const params = useParams();
+  // Extract threadId from URL path: /workspaces/[projectId]/threads/[threadId]
+  const threadId = params?.threadId as string | undefined;
+  return threadId || null;
 }

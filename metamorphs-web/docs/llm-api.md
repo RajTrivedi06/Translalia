@@ -668,3 +668,9 @@ citedText ? `CITED_VERSION_FULL_TEXT:\n${citedText}` : "",
 ```
 
 ```
+
+### Planned (prompt centralization & banned-phrases)
+
+- Centralize prompt constants under a registry (per surface/mode) sourcing from `src/lib/ai/prompts.ts`.
+- Add a banned-phrases check during prompt assembly (e.g., avoid hegemonic terms like "best/pure/standard language"), aligned with decolonial guardrails.
+- No immediate API request/response shape changes expected.

@@ -17,6 +17,63 @@ Client-side state focuses on workspace, threads, and UI sheets. This document ou
   - `hooks/useNodes.ts`: Polls `/api/versions/nodes` for node list/overview
   - `hooks/useJourney.ts`: Fetches `journey_items` list for activity
 
+## V2 UI Slice (Zustand)
+
+| Key                          | Type                                                                                           | Purpose                                           |
+| ---------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------- | ---------- | ----------- | -------------------- |
+| `ui.currentView`             | `'chat'                                                                                        | 'line-selection'                                  | 'workshop' | 'notebook'` | Center-pane routing. |
+| `ui.targetLang`              | `string`                                                                                       | Settings target language.                         |
+| `ui.targetStyle`             | `string`                                                                                       | Settings target style.                            |
+| `ui.includeDialectOptions`   | `boolean`                                                                                      | Show dialect-tagged options.                      |
+| `ui.currentLine`             | `number`                                                                                       | Workshop line focus.                              |
+| `tokensSelections`           | `Record<lineId, Record<tokenId, string>>`                                                      | Selected token options; `user:<text>` for custom. |
+| `workshopDraft.notebookText` | `string`                                                                                       | In-progress compiled text.                        |
+| Actions                      | `setCurrentView`, `setCurrentLine`, `setTokenSelection`, `appendNotebook`, `clearSelections()` | —                                                 |
+
+Persistence:
+
+- `tokensSelections` and `workshopDraft.notebookText` are hydrated/saved per-thread via localStorage in the Workshop view.
+
+```64:73:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/views/WorkshopView.tsx
+// Hydrate from localStorage on thread change
+React.useEffect(() => {
+  const saved = loadLocal<{ tokenSelections: any; notebookText: string }>(threadId);
+  if (saved) {
+    useWorkspace.setState((s) => ({
+      tokensSelections: saved.tokenSelections ?? s.tokensSelections,
+      workshopDraft: { notebookText: saved.notebookText ?? s.workshopDraft.notebookText },
+    }));
+  } else {
+    clearSelections();
+    useWorkspace.setState({ workshopDraft: { notebookText: "" } });
+  }
+}, [threadId]);
+```
+
+```82:88:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/views/WorkshopView.tsx
+// Throttled save to localStorage
+React.useEffect(() => {
+  const id = window.setTimeout(
+    () => saveLocal(threadId, { tokenSelections, notebookText }),
+    2000
+  );
+  return () => window.clearTimeout(id);
+}, [threadId, tokenSelections, notebookText]);
+```
+
+Polling rules (TanStack Query):
+
+- `useNodes` polls every ~1.5s when `projectId` and `threadId` are present. Prefer gating polling by view (e.g., poll in `workshop` and pause in others) to reduce load.
+
+```56:62:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/hooks/useNodes.ts
+return useQuery({
+  queryKey: ["nodes", projectId, threadId],
+  queryFn: () => fetchNodes(threadId!),
+  enabled: !!projectId && !!threadId,
+  refetchInterval: 1500,
+});
+```
+
 ### Server-State vs Client-State
 
 - Fetch server data in route handlers or server components where possible
@@ -283,3 +340,29 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
 // VersionCanvas reads versions/compares from store and calls PATCH /api/versions/positions on drag-stop
 <VersionCanvas />
 ```
+
+### Zustand Stores
+
+| Store             | Path                     | Keys                                                                                                                                                                                                     | Actions                                                                                                                                                                                                                                                                                                                                             | Consumers                                        |
+| ----------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `useWorkspace`    | `src/store/workspace.ts` | `projectId`, `threadId`, `workspaceName`, `selectedNodeId`, `compareOpen`, `ui.{currentView,targetLang,targetStyle,includeDialectOptions,currentLine}`, `tokensSelections`, `workshopDraft.notebookText` | `setSelectedNodeId`, `setProjectId`, `setWorkspaceMeta`, `setThreadId`, `setCompareOpen`, `setHighlightVersionId`, `setVersionPos`, `setVersions`, `setCompares`, `setCurrentView`, `setTargetLang`, `setTargetStyle`, `setIncludeDialectOptions`, `setTokenSelection`, `clearSelections`, `setCurrentLine`, `appendNotebook`, `clearNotebookDraft` | `WorkspaceV2Shell`, `MainWorkspace`, `TokenCard` |
+| `useUiLangStore`  | `src/state/uiLang.ts`    | `uiLang`                                                                                                                                                                                                 | `setUiLang`                                                                                                                                                                                                                                                                                                                                         | `AuthNav`, `Providers`                           |
+| `useUploadsStore` | `src/state/uploads.ts`   | `byThread`                                                                                                                                                                                               | `hydrate`, `add`, `upsert`, `removeByName`, `setStatus`, `clearThread`, `list`, `getKey`                                                                                                                                                                                                                                                            | `UploadsTray`, `UploadListItem`, `ChatPanel`     |
+
+### TanStack Query Hooks
+
+| Hook                      | Path                             | Query Key                                          | Options                                                                                                                       | Consumers                                                |
+| ------------------------- | -------------------------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `useNodes`                | `src/hooks/useNodes.ts`          | `["nodes", projectId, threadId]`                   | `enabled: !!projectId && !!threadId`; `staleTime: 0`; `refetchOnWindowFocus: true`; `refetchInterval: enabled ? 1500 : false` | `VersionCanvas`, `PlanBuilderOverviewSheet`, `ChatPanel` |
+| `useJourney`              | `src/hooks/useJourney.ts`        | `["journey", projectId, limit]`                    | `enabled: !!projectId`; throws on non-200                                                                                     | `JourneyPanel`, `VersionCanvas`                          |
+| `useThreadMessages`       | `src/hooks/useThreadMessages.ts` | `["chat_messages", projectId, threadId]`           | `enabled: !!projectId && !!threadId`; ordered ascending                                                                       | `ChatPanel`                                              |
+| `useInterviewFlow().peek` | `src/hooks/useInterviewFlow.ts`  | `["flow_peek", threadId]`                          | `enabled: !!threadId`; invalidated on `start/answer/confirm` success                                                          | `ChatPanel`, `PlanBuilderOverviewSheet`                  |
+| `useUploadsList`          | `src/hooks/uploadsQuery.ts`      | `["uploads", threadId??"root"]`                    | `staleTime: 60000`; `retry: 3`; backoff `[300,1200,3000]`; hydrates store on success                                          | `UploadsTray`                                            |
+| `useUploadMutation`       | `src/hooks/uploadsQuery.ts`      | `mutationKey: ["upload", threadId??"root"]`        | `retry: 3`; backoff; `onSuccess` invalidates uploads                                                                          | `ChatPanel`                                              |
+| `useDeleteUploadMutation` | `src/hooks/uploadsQuery.ts`      | `mutationKey: ["delete-upload", threadId??"root"]` | `retry: 3`; optimistic `onMutate`/revert; invalidate uploads on success                                                       | `UploadsTray`                                            |
+| `useVerifyTranslation`    | `src/hooks/useVerifier.ts`       | — (mutation)                                       | JSON POST `/api/translator/verify`                                                                                            | `PlanBuilderOverviewSheet`                               |
+| `useBackTranslate`        | `src/hooks/useVerifier.ts`       | — (mutation)                                       | JSON POST `/api/translator/backtranslate`                                                                                     | `PlanBuilderOverviewSheet`                               |
+
+Visibility Gating:
+
+- `useNodes` polling should pause when not in Workshop (V2). If not wired: TODO to gate via `opts.enabled` using `useWorkspace((s)=>s.ui.currentView==="workshop")`.

@@ -12,6 +12,40 @@
 
   - V2 visibility-gated polling: pause when view != "workshop"; keep legacy unchanged.
 
+  Visibility-Gated Polling rule:
+
+  - useNodes should poll only when `ui.currentView === "workshop"` in V2. Combine with existing `enabled` option.
+
+  Evidence:
+
+  ```35:53:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/hooks/useNodes.ts
+  export function useNodes(
+    projectId: string | undefined,
+    threadId: string | undefined,
+    opts?: { enabled?: boolean }
+  ) {
+    const enabled = (!!projectId && !!threadId && (opts?.enabled ?? true)) as boolean;
+    return useQuery({
+      queryKey: ["nodes", projectId, threadId],
+      queryFn: () => fetchNodes(threadId!),
+      enabled,
+      staleTime: 0,
+      refetchOnWindowFocus: true,
+      refetchInterval: enabled ? 1500 : false,
+    });
+  }
+  ```
+
+  ```110:116:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/store/workspace.ts
+  ui: {
+    currentView: "chat",
+    targetLang: "en",
+    targetStyle: "balanced",
+    includeDialectOptions: false,
+    currentLine: 0,
+  },
+  ```
+
   Evidence:
 
   ```35:53:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/hooks/useNodes.ts
@@ -188,6 +222,134 @@ export async function checkDailyLimit(
   export function Providers({ children }: { children: React.ReactNode }) {
     const [client] = React.useState(() => new QueryClient());
   }
+  ```
+
+### Polling (TanStack Query)
+
+- Nodes list polling (`useNodes`):
+
+```44:50:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/hooks/useNodes.ts
+return useQuery({
+  queryKey: ["nodes", projectId, threadId],
+  queryFn: () => fetchNodes(threadId!),
+  enabled,
+  staleTime: 0,
+  refetchOnWindowFocus: true,
+  refetchInterval: enabled ? 1500 : false,
+});
+```
+
+- Visibility gating: Prefer pausing polling when not in Workshop (V2). If not wired, TODO to gate via `opts.enabled` with `useWorkspace((s)=>s.ui.currentView==="workshop")`.
+
+### Graph (React Flow)
+
+- Version canvas renders via React Flow with fit/controls and thick edges:
+
+```195:206:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/versions/VersionCanvas.tsx
+<ReactFlow
+  nodes={nodes}
+  edges={edges}
+  nodeTypes={nodeTypes}
+  fitView
+  defaultEdgeOptions={{ animated: true, markerEnd: { type: MarkerType.ArrowClosed }, style: { strokeWidth: 3 } }}
+  proOptions={{ hideAttribution: true }}
+  panOnScroll
+  zoomOnDoubleClick={false}
+  minZoom={0.5}
+  maxZoom={1.5}
+/>
+```
+
+### Lists
+
+- FullPoemOverview and side overlays: no virtualization noted; consider windowing if performance degrades with large poems.
+- Journey list (overlay) renders a small window of recent items:
+
+```229:239:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/versions/VersionCanvas.tsx
+<JourneyList items={(journeyData?.items || []).map(/* … */)} />
+```
+
+### Memoization & Callbacks
+
+- Nodes and edges are memoized; lineage computed once per data change:
+
+```45:75:/Users/raaj/Documents/CS/metamorphs-met amorphs-web/src/components/workspace/versions/VersionCanvas.tsx
+const apiNodes: NodeRow[] = React.useMemo(() => nodesData || [], [nodesData]);
+const lineageIds = React.useMemo(() => { /* … */ }, [apiNodes]);
+```
+
+```80:116:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/versions/VersionCanvas.tsx
+const nodes = React.useMemo<Node[]>(() => { /* map apiNodes→reactflow nodes */ }, [apiNodes, lineageIds]);
+```
+
+```117:131:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/versions/VersionCanvas.tsx
+const edges = React.useMemo<Edge[]>(() => { /* build lineage edges */ }, [apiNodes]);
+```
+
+- SourceTextCard stanza split & filtering are memoized; windowing when >400 lines:
+
+```28:41:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/sidebar/SourceTextCard.tsx
+const stanzas = React.useMemo(() => { /* splitStanzas */ }, [hasSource, sourceLines]);
+const filtered = React.useMemo(() => { /* filter per query */ }, [stanzas, query]);
+```
+
+```54:56:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/sidebar/SourceTextCard.tsx
+const { visible, canLoadMore, loadMore, count, total } = useWindowedList(flatLines, 400);
+const shouldUseWindowing = total > 400;
+```
+
+#### Memoization rules (V2)
+
+- Stanza split: memoize stanza groups and filtered views.
+
+  ```28:36:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/sidebar/SourceTextCard.tsx
+  const stanzas = React.useMemo(() => {
+    if (!hasSource || !sourceLines) return [];
+    const sourceText = sourceLines.join('\n');
+    return splitStanzas(sourceText);
+  }, [hasSource, sourceLines]);
+  ```
+
+- Token lists: memoize exploded tokens and visible slices.
+
+  ```53:61:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/views/WorkshopView.tsx
+  const tokens = React.useMemo(() => currentLine?.tokens ?? [], [currentLine]);
+  const WINDOW = 150;
+  const [tokenCount, setTokenCount] = React.useState(WINDOW);
+  const visibleTokens = React.useMemo(() =>
+    tokens.filter(token => token.options.length > 0).slice(0, tokenCount),
+    [tokens, tokenCount]
+  );
+  ```
+
+- Selectors: prefer narrow store selectors to avoid re-renders.
+
+  ```16:25:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/views/WorkshopView.tsx
+  const currentLineIdx = useWorkspace((s) => s.ui.currentLine);
+  const includeDialectOptions = useWorkspace((s) => s.ui.includeDialectOptions);
+  const threadId = useWorkspace((s) => s.threadId);
+  const tokenSelections = useWorkspace((s) => s.tokensSelections);
+  const notebookText = useWorkspace((s) => s.workshopDraft.notebookText);
+  ```
+
+#### Windowing
+
+- Use list windowing for large inputs: suggest enabling when >400 lines or >200 tokens.
+
+  Evidence:
+
+  ```54:56:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/sidebar/SourceTextCard.tsx
+  const { visible: visibleLines, canLoadMore, loadMore, count, total } = useWindowedList(flatLines, 400);
+  const shouldUseWindowing = total > 400;
+  ```
+
+  ```55:61:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/views/WorkshopView.tsx
+  const WINDOW = 150;
+  const [tokenCount, setTokenCount] = React.useState(WINDOW);
+  const visibleTokens = React.useMemo(() =>
+    tokens.filter(token => token.options.length > 0).slice(0, tokenCount),
+    [tokens, tokenCount]
+  );
   ```
 
 ### Monitoring

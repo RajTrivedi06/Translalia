@@ -20,26 +20,61 @@ Be culturally respectful. Avoid prescriptive standardization.`;
 BASE_QUESTION="${baseQuestion}"
 CONTEXT=${JSON.stringify(context ?? {})}`;
 
-  const r = await openai.responses.create({
-    model: ROUTER_MODEL,
-    temperature: 0.2,
-    response_format: { type: "json_object" },
-    messages: [
-      { role: "system", content: SYSTEM },
-      { role: "user", content: USER },
-    ],
-  } as unknown as Parameters<typeof openai.responses.create>[0]);
+  // Use ROUTER_MODEL (defaults to gpt-5-nano) with fallback
+  let modelToUse = ROUTER_MODEL;
+  let completion;
 
-  const text =
-    (
-      r as unknown as {
-        output_text?: string;
-        content?: Array<{ text?: string }>;
-      }
-    ).output_text ??
-    (r as unknown as { content?: Array<{ text?: string }> }).content?.[0]
-      ?.text ??
-    "{}";
+  // GPT-5 models don't support temperature, top_p, frequency_penalty, etc.
+  const isGpt5 = modelToUse.startsWith('gpt-5');
+
+  try {
+    if (isGpt5) {
+      // GPT-5: No temperature or other sampling parameters
+      completion = await openai.chat.completions.create({
+        model: modelToUse,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: SYSTEM },
+          { role: "user", content: USER },
+        ],
+      });
+    } else {
+      // GPT-4: Include temperature
+      completion = await openai.chat.completions.create({
+        model: modelToUse,
+        temperature: 0.2,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: SYSTEM },
+          { role: "user", content: USER },
+        ],
+      });
+    }
+  } catch (modelError: any) {
+    // If model not found or unsupported, fallback to gpt-4o
+    const shouldFallback =
+      modelError?.error?.code === 'model_not_found' ||
+      modelError?.status === 404 ||
+      modelError?.status === 400;
+
+    if (shouldFallback) {
+      console.warn(`[interview] Model ${modelToUse} fallback to gpt-4o:`, modelError?.error?.code || modelError?.error?.message || 'error');
+      modelToUse = "gpt-4o";
+      completion = await openai.chat.completions.create({
+        model: modelToUse,
+        temperature: 0.2,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: SYSTEM },
+          { role: "user", content: USER },
+        ],
+      });
+    } else {
+      throw modelError;
+    }
+  }
+
+  const text = completion.choices[0]?.message?.content ?? "{}";
   try {
     const obj = JSON.parse(text);
     if (!obj?.question) throw new Error("Missing question");

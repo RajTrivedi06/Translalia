@@ -11,5 +11,4 @@ export const ROUTER_MODEL =
 export const EMBEDDINGS_MODEL =
   process.env.EMBEDDINGS_MODEL?.trim() || "text-embedding-3-large";
 
-// Moderation remains separate from chat models
-export const MODERATION_MODEL = "omni-moderation-latest";
+// Moderation model constant removed (unused)

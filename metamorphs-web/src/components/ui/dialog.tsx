@@ -18,17 +18,17 @@ export function Dialog({
     const el = contentRef.current;
     if (!el) return;
     const previouslyFocused = document.activeElement as HTMLElement | null;
-    const focusable = el.querySelector<HTMLElement>(
+    const focusable = el?.querySelector<HTMLElement>(
       'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
     );
     focusable?.focus();
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") onOpenChange(false);
       if (e.key === "Tab") {
-        const fEls = el.querySelectorAll<HTMLElement>(
+        const fEls = el?.querySelectorAll<HTMLElement>(
           'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
         );
-        const list = Array.from(fEls).filter(
+        const list = Array.from(fEls || []).filter(
           (n) => !n.hasAttribute("disabled")
         );
         if (list.length === 0) return;
@@ -36,7 +36,7 @@ export function Dialog({
         const last = list[list.length - 1];
         const active = document.activeElement as HTMLElement | null;
         if (e.shiftKey) {
-          if (active === first || !el.contains(active)) {
+          if (active === first || !el?.contains(active || null)) {
             e.preventDefault();
             last.focus();
           }
@@ -108,6 +108,42 @@ export function DialogTitle({
       {children}
     </div>
   );
+}
+
+export function DialogDescription({
+  children,
+  className = "",
+}: {
+  children?: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`text-sm text-gray-600 mt-2 ${className}`}>{children}</div>
+  );
+}
+
+export function DialogFooter({
+  children,
+  className = "",
+}: {
+  children?: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`flex items-center gap-2 mt-6 ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+export function DialogContent({
+  children,
+  className = "",
+}: {
+  children?: React.ReactNode;
+  className?: string;
+}) {
+  return <div className={className}>{children}</div>;
 }
 
 export default Dialog;

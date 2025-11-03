@@ -2,6 +2,8 @@
 
 ## Business Logic
 
+> Status: Phase 2 introduces no changes to auth/user/business logic. UI-only features and flags.
+
 ### Overview
 
 - Pipeline: Interview → Plan → Preview → Accept → Canvas

@@ -156,3 +156,161 @@ const DEBUG =
   process.env.DEBUG_PROMPTS === "1" ||
   process.env.NEXT_PUBLIC_DEBUG_PROMPTS === "1";
 ```
+
+## UI Error Hygiene (V2)
+
+### Sidebar cards: Skeleton / Empty / Error
+
+- Use lightweight skeletons while loading.
+
+```85:91:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/sidebar/SourceTextCard.tsx
+{loading && (
+  <div aria-busy="true" aria-live="polite" className="space-y-2">
+    {[...Array(5)].map((_, i) => (
+      <div key={i} className="h-4 w-full animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
+    ))}
+  </div>
+)}
+```
+
+- Show concise error state without crashing the pane.
+
+```93:95:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/sidebar/SourceTextCard.tsx
+{!loading && error && (
+  <p className="text-sm text-red-600 dark:text-red-400">{t("couldNotLoadSource")}</p>
+)}
+```
+
+- Provide empty state with neutral copy.
+
+```97:101:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/sidebar/SourceTextCard.tsx
+{!loading && !error && !hasSource && (
+  <p className="text-sm text-neutral-500">
+    {t("noSource")}
+  </p>
+)}
+```
+
+- Apply the same skeleton pattern to analysis.
+
+```32:37:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/sidebar/AnalysisCard.tsx
+{loading && (
+  <div aria-busy="true" className="space-y-2">
+    {[...Array(3)].map((_, i) => (
+      <div key={i} className="h-4 w-full animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
+    ))}
+  </div>
+)}
+```
+
+### Non-throwing UI guidelines
+
+- Chat send: toast on failure; keep composer usable.
+
+```393:396:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/chat/ChatPanel.tsx
+if (!res.ok) {
+  const json = await res.json().catch(() => ({}));
+  toastError(json?.error || "Failed to send");
+  return;
+}
+```
+
+- Offline send guard surfaces a user-friendly toast.
+
+```70:75:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/chat/ChatPanel.tsx
+try {
+  assertOnline();
+} catch (e) {
+  const msg = e instanceof Error ? e.message : "You’re offline — try again later.";
+  toastError(msg);
+  return;
+}
+```
+
+- Silent fallbacks for auxiliary flows (intent, peek, nodes): swallow non-critical errors and proceed.
+
+```493:495:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/chat/ChatPanel.tsx
+} catch {
+  // ignore and proceed; errors surface via toasts elsewhere
+}
+```
+
+### A11y surfacing
+
+- Timeline uses `role="log"` with `aria-live="polite"` for incremental updates.
+
+```11:14:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/v2/chat/ChatView.tsx
+<div
+  role="log"
+  aria-live="polite"
+  className="flex-1 overflow-y-auto bg-gray-50 p-6 md:p-8"
+>
+```
+
+- Toasts should be announced politely; prefer `aria-live="polite"` region in the toast system if available (non-blocking to screen readers).
+
+### Patterns (non-throwing UI)
+
+- Chat send toasts on failure; form remains usable:
+
+```393:396:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/chat/ChatPanel.tsx
+if (!res.ok) {
+  const json = await res.json().catch(() => ({}));
+  toastError(json?.error || "Failed to send");
+  return;
+}
+```
+
+- Offline upload guard → toast, no crash:
+
+```69:75:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/chat/ChatPanel.tsx
+try {
+  assertOnline();
+} catch (e) {
+  const msg = e instanceof Error ? e.message : "You’re offline — try again later.";
+  toastError(msg);
+  return;
+}
+```
+
+- Retryable preview trigger is wrapped with try/catch in UI:
+
+```201:211:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/chat/ChatPanel.tsx
+try {
+  const pv = await translatorPreview.mutateAsync(undefined);
+  setTranslatorData({ lines: pv.preview.lines, notes: pv.preview.notes });
+  setTranslatorError(null);
+} catch {
+  setTranslatorError("Preview failed. Please retry.");
+}
+```
+
+- Plan Builder side-effects are isolated with try/catch and error logs:
+
+```111:136:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/flow/PlanBuilderOverviewSheet.tsx
+try {
+  const peekRes = await fetch(`/api/flow/peek?threadId=${threadId}`);
+  // … confirm phase
+} catch (err) {
+  console.error("Failed to check/confirm phase:", err);
+}
+```
+
+### Guards (navigation/redirection)
+
+- WorkspaceShell peeks thread; on 401/403/404, shows code and can redirect user to select/start a chat:
+
+```47:59:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/workspace/WorkspaceShell.tsx
+try {
+  const res = await fetch(`/api/flow/peek?threadId=${effectiveThreadId}`);
+  if (res.status === 404 || res.status === 403 || res.status === 401) {
+    let code = String(res.status);
+    try { const json = await res.json(); code = json?.code || code; } catch {}
+    // UI can route user to chats list/select existing thread
+  }
+} catch {}
+```
+
+### A11y
+
+- Use `aria-live="polite"` where possible for transient status/toast regions (TODO if toast system lacks landmark).

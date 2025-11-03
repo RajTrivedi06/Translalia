@@ -136,3 +136,21 @@ if (process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR !== "1") {
 - No Stripe/S3/Sendgrid integrations found in code.
 
 > Redaction: Do not print secret values. List env names only.
+
+## Uploads & Buckets (Phase 2)
+
+- Storage bucket names (names only):
+  - `corpora` (default via `STORAGE_BUCKETS_CORPORA` env)
+  - `avatars` (profile images)
+
+```6:7:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/lib/storage.ts
+export const BUCKET = process.env.STORAGE_BUCKETS_CORPORA ?? "corpora";
+```
+
+```42:49:/Users/raaj/Documents/CS/metamorphs/metamorphs-web/src/components/account/ProfileForm.tsx
+const { error: upErr } = await supabase.storage
+  .from("avatars")
+  .upload(path, file, { upsert: true });
+```
+
+- Uploads Tray: Reuses existing uploads endpoints and storage helpers; no API changes in Phase 2.
