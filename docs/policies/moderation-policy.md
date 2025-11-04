@@ -1,210 +1,141 @@
 Purpose: Where and how moderation is enforced, and current/intent policies.
-Updated: 2025-09-16
+Updated: 2025-11-04
 
-# Moderation Policy (2025-09-16)
+# Moderation Policy (2025-11-04)
 
-## Model & Client
+## Current moderation implementation
 
-- Model: `omni-moderation-latest` via OpenAI moderations API.
+- Model: `omni-moderation-latest` via OpenAI Moderations API.
+- Helper: `moderateText(text)` trims input to first 20k chars and returns `{ flagged, categories }`.
 
-```10:13:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/moderation.ts
+```10:13:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/ai/moderation.ts
 const res = await client.moderations.create({
   model: "omni-moderation-latest",
   input: text.slice(0, 20000),
 });
 ```
 
-## Moderation Lifecycle
-
-```mermaid
-flowchart TD
-  A[Request arrives] --> B{Surface}
-  B -->|Enhancer| C[moderateText(poem)]
-  B -->|Preview| D[moderateText(poem + enhanced)]
-  B -->|Translate| E1[pre: moderateText(inputs)] --> E2[LLM call] --> E3[post: moderateText(output)]
-  B -->|Accept-lines| F[moderateText(selections)]
-  C -->|flagged| X1[Block 400]
-  D -->|flagged| X2[Block 400]
-  E1 -->|flagged| X3[Block 400]
-  E3 -->|flagged| Y1[Set blocked=true]
-  F -->|flagged| X4[Block 400]
-  subgraph Logging
-    L1[Redacted previews when DEBUG_PROMPTS=1]
-  end
-  E2 --> L1
-```
-
-- Redacted preview logging is gated by env.
-
-```30:43:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/promptHash.ts
-const DEBUG =
-  process.env.DEBUG_PROMPTS === "1" ||
-  process.env.NEXT_PUBLIC_DEBUG_PROMPTS === "1";
-if (!DEBUG) return;
-```
-
-## Enforcement points (observed)
-
-- Enhancer: block on flagged poem excerpt (`400`).
-
-```44:49:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/enhancer/route.ts
-const pre = await moderateText(poem);
-if (pre.flagged) {
-  return NextResponse.json(
-    { error: "Poem content flagged by moderation; cannot enhance." },
-    { status: 400 }
-  );
-}
-```
-
-- Translator Preview: pre-check source + enhanced; block `400` if flagged.
-
-```116:123:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-const pre = await moderateText(
-  bundle.poem + "\n" + JSON.stringify(bundle.enhanced).slice(0, 4000)
-);
-if (pre.flagged)
-  return NextResponse.json(
-    { error: "Content flagged by moderation; cannot preview." },
-    { status: 400 }
-  );
-```
-
-- Translate (full): pre-check inputs; post-check outputs; block `400` on pre; set `blocked` flag on post.
-
-```81:86:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translate/route.ts
-const pre = await moderateText([poem, JSON.stringify(enhanced)].join("\n\n"));
-if (pre.flagged) {
-  return NextResponse.json(
-    { error: "Content flagged by moderation; cannot translate." },
-    { status: 400 }
-  );
-}
-```
-
-```142:148:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translate/route.ts
-const post = await moderateText(
-  parsedOut.data.versionA + "\n" + parsedOut.data.notes.join("\n")
-);
-const blocked = post.flagged;
-const result = { ...parsedOut.data, blocked };
-```
-
-- Accept-lines: moderation on accepted text; block `400` if flagged.
-
-```48:60:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/accept-lines/route.ts
-const combined = selections.map((s) => s.text).join("\n");
-const mod = await moderateText(combined);
-if (mod.flagged) {
-  return NextResponse.json(
-    {
-      ok: false,
-      blocked: true,
-      flagged: true,
-      categories: mod.categories,
-      error: "Selected lines flagged by moderation; not saved.",
-    },
-    { status: 400 }
-  );
-}
-```
-
-## Where/Model/Inputs/Outputs/Actions
-
-| Where            | Model/endpoint                               | Inputs                      | Outputs (fields)        | Thresholds       | Action              | Anchor                                                                                                  |
-| ---------------- | -------------------------------------------- | --------------------------- | ----------------------- | ---------------- | ------------------- | ------------------------------------------------------------------------------------------------------- |
-| Enhancer         | `moderations.create(omni-moderation-latest)` | poem excerpt                | `flagged`, `categories` | Provider default | Block 400           | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/enhancer/route.ts#L44-L49                |
-| Preview          | `moderations.create(omni-moderation-latest)` | poem + enhanced(json slice) | `flagged`, `categories` | Provider default | Block 400           | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts#L116-L123    |
-| Translate (pre)  | `moderations.create(omni-moderation-latest)` | poem + enhanced             | `flagged`, `categories` | Provider default | Block 400           | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translate/route.ts#L81-L86               |
-| Translate (post) | `moderations.create(omni-moderation-latest)` | candidate output + notes    | `flagged`, `categories` | Provider default | Mark result.blocked | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translate/route.ts#L142-L148             |
-| Accept-lines     | `moderations.create(omni-moderation-latest)` | concatenated selections     | `flagged`, `categories` | Provider default | Block 400           | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/accept-lines/route.ts#L48-L60 |
-
-Helper output fields:
-
-```16:19:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/moderation.ts
+```16:20:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/ai/moderation.ts
 const flagged = !!first?.flagged;
 const categories: Record<string, unknown> = first?.categories ?? {};
 return { flagged, categories };
 ```
 
-## Security Checklist (related)
+Note: In this repository snapshot, no API routes currently call `moderateText`. The helper is available for pre/post screening when added to endpoints.
 
-- Auth required at sources of user input and storage; early returns on missing session.
+## Rate limiting
 
-```20:24:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/auth/requireUser.ts
-/** Ensures a user session exists; returns 401 JSON response otherwise. */
-export async function requireUser() {
-  const supabase = await supabaseServer();
-```
+- In-memory token bucket helper exists:
 
-- Ownership checks for project/thread list and versions access.
+```1:8:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/ai/ratelimit.ts
+const buckets = new Map<string, { count: number; until: number }>();
 
-```31:35:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/threads/list/route.ts
-if (proj.owner_id !== user.id) {
-  return NextResponse.json(
-    { ok: false, code: "FORBIDDEN_PROJECT" },
-    { status: 403 }
-  );
-}
-```
-
-- Secrets handling: do not log keys; reference names only; require presence.
-
-```3:10:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/openai.ts
-export const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
-});
-```
-
-- Rate limits/quotas: local minute bucket and Upstash daily caps (verify/backtranslate).
-
-```3:12:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/ratelimit.ts
 export function rateLimit(key: string, limit = 30, windowMs = 60_000) {
-  const now = Date.now();
 ```
 
-```26:39:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ratelimit/redis.ts
+- Daily quotas stubbed via Redis helper; currently returns allowed for all requests:
+
+```8:15:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/ratelimit/redis.ts
 export async function checkDailyLimit(
   userId: string,
   key: string,
   max: number
 ) {
-  const l = getLimiter();
-  if (!l) return { allowed: true } as const;
-```
-
-- Link to services/envs: see `docs/context/SERVICES_INTEGRATIONS.md` (Supabase, OpenAI, Upstash env names).
-
-## JSON Examples
-
-- Moderation response we store (redacted example):
-
-```json
-{
-  "flagged": true,
-  "categories": { "self-harm": true, "violence": false }
+  // Always allow for now
+  return { allowed: true, current: 0, max } as const;
 }
 ```
 
-- Enforcement decision object (example):
+- Example usage sites apply `checkDailyLimit` and respond with 429 when exceeded (once enabled):
 
-```json
-{
-  "action": "block",
-  "reason": "precheck_flagged",
-  "status": 400,
-  "message": "Content flagged by moderation"
+```83:99:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/ai-assist/route.ts
+// Rate limiting: 10 requests per minute per thread
+const rateCheck = await checkDailyLimit(
+  user.id,
+  `notebook:ai-assist:${threadId}`,
+  10 * 60 // 10 per minute = 600 per day
+);
+if (!rateCheck.allowed) {
+  return NextResponse.json(
+    { error: "Rate limit exceeded", current: rateCheck.current, max: rateCheck.max },
+    { status: 429 }
+  );
 }
 ```
 
-## Known gaps
+## Input validation and sanitization
 
-- `MODERATION_MODEL` constant exists but call-site uses literal; consider aligning.
+- Requests are validated with Zod schemas; invalid inputs return 400 with issue details.
 
-```15:15:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/models.ts
-export const MODERATION_MODEL = "omni-moderation-latest";
+```15:21:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/workshop/generate-options/route.ts
+const RequestSchema = z.object({
+  threadId: z.string().uuid(),
+  lineIndex: z.number().int().min(0),
+  lineText: z.string(),
+});
 ```
 
-```10:13:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/moderation.ts
-model: "omni-moderation-latest",
+```41:49:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/workshop/generate-options/route.ts
+const body = await req.json();
+const validation = RequestSchema.safeParse(body);
+if (!validation.success) {
+  return NextResponse.json(
+    { error: "Invalid request", details: validation.error.issues },
+    { status: 400 }
+  );
+}
 ```
+
+- Responses from LLM calls are parsed and validated; malformed responses return 500.
+
+```201:209:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/ai-assist/route.ts
+let parsed;
+try {
+  parsed = JSON.parse(text);
+} catch (parseError) {
+  return NextResponse.json(
+    { error: "Invalid AI response format" },
+    { status: 500 }
+  );
+}
+```
+
+## Blocked content patterns
+
+- We rely on provider categories from OpenAI Moderations to determine `flagged` status; we do not maintain custom pattern lists.
+- Inputs to moderation are truncated to 20,000 chars to bound payload size.
+
+```10:13:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/ai/moderation.ts
+input: text.slice(0, 20000),
+```
+
+## Moderation endpoints
+
+- There are no public “moderation endpoints”. Moderation is intended to be applied inside API routes as pre/post checks using `moderateText`.
+
+## Authentication and middleware
+
+- Middleware enforces auth on protected paths and redirects to sign-in when missing session cookies.
+
+```27:41:/Users/raaj/Documents/CS/metamorphs/translalia-web/middleware.ts
+const needsAuth =
+  pathname.startsWith("/workspaces") ||
+  pathname.startsWith("/api/threads") ||
+  pathname.startsWith("/api/flow") ||
+  pathname.startsWith("/api/versions");
+...
+if (needsAuth && !hasSupabaseCookies) {
+  const url = new URL("/auth/sign-in", origin);
+  url.searchParams.set("redirect", req.nextUrl.pathname + req.nextUrl.search);
+  return NextResponse.redirect(url);
+}
+```
+
+## Appeals/overrides
+
+- No formal appeal or override process exists in this codebase snapshot. If content is incorrectly flagged once moderation is enforced on endpoints, the response will be a 4xx JSON error; clients should present a retry/edit UI.
+
+## Future intent
+
+- Apply `moderateText` to user-submitted text pre‑LLM and to LLM outputs post‑generation on sensitive surfaces.
+- Use in-memory `rateLimit` for hot endpoints and enable daily quotas via Redis when dependencies are installed.

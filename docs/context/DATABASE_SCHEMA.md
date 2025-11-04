@@ -1,212 +1,174 @@
 Purpose: Tables, columns, and RPCs referenced in code, with evidence anchors.
-Updated: 2025-09-16
+Updated: 2025-11-04
 
-# Database Schema (Excerpts from Code)
+# Database Schema (as used by code)
 
-Note: This document reflects tables/columns referenced in code. For full schema (indexes/constraints), consult migrations (TODO: add migration dump).
+Note: This reflects tables/columns referenced in the repository. Supabase manages DDL/migrations externally; where exact constraints are unknown, they are inferred from usage.
 
-## Tables referenced
+## Entities (tables) and fields
 
 ### projects
 
-- Columns used: `id`, `owner_id`
+- Purpose: Workspace container for threads/journey/uploads.
+- Fields (observed): `id` (uuid, pk), `title` (text, <=120), `owner_id` (uuid, FK→profiles.id), `created_at` (timestamptz), `src_lang` (text|null), `tgt_langs` (text[]|null)
 
-```21:25:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/threads/list/route.ts
-const { data: proj } = await sb
-  .from("projects")
-  .select("id, owner_id")
-  .eq("id", projectId)
-  .single();
+```19:27:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/projects/route.ts
+.from("projects").insert({ title: safeTitle.slice(0,120), owner_id: guard.user.id, src_lang: ..., tgt_langs: ... }).select("id, title, created_at")
 ```
 
 ### chat_threads
 
-- Columns used: `id`, `project_id`, `title`, `state`, `created_at`
-- Notable jsonb column with default `{}`: `state` (validated by server schema)
+- Purpose: Thread for chat/workshop/notebook activity, holds server-owned JSON state.
+- Fields (observed): `id` (uuid, pk), `project_id` (uuid, FK→projects.id), `title` (text, <=120), `created_by` (uuid, FK→profiles.id), `created_at` (timestamptz), `state` (jsonb, default `{}`)
 
-```33:50:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/server/threadState.ts
-/** Load thread.state as SessionState (schema-validated, with defaults). */
-export async function getThreadState(threadId: string): Promise<SessionState> {
-  const { data, error } = await supabase
-    .from("chat_threads")
-    .select("state")
-    .eq("id", threadId)
-    .single();
-  // Helpful migration hint on missing column
-  if (error && String(error?.message||"").includes("column chat_threads.state")) {
-    throw new Error(
-      "Database schema missing column 'chat_threads.state' (jsonb). Apply migration: ALTER TABLE public.chat_threads ADD COLUMN IF NOT EXISTS state jsonb NOT NULL DEFAULT '{}'::jsonb;"
-    );
-  }
-}
+```26:34:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/threads/route.ts
+.from("chat_threads").insert({ project_id: projectId, title: ..., created_by: guard.user.id }).select("id, title, created_at")
 ```
 
-```21:25:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/nodes/route.ts
-const { data: th } = await sb
-  .from("chat_threads")
-  .select("id, project_id")
-  .eq("id", threadId)
-  .single();
+```72:75:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/cells/route.ts
+.from("chat_threads").select("id,created_by,state").eq("id", params.threadId).single()
 ```
 
-```38:42:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/threads/list/route.ts
-const { data, error } = await sb
-  .from("chat_threads")
-  .select("id, title, created_at")
-  .eq("project_id", projectId)
-```
+### chat_messages
 
-```47:49:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
-const { data: th } = await supabase
-  .from("chat_threads")
-  .select("id, project_id, state")
-```
+- Purpose: Persist user/assistant messages by thread.
+- Fields (observed): `id` (uuid, pk), `project_id` (uuid, FK→projects.id), `thread_id` (uuid, FK→chat_threads.id), `role` (enum: 'user'|'assistant'|'system'), `content` (text), `meta` (jsonb), `created_by` (uuid), `created_at` (timestamptz)
 
-### versions
-
-- Columns used: `id`, `project_id`, `title`, `lines`, `tags`, `meta`, `created_at`, `pos`
-- `meta` stores: `thread_id`, `display_label`, `status`, `parent_version_id`, `overview{lines,notes,line_policy}`
-
-```124:134:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-const { data: inserted } = await sb
-  .from("versions")
-  .insert({
-    project_id: projectId,
-    title: displayLabel,
-    lines: [],
-    meta: placeholderMeta,
-    tags: ["translation"],
-  })
-  .select("id")
-  .single();
-```
-
-```33:38:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/nodes/route.ts
-const { data, error } = await sb
-  .from("versions")
-  .select("id, tags, meta, created_at")
-  .eq("project_id", th.project_id)
-```
-
-```28:33:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/positions/route.ts
-const { error } = await sb
-  .from("versions")
-  .upsert(updates, { onConflict: "id" });
+```23:33:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/chat/[threadId]/messages/route.ts
+.from("chat_messages").insert({ project_id, thread_id, role, content, meta, created_by: guard.user.id }).select("id, created_at")
 ```
 
 ### journey_items
 
-- Columns used: `project_id`, `kind`, `summary`, `compare_id`, `created_at`
+- Purpose: Activity timeline for a project (e.g., compares, analysis steps).
+- Fields (observed): `id` (uuid, pk), `project_id` (uuid), `kind` (text), `summary` (text), `meta` (jsonb), `compare_id` (uuid|null), `created_at` (timestamptz)
 
-```43:45:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/route.ts
-await guard.sb.from("journey_items").insert({
-  project_id: v.project_id,
+```40:45:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/journey/list/route.ts
+.from("journey_items").select("id, kind, summary, meta, created_at").eq("project_id", projectId)
+```
+
+```49:54:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/compares/route.ts
+await guard.sb.from("journey_items").insert({ project_id: projectId, kind: "compare", summary: ..., compare_id: c.id })
 ```
 
 ### compares
 
-- Columns used: `id`, `project_id`, `left_version_id`, `right_version_id`, `lens`, `granularity`, `created_at`
+- Purpose: Record a comparison between two versions.
+- Fields (observed): `id` (uuid, pk), `project_id` (uuid), `left_version_id` (uuid), `right_version_id` (uuid), `lens` (enum: 'meaning'|'form'|'tone'|'culture'), `granularity` (enum: 'line'|'phrase'|'char'), `notes` (text|null), `created_at` (timestamptz)
 
-```31:33:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/compares/route.ts
-const { data: c, error } = await guard.sb
-  .from("compares")
-  .insert({
+```31:44:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/compares/route.ts
+.from("compares").insert({ project_id, left_version_id, right_version_id, lens, granularity, notes }).select("id, project_id, left_version_id, right_version_id, lens, granularity, created_at")
 ```
 
-## RPCs
+### uploads
 
-- `get_accepted_version(p_thread_id uuid)`
+- Purpose: Track file uploads per user/thread.
+- Fields (observed): `file_name` (text), `size_bytes` (int8), `storage_path` (text|null), `created_at` (timestamptz), `thread_id` (uuid|null), `user_id` (uuid)
 
-```61:64:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translate/route.ts
-const { data: accepted } = await supabase.rpc("get_accepted_version", {
-  p_thread_id: threadId,
-});
+```15:23:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/uploads/list/route.ts
+.from("uploads").select("file_name, size_bytes, storage_path, created_at, thread_id").eq("user_id", user.id)
 ```
 
-- `accept_line(p_thread_id uuid, ...)` (used elsewhere)
+### profiles
 
-## RLS & Access Patterns
+- Purpose: User profile metadata.
+- Fields (observed): `id` (uuid, pk), `display_name` (text|null), `username` (text|null, unique), `email` (text|null), `avatar_url` (text|null), `locale` (text|null), `created_at` (timestamptz)
 
-- Ownership: `projects.owner_id` checked before listing threads; thread listings and version reads are scoped by `project_id` and `meta->>thread_id`.
-
-```31:35:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/threads/list/route.ts
-if (proj.owner_id !== user.id) {
-  return NextResponse.json(
-    { ok: false, code: "FORBIDDEN_PROJECT" },
-    { status: 403 }
-  );
-}
+```30:35:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/hooks/useProfile.ts
+.from("profiles").select("id, display_name, username, email, avatar_url, locale, created_at").eq("id", user.id).single()
 ```
 
-```33:40:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/nodes/route.ts
-const { data, error } = await sb
-  .from("versions")
-  .select("id, tags, meta, created_at")
-  .eq("project_id", th.project_id)
-  .filter("meta->>thread_id", "eq", threadId)
-  .order("created_at", { ascending: true });
+```130:133:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/components/auth/AuthSheet.tsx
+.from("profiles").upsert({ id: user.id, username, email }, { onConflict: "id" })
 ```
 
-```63:69:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/accept-lines/route.ts
-for (const s of selections) {
-  await supabase.rpc("accept_line", {
-    p_thread_id: threadId,
-    p_line_index: s.index + 1,
-    p_new_text: s.text,
-    p_actor: userId,
-  });
-}
+### Storage (Supabase)
+
+- Buckets: `avatars` — user avatar images (not a table).
+
+```42:49:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/components/account/ProfileForm.tsx
+supabase.storage.from("avatars").upload(path, file, { upsert: true }); supabase.storage.from("avatars").getPublicUrl(path)
 ```
 
-## Notable constraints/indexes (policy intent)
+## Relationships (inferred)
 
-- Project ownership is enforced by checking `projects.owner_id` before listing threads.
+- `projects.owner_id` → `profiles.id`
+- `chat_threads.project_id` → `projects.id`
+- `chat_threads.created_by` → `profiles.id`
+- `chat_messages.project_id` → `projects.id`
+- `chat_messages.thread_id` → `chat_threads.id`
+- `uploads.user_id` → `profiles.id`
+- `uploads.thread_id` → `chat_threads.id`
+- `journey_items.project_id` → `projects.id`; optional `journey_items.compare_id` → `compares.id`
+- `compares.project_id` → `projects.id`
 
-```31:35:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/threads/list/route.ts
-if (proj.owner_id !== user.id) {
-  return NextResponse.json(
-    { ok: false, code: "FORBIDDEN_PROJECT" },
-    { status: 403 }
-  );
-}
+## Indexes (policy intent)
+
+- Common access patterns imply indexes on: `projects.owner_id`, `chat_threads.project_id`, `chat_messages.thread_id`, `uploads.user_id`, `uploads.thread_id`, `journey_items.project_id`, `journey_items.created_at DESC`.
+- Unique: `profiles.username` (enforced app-side and typically DB-side).
+
+## Enums / constants
+
+- `chat_messages.role`: 'user' | 'assistant' | 'system'
+- `compares.lens`: 'meaning' | 'form' | 'tone' | 'culture'
+- `compares.granularity`: 'line' | 'phrase' | 'char'
+
+## ER diagram (ASCII)
+
+```
+profiles (id) ─┬─< projects (owner_id)
+               ├─< chat_threads (created_by)
+               └─< uploads (user_id)
+
+projects (id) ─┬─< chat_threads (project_id)
+               ├─< journey_items (project_id)
+               └─< compares (project_id)
+
+chat_threads (id) ──< chat_messages (thread_id)
+chat_threads (id) ──< uploads (thread_id)
+
+compares (id) ── journey_items.compare_id (optional)
 ```
 
-- Thread-to-project join is used to scope versions queries via `project_id` and `meta->>thread_id` filter.
+## Migration patterns (observed in code)
 
-```33:38:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/nodes/route.ts
-.from("versions")
-.select("id, tags, meta, created_at")
-.eq("project_id", th.project_id)
-.filter("meta->>thread_id", "eq", threadId)
+- Upsert on `profiles` keyed by `id` when saving profile fields.
+- Insert with `select(...).single()` to return created rows (`projects`, `chat_threads`, `chat_messages`, `compares`).
+- JSONB `state` on `chat_threads` used as server-owned session state.
+
+## Sample queries (from code)
+
+- Create project:
+
+```19:27:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/projects/route.ts
+.from("projects").insert({ title, owner_id: user.id }).select("id, title, created_at").single()
 ```
 
-## Lineage fields (in versions.meta)
+- Create thread:
 
-- `thread_id`: identifies the thread; used with `meta->>thread_id` filter in nodes API.
-- `parent_version_id`: links a version to its parent; used by UI to render lineage edges.
-
-```33:40:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/nodes/route.ts
-const { data, error } = await sb
-  .from("versions")
-  .select("id, tags, meta, created_at")
-  .eq("project_id", th.project_id)
-  .filter("meta->>thread_id", "eq", threadId)
-  .order("created_at", { ascending: true });
+```26:34:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/threads/route.ts
+.from("chat_threads").insert({ project_id, title, created_by: user.id }).select("id, title, created_at").single()
 ```
 
-## Journey items read pattern
+- List journey items:
 
-Currently filtered by `meta->>thread_id`:
-
-```59:66:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/server/translator/bundle.ts
-const { data: jrows } = await supabase
-  .from("journey_items")
-  .select("id, kind, summary, created_at, meta")
-  .filter("meta->>thread_id", "eq", threadId)
-  .order("created_at", { ascending: false })
-  .limit(5);
+```40:45:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/journey/list/route.ts
+.from("journey_items").select("id, kind, summary, meta, created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(limit)
 ```
 
-> TODO-VERIFY: migrate to a dedicated `thread_id` column on `journey_items` when available.
+- Insert chat message:
 
-> TODO: Pull full DDL from migrations to document PKs, FKs, and indexes.
+```23:33:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/chat/[threadId]/messages/route.ts
+.from("chat_messages").insert({ project_id, thread_id, role, content, meta, created_by: user.id }).select("id, created_at").single()
+```
+
+- List uploads by user (+ optional thread):
+
+```15:25:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/uploads/list/route.ts
+.from("uploads").select("file_name, size_bytes, storage_path, created_at, thread_id").eq("user_id", user.id)
+```
+
+## Notes
+
+- Some entities referenced in legacy docs (e.g., `versions`) are not used by the current snapshot of the app; they may exist in the database but are omitted here to reflect actual codepaths.
+- For full DDL (PK/FK/indexes), export Supabase migrations and attach to this doc.

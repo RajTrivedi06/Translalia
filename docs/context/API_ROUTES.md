@@ -1,186 +1,94 @@
-Updated: 2025-09-16
+Updated: 2025-11-04
 
-### Routes
+### API Routing Map (current)
 
-## API Routes (current)
+This maps all implemented Route Handlers under `translalia-web/src/app/api/**/route.ts`.
 
-| Path                            | Methods      | File                                                   | Feature Flags                           | Inputs (heuristic)                                              | Responses (heuristic)                                                              | Top Consumers                                                      |
-| ------------------------------- | ------------ | ------------------------------------------------------ | --------------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `/api/auth`                     | POST         | `src/app/api/auth/route.ts#L1-L80`                     | —                                       | `{ event, session }`                                            | `{ ok: true }`                                                                     | `components/providers.tsx`                                         |
-| `/api/auth/whoami`              | GET          | `src/app/api/auth/whoami/route.ts#L1-L40`              | —                                       | —                                                               | `{ user: … }`                                                                      | Dev only                                                           |
-| `/api/auth/debug-cookies`       | GET          | `src/app/api/auth/debug-cookies/route.ts#L1-L40`       | —                                       | —                                                               | `{ cookie_names, uid }`                                                            | Dev only                                                           |
-| `/api/chat`                     | POST         | `src/app/api/chat/route.ts#L1-L40`                     | —                                       | `{ message }`                                                   | Echo stub `{ ok, data }`                                                           | —                                                                  |
-| `/api/chat/[threadId]/messages` | POST         | `src/app/api/chat/[threadId]/messages/route.ts#L1-L60` | —                                       | `{ projectId, content, meta? }`                                 | `{ id } or error`                                                                  | `ChatPanel.tsx`, `useThreadMessages`                               |
-| `/api/compares`                 | POST         | `src/app/api/compares/route.ts#L1-L60`                 | —                                       | `{ leftId, rightId }`                                           | `{ compare }`                                                                      | `VersionCanvas.tsx`                                                |
-| `/api/constraints`              | POST         | `src/app/api/constraints/route.ts#L1-L40`              | —                                       | `{ text, rules }`                                               | `{ ok, violations }`                                                               | TODO                                                               |
-| `/api/debug/whoami`             | GET          | `src/app/api/debug/whoami/route.ts#L1-L40`             | —                                       | —                                                               | `{ uid, cookies }`                                                                 | Dev only                                                           |
-| `/api/dev/thread-state`         | GET          | `src/app/api/dev/thread-state/route.ts#L1-L60`         | —                                       | `?threadId`                                                     | `{ state } or 400/403`                                                             | Dev only                                                           |
-| `/api/enhancer`                 | POST         | `src/app/api/enhancer/route.ts#L1-L120`                | `NEXT_PUBLIC_FEATURE_ENHANCER`          | `{ threadId }`                                                  | `{ ok, plan, prompt_hash } or { error }`                                           | `useInterviewFlow().enhancer`, `PlanBuilderOverviewSheet`          |
-| `/api/eval/run`                 | POST         | `src/app/api/eval/run/route.ts#L1-L40`                 | —                                       | `{ input }`                                                     | `202 Accepted`                                                                     | Admin only                                                         |
-| `/api/health`                   | GET          | `src/app/api/health/route.ts#L1-L30`                   | —                                       | —                                                               | `{ ok: true }`                                                                     | Monitors                                                           |
-| `/api/interview/next`           | GET          | `src/app/api/interview/next/route.ts#L1-L40`           | —                                       | `?phase,msg`                                                    | `{ intent }`                                                                       | Deprecated                                                         |
-| `/api/journey/list`             | GET          | `src/app/api/journey/list/route.ts#L1-L40`             | —                                       | `?projectId,limit`                                              | `{ ok, items: [] }`                                                                | `useJourney`, `JourneyPanel`                                       |
-| `/api/projects`                 | POST, DELETE | `src/app/api/projects/route.ts#L1-L90`                 | —                                       | `{ title? }` or `{ id }`                                        | `{ project } / { ok }`                                                             | Projects UI                                                        |
-| `/api/rag`                      | POST         | `src/app/api/rag/route.ts#L1-L40`                      | —                                       | `{ query }`                                                     | `{ results }`                                                                      | TODO                                                               |
-| `/api/threads`                  | POST, DELETE | `src/app/api/threads/route.ts#L1-L90`                  | —                                       | `{ projectId, title? }` or `{ id }`                             | `{ thread } / { ok }`                                                              | Threads UI                                                         |
-| `/api/threads/list`             | GET          | `src/app/api/threads/list/route.ts#L1-L60`             | —                                       | `?projectId`                                                    | `{ ok, threads: [] } or 403/404`                                                   | `ThreadsDrawer`                                                    |
-| `/api/translate`                | POST         | `src/app/api/translate/route.ts#L1-L160`               | `NEXT_PUBLIC_FEATURE_TRANSLATOR`        | `{ threadId }`                                                  | `{ ok, result, usage? } or 409/403/422/502`                                        | `useInterviewFlow().translate`                                     |
-| `/api/translator/preview`       | POST         | `src/app/api/translator/preview/route.ts#L1-L300`      | `NEXT_PUBLIC_FEATURE_TRANSLATOR`        | `{ threadId, forceTranslate?, mode? }`                          | `{ ok, preview, versionId, displayLabel, prompt_hash } or 401/403/409/429/500/502` | `PlanBuilderOverviewSheet`, `useInterviewFlow().translatorPreview` |
-| `/api/translator/instruct`      | POST         | `src/app/api/translator/instruct/route.ts#L1-L220`     | `NEXT_PUBLIC_FEATURE_TRANSLATOR`        | `{ threadId, instruction, citeVersionId?, mode? }`              | `{ ok, versionId, prompt_hash } or 401/403/409/500/502`                            | `ChatPanel`                                                        |
-| `/api/translator/accept-lines`  | POST         | `src/app/api/translator/accept-lines/route.ts#L1-L120` | —                                       | `{ threadId, selections: [{index,text}] }`                      | `{ ok } or 400`                                                                    | `NodeCard`, `PlanBuilderOverviewSheet`                             |
-| `/api/translator/verify`        | POST         | `src/app/api/translator/verify/route.ts#L1-L80`        | `NEXT_PUBLIC_FEATURE_VERIFY`            | `{ projectId, threadId, source, candidate }`                    | `{ data, prompt_hash } or 404/429/502`                                             | `useVerifyTranslation`                                             |
-| `/api/translator/backtranslate` | POST         | `src/app/api/translator/backtranslate/route.ts#L1-L80` | `NEXT_PUBLIC_FEATURE_BACKTRANSLATE`     | `{ projectId, threadId, candidate }`                            | `{ data, prompt_hash } or 404/429/502`                                             | `useBackTranslate`                                                 |
-| `/api/uploads/sign`             | POST         | `src/app/api/uploads/sign/route.ts#L1-L80`             | —                                       | `{ path, action:"sign" }`                                       | `{ url, expiresAt } or error`                                                      | `useUploadToSupabase().signPath`                                   |
-| `/api/uploads/log`              | POST         | `src/app/api/uploads/log/route.ts#L1-L80`              | —                                       | `{ storage_path, file_name, size_bytes, mime_type, thread_id }` | `{ ok }`                                                                           | `useUploadToSupabase().uploadFile`                                 |
-| `/api/uploads/list`             | GET          | `src/app/api/uploads/list/route.ts#L1-L80`             | —                                       | `?threadId`                                                     | `{ items:[{name,size,path?}] }`                                                    | `useUploadsList`                                                   |
-| `/api/uploads/delete`           | POST         | `src/app/api/uploads/delete/route.ts#L1-L80`           | —                                       | `{ path }`                                                      | `{ ok } or error`                                                                  | `useDeleteUploadMutation`                                          |
-| `/api/variants`                 | POST         | `src/app/api/variants/route.ts#L1-L60`                 | —                                       | `{ input, recipe }`                                             | `[{ id,title,lines,tags }]`                                                        | `ChatPanel` (slash command)                                        |
-| `/api/versions`                 | POST         | `src/app/api/versions/route.ts#L1-L80`                 | —                                       | `{ projectId, title, lines, tags?, meta?, summary? }`           | `{ version }`                                                                      | `PlanBuilderOverviewSheet`, `prismatic save`                       |
-| `/api/versions/nodes`           | GET          | `src/app/api/versions/nodes/route.ts#L1-L90`           | —                                       | `?threadId`                                                     | `{ ok, nodes: [] } or 400/403/500`                                                 | `useNodes`, `VersionCanvas`                                        |
-| `/api/versions/positions`       | PATCH        | `src/app/api/versions/positions/route.ts#L1-L80`       | —                                       | `{ projectId, positions:[{id,pos:{x,y}}] }`                     | `{ ok: true }`                                                                     | `VersionCanvas`                                                    |
-| `/api/flow/answer`              | POST         | `src/app/api/flow/answer/route.ts#L1-L140`             | —                                       | `{ threadId, questionId, answer }`                              | `{ ok, phase, nextQuestion? }`                                                     | `useInterviewFlow().answer`                                        |
-| `/api/flow/start`               | POST         | `src/app/api/flow/start/route.ts#L1-L80`               | —                                       | `{ threadId, poem }`                                            | `{ ok, phase:"interviewing", nextQuestion }`                                       | `useInterviewFlow().start`                                         |
-| `/api/flow/confirm`             | POST         | `src/app/api/flow/confirm/route.ts#L1-L80`             | —                                       | `{ threadId }`                                                  | `{ ok, phase:"translating" } or 409`                                               | `useInterviewFlow().confirm`                                       |
-| `/api/flow/intent`              | POST         | `src/app/api/flow/intent/route.ts#L1-L60`              | `NEXT_PUBLIC_FEATURE_ROUTER` (indirect) | `{ message, phase }`                                            | `{ intent }`                                                                       | `ChatPanel.tsx` (low-confidence routing)                           |
-| `/api/flow/peek`                | GET          | `src/app/api/flow/peek/route.ts#L1-L100`               | —                                       | `?threadId`                                                     | `{ ok, phase, nextQuestion, snapshot } or 400/403`                                 | `useInterviewFlow().peek`, `PlanBuilderOverviewSheet`              |
+#### Legend
 
-### Planned / Pending
+- Auth: Yes = requires signed-in Supabase user; No = public; Dev = development-only
+- Vis: Public = user-triggered; Internal = app/service-only; Dev = development-only
 
-- `/api/explode` (GET): tokenization for Workshop. Status: UI uses mock in Phase 2.
+### Auth
 
-## Workspace APIs (current)
+| Method | Path                      | Purpose                     | Handler                                   | Auth | Vis      |
+| ------ | ------------------------- | --------------------------- | ----------------------------------------- | ---- | -------- |
+| POST   | `/api/auth`               | Sync Supabase SSR cookies   | `src/app/api/auth/route.ts`               | No   | Internal |
+| GET    | `/api/auth/whoami`        | Debug current auth identity | `src/app/api/auth/whoami/route.ts`        | No   | Dev      |
+| GET    | `/api/auth/debug-cookies` | Debug cookies/headers       | `src/app/api/auth/debug-cookies/route.ts` | No   | Dev      |
 
-| Path                            | Method   | Purpose                                                                           | Flags                            |
-| ------------------------------- | -------- | --------------------------------------------------------------------------------- | -------------------------------- |
-| `/api/chat/[threadId]/messages` | POST     | Add chat message (legacy ChatPanel & future ChatFirst).                           | —                                |
-| `/api/versions/nodes`           | GET      | Version/compare nodes for canvas; polled every 1.5s in legacy V1 and V2 Workshop. | —                                |
-| `/api/journey/list`             | GET      | Journey/Activity sidebar data.                                                    | —                                |
-| `/api/uploads/*`                | GET/POST | Uploads list/delete; composer tray.                                               | —                                |
-| `/api/enhancer`                 | POST     | Interview/plan enhancement.                                                       | `NEXT_PUBLIC_FEATURE_ENHANCER`   |
-| `/api/translator/*`             | POST     | Translator preview/instruct.                                                      | `NEXT_PUBLIC_FEATURE_TRANSLATOR` |
+### Health/Debug
 
-Planned (UI‑Only):
+| Method | Path                | Purpose             | Handler                             | Auth | Vis    |
+| ------ | ------------------- | ------------------- | ----------------------------------- | ---- | ------ |
+| GET    | `/api/health`       | Liveness check      | `src/app/api/health/route.ts`       | No   | Public |
+| GET    | `/api/debug/whoami` | Debug identity echo | `src/app/api/debug/whoami/route.ts` | No   | Dev    |
 
-- `/api/explode` (GET) — tokenization service for Explode Drawer/Workshop.
-  - Status: mocked locally in Phase 2; no server dependency yet.
+### Projects/Threads
 
-| Method | Path                          | Purpose                                                         | Auth/Flags                                   | Key Errors                   | Anchor                                                                |
-| ------ | ----------------------------- | --------------------------------------------------------------- | -------------------------------------------- | ---------------------------- | --------------------------------------------------------------------- |
-| POST   | /api/translate                | Translate with cached moderation and parsing                    | Flag: TRANSLATOR=1; user via thread state    | 400, 404, 409, 422, 502      | `Translalia-web/src/app/api/translate/route.ts:L15–L19`               |
-| POST   | /api/translator/preview       | Preview translation, anti‑echo, cache, persist placeholder node | Auth required; Flag: TRANSLATOR=1; RL 30/min | 400, 409, 422, 429, 500, 502 | `Translalia-web/src/app/api/translator/preview/route.ts:L33–L39`      |
-| POST   | /api/translator/instruct      | Translate with explicit instruction and version linkage         | Auth required; Flag: TRANSLATOR=1            | 400, 401, 404, 422, 500, 502 | `Translalia-web/src/app/api/translator/instruct/route.ts:L24–L32`     |
-| POST   | /api/enhancer                 | Build enhanced request plan                                     | Flag: ENHANCER=1                             | 400, 404, 409, 400/502       | `Translalia-web/src/app/api/enhancer/route.ts:L13–L16`                |
-| POST   | /api/constraints              | Enforce text rules                                              | None                                         | 400                          | `Translalia-web/src/app/api/constraints/route.ts:L4–L6`               |
-| POST   | /api/variants                 | Generate text variants                                          | None                                         | 400                          | `Translalia-web/src/app/api/variants/route.ts:L4–L8`                  |
-| POST   | /api/rag                      | Retrieve augmented context                                      | None                                         | 400                          | `Translalia-web/src/app/api/rag/route.ts:L4–L6`                       |
-| POST   | /api/chat                     | Echo stub (replace with chain)                                  | None                                         | 400                          | `Translalia-web/src/app/api/chat/route.ts:L3–L7`                      |
-| POST   | /api/projects                 | Create project; DELETE delete project                           | Auth required                                | 400                          | `Translalia-web/src/app/api/projects/route.ts:L5–L11`                 |
-| GET    | /api/threads/list             | List threads for project                                        | Auth required                                | 400, 403, 404, 500           | `Translalia-web/src/app/api/threads/list/route.ts:L8–L15`             |
-| POST   | /api/threads                  | Create thread; DELETE delete thread                             | Auth required                                | 400                          | `Translalia-web/src/app/api/threads/route.ts:L5–L13`                  |
-| POST   | /api/chat/[threadId]/messages | Add chat message to thread                                      | Auth required                                | 400                          | `Translalia-web/src/app/api/chat/[threadId]/messages/route.ts:L6–L13` |
-| POST   | /api/versions                 | Create version node                                             | Auth required                                | 400                          | `Translalia-web/src/app/api/versions/route.ts:L16–L24`                |
-| PATCH  | /api/versions/positions       | Update node positions                                           | Auth required                                | 400                          | `Translalia-web/src/app/api/versions/positions/route.ts:L17–L23`      |
-| GET    | /api/versions/nodes           | List nodes for thread                                           | Auth required                                | 400, 403, 500                | `Translalia-web/src/app/api/versions/nodes/route.ts:L8–L15`           |
-| GET    | /api/journey/list             | List journey items                                              | Auth required (Bearer or cookies)            | 400, 500                     | `Translalia-web/src/app/api/journey/list/route.ts:L15–L23`            |
-| GET    | /api/interview/next           | Next interview question snapshot                                | Auth required                                | 400, 403, 404                | `Translalia-web/src/app/api/interview/next/route.ts:L10–L17`          |
-| POST   | /api/flow/intent              | Classify intent (LLM)                                           | None (stubbed guard)                         | 400                          | `Translalia-web/src/app/api/flow/intent/route.ts:L7–L12`              |
-| POST   | /api/flow/confirm             | Confirm plan and advance phase                                  | Auth required                                | 400, 404, 409                | `Translalia-web/src/app/api/flow/confirm/route.ts:L9–L16`             |
-| POST   | /api/flow/peek                | Backtranslate candidate (daily caps)                            | Auth required; Flag: BACKTRANSLATE=1         | 400, 404, 429, 502           | `Translalia-web/src/app/api/flow/peek/route.ts:L10–L15`               |
-| POST   | /api/translator/verify        | Verify candidate (daily caps)                                   | Auth required; Flag: VERIFY=1                | 400, 404, 429, 502           | `Translalia-web/src/app/api/translator/verify/route.ts:L7–L12`        |
-| POST   | /api/translator/accept-lines  | Accept selected lines into draft                                | Auth required                                | 400, 401, 404, 409           | `Translalia-web/src/app/api/translator/accept-lines/route.ts:L17–L24` |
-| POST   | /api/eval/run                 | Admin eval runner (stub)                                        | Auth required                                | 202                          | `Translalia-web/src/app/api/eval/run/route.ts:L5–L9`                  |
-| POST   | /api/auth                     | Sync Supabase SSR cookies from client auth                      | None                                         | 401                          | `Translalia-web/src/app/api/auth/route.ts:L20–L27`                    |
-| GET    | /api/auth/whoami              | Debug current auth identity                                     | None                                         | 200                          | `Translalia-web/src/app/api/auth/whoami/route.ts:L6–L9`               |
-| GET    | /api/auth/debug-cookies       | Debug cookies and headers                                       | None                                         | 200                          | `Translalia-web/src/app/api/auth/debug-cookies/route.ts:L6–L12`       |
-| GET    | /api/dev/thread-state         | Dev-only thread state smoke                                     | Dev only                                     | 400, 403                     | `Translalia-web/src/app/api/dev/thread-state/route.ts:L8–L13`         |
+| Method | Path                | Purpose                    | Handler                             | Auth | Vis    |
+| ------ | ------------------- | -------------------------- | ----------------------------------- | ---- | ------ |
+| POST   | `/api/projects`     | Create project             | `src/app/api/projects/route.ts`     | Yes  | Public |
+| DELETE | `/api/projects`     | Delete project             | `src/app/api/projects/route.ts`     | Yes  | Public |
+| POST   | `/api/threads`      | Create thread              | `src/app/api/threads/route.ts`      | Yes  | Public |
+| GET    | `/api/threads/list` | List threads for a project | `src/app/api/threads/list/route.ts` | Yes  | Public |
 
-Purpose: Central index of implemented API routes, flags, and references.
-Updated: 2025-09-13
+### Chat
 
-# API Routes Index (2025-09-23)
+| Method | Path                            | Purpose                      | Handler                                         | Auth | Vis      |
+| ------ | ------------------------------- | ---------------------------- | ----------------------------------------------- | ---- | -------- |
+| POST   | `/api/chat`                     | Echo stub                    | `src/app/api/chat/route.ts`                     | No   | Internal |
+| POST   | `/api/chat/[threadId]/messages` | Add chat message to a thread | `src/app/api/chat/[threadId]/messages/route.ts` | Yes  | Public   |
 
-| Route                              | Purpose                     | Flags                               |
-| ---------------------------------- | --------------------------- | ----------------------------------- |
-| `/api/translator/preview`          | Create/preview draft        | `NEXT_PUBLIC_FEATURE_TRANSLATOR`    |
-| `/api/translator/instruct`         | Accept & generate overview  | `NEXT_PUBLIC_FEATURE_TRANSLATOR`    |
-| `/api/translate`                   | Full translate              | `NEXT_PUBLIC_FEATURE_TRANSLATOR`    |
-| `/api/enhancer`                    | Plan (JSON)                 | `NEXT_PUBLIC_FEATURE_ENHANCER`      |
-| `/api/translator/verify`           | Score NOTES rubric (JSON)   | `NEXT_PUBLIC_FEATURE_VERIFY`        |
-| `/api/translator/backtranslate`    | Back-translation (JSON)     | `NEXT_PUBLIC_FEATURE_BACKTRANSLATE` |
-| `/api/interview/next`              | [Deprecated] Clarifier LLM  | —                                   |
-| `/api/flow/peek`                   | Thread ownership/phase peek | —                                   |
-| `/api/flow/{start,answer,confirm}` | Flow state transitions      | —                                   |
-| `/api/flow/intent`                 | Router intent (LLM-backed)  | `NEXT_PUBLIC_FEATURE_ROUTER`        |
-| `/api/chat`                        | Echo stub                   | —                                   |
-| `/api/chat/[threadId]/messages`    | Create message              | — (auth required)                   |
-| `/api/projects`                    | Create/delete project       | — (auth required)                   |
-| `/api/threads`                     | Create/delete thread        | — (auth required)                   |
-| `/api/threads/list`                | List threads for project    | — (auth required)                   |
-| `/api/versions`                    | Create version              | — (auth required)                   |
-| `/api/versions/nodes`              | List nodes for thread       | — (auth required)                   |
-| `/api/versions/positions`          | Upsert version positions    | — (auth required)                   |
-| `/api/compares`                    | Create compare              | — (auth required)                   |
-| `/api/constraints`                 | Enforce simple constraints  | —                                   |
-| `/api/variants`                    | Generate variants (stub)    | —                                   |
-| `/api/rag`                         | Retrieve context            | —                                   |
-| `/api/auth`                        | Supabase cookie sync        | —                                   |
-| `/api/auth/whoami`                 | Identity debug              | —                                   |
-| `/api/auth/debug-cookies`          | Cookie debug                | —                                   |
-| `/api/eval/run`                    | Admin eval stub             | —                                   |
+### Guide & Journey
 
-### Reverse Index (Which docs mention me)
+| Method | Path                               | Purpose                           | Handler                                            | Auth | Vis    |
+| ------ | ---------------------------------- | --------------------------------- | -------------------------------------------------- | ---- | ------ |
+| POST   | `/api/guide/analyze-poem`          | Analyze poem (JSON)               | `src/app/api/guide/analyze-poem/route.ts`          | Yes  | Public |
+| GET    | `/api/journey/list`                | List journey items                | `src/app/api/journey/list/route.ts`                | Yes  | Public |
+| POST   | `/api/journey/generate-reflection` | Generate journey reflection (LLM) | `src/app/api/journey/generate-reflection/route.ts` | Yes  | Public |
 
-| Route                           | Mentioned in                                                                                        |
-| ------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `/api/translator/preview`       | `docs/flow-api.md`, `docs/llm-api.md`, `docs/spend-and-cache-policy.md`, `docs/flags-and-models.md` |
-| `/api/translator/instruct`      | `docs/flow-api.md`, `docs/llm-api.md`, `docs/flags-and-models.md`                                   |
-| `/api/translate`                | `docs/flow-api.md`, `docs/llm-api.md`, `docs/spend-and-cache-policy.md`, `docs/flags-and-models.md` |
-| `/api/enhancer`                 | `docs/flow-api.md`, `docs/llm-api.md`, `docs/spend-and-cache-policy.md`, `docs/flags-and-models.md` |
-| `/api/translator/verify`        | `docs/flow-api.md`, `docs/spend-and-cache-policy.md`, `docs/flags-and-models.md`                    |
-| `/api/translator/backtranslate` | `docs/flow-api.md`, `docs/spend-and-cache-policy.md`, `docs/flags-and-models.md`                    |
-| `/api/flow/intent`              | `docs/flow-api.md`, `docs/flags-and-models.md`                                                      |
-| `/api/versions`                 | `docs/flow-api.md`                                                                                  |
-| `/api/versions/nodes`           | `docs/flow-api.md`                                                                                  |
-| `/api/versions/positions`       | `docs/flow-api.md`                                                                                  |
+### Notebook & Workshop
 
-Evidence (files present under `src/app/api/**/route.ts`):
+| Method | Path                             | Purpose                               | Handler                                          | Auth | Vis    |
+| ------ | -------------------------------- | ------------------------------------- | ------------------------------------------------ | ---- | ------ |
+| GET    | `/api/notebook/cells`            | Get all notebook cells for a thread   | `src/app/api/notebook/cells/route.ts`            | Yes  | Public |
+| PATCH  | `/api/notebook/cells/[cellId]`   | Update a single notebook cell         | `src/app/api/notebook/cells/[cellId]/route.ts`   | Yes  | Public |
+| GET    | `/api/notebook/export`           | Export notebook (format param)        | `src/app/api/notebook/export/route.ts`           | Yes  | Public |
+| POST   | `/api/notebook/locks`            | Manage cell/line locks                | `src/app/api/notebook/locks/route.ts`            | Yes  | Public |
+| POST   | `/api/notebook/ai-assist`        | AI assist suggestion (JSON)           | `src/app/api/notebook/ai-assist/route.ts`        | Yes  | Public |
+| POST   | `/api/notebook/prismatic`        | Generate A/B/C variants for a line    | `src/app/api/notebook/prismatic/route.ts`        | Yes  | Public |
+| POST   | `/api/workshop/generate-options` | Generate per-word translation options | `src/app/api/workshop/generate-options/route.ts` | Yes  | Public |
+| POST   | `/api/workshop/save-line`        | Save compiled selections as line      | `src/app/api/workshop/save-line/route.ts`        | Yes  | Public |
 
-```1:32:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/enhancer/route.ts
+### Uploads
 
-```
+| Method | Path                  | Purpose                   | Handler                               | Auth | Vis      |
+| ------ | --------------------- | ------------------------- | ------------------------------------- | ---- | -------- |
+| POST   | `/api/uploads/sign`   | Sign upload URL           | `src/app/api/uploads/sign/route.ts`   | Yes  | Public   |
+| POST   | `/api/uploads/log`    | Log upload metadata       | `src/app/api/uploads/log/route.ts`    | Yes  | Internal |
+| GET    | `/api/uploads/list`   | List uploads for a thread | `src/app/api/uploads/list/route.ts`   | Yes  | Public   |
+| POST   | `/api/uploads/delete` | Delete an uploaded file   | `src/app/api/uploads/delete/route.ts` | Yes  | Public   |
 
-```1:40:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/verify/route.ts
+### Misc (constraints, compares, rag, eval)
 
-```
+| Method | Path               | Purpose                     | Handler                            | Auth | Vis      |
+| ------ | ------------------ | --------------------------- | ---------------------------------- | ---- | -------- |
+| POST   | `/api/constraints` | Validate constraints        | `src/app/api/constraints/route.ts` | No   | Public   |
+| POST   | `/api/compares`    | Create compare              | `src/app/api/compares/route.ts`    | Yes  | Public   |
+| POST   | `/api/rag`         | Retrieval-augmented context | `src/app/api/rag/route.ts`         | Yes  | Internal |
+| POST   | `/api/eval/run`    | Admin eval runner (stub)    | `src/app/api/eval/run/route.ts`    | Yes  | Internal |
 
-```1:40:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/backtranslate/route.ts
+### Interview (feature off)
 
-```
+| Method | Path                  | Purpose                               | Handler                               | Auth | Vis      |
+| ------ | --------------------- | ------------------------------------- | ------------------------------------- | ---- | -------- |
+| POST   | `/api/interview/next` | Clarifying question (LLM; deprecated) | `src/app/api/interview/next/route.ts` | Yes  | Internal |
 
-```1:298:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
+### Notes
 
-```
+- Auth: Most user-facing routes require SSR cookies (Supabase) and verify thread ownership.
+- Flags: Some legacy docs mention translator/enhancer flags; current snapshot uses notebook/workshop routes without those flags.
+- Dev routes should be disabled in production builds.
 
-```1:214:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
-
-```
-
-```1:147:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translate/route.ts
-
-```
-
-```1:69:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/nodes/route.ts
-
-```
-
-```1:109:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/flow/answer/route.ts
-
-```
-
-```1:43:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/flow/intent/route.ts
-
-```
-
-```1:54:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/interview/next/route.ts
-
-```
+Purpose: Central index of implemented API routes with handlers and auth/visibility.

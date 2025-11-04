@@ -1,6 +1,6 @@
 ---
 title: Docs Style Guide
-updated: 2025-09-16
+updated: 2025-11-04
 role: CursorDocs
 ---
 
@@ -13,6 +13,167 @@ This guide standardizes how we write, cite, and maintain documentation across th
 - Authored by Cursor Docs from repository sources; human maintainers should review changes.
 - Facts must be supported by evidence citations that point to file:line anchors in this repo.
 - Redact secrets and sensitive data per the rules below.
+
+### Scope
+
+This document covers both documentation style (below) and the code style conventions actually used in the repository (new sections: Linting, Formatting, Naming, TypeScript, Comments, Imports/Exports, Testing). Each code convention is supported by evidence anchors.
+
+---
+
+### Code Style (Repository Conventions)
+
+#### Linting configuration in use
+
+We use Next.js flat ESLint config with TypeScript rules:
+
+```12:16:/Users/raaj/Documents/CS/metamorphs/translalia-web/eslint.config.mjs
+const eslintConfig = [
+  ...compat.extends("next/core-web-vitals", "next/typescript"),
+];
+```
+
+- Lint scripts:
+
+```5:11:/Users/raaj/Documents/CS/metamorphs/translalia-web/package.json
+"scripts": {
+  "dev": "next dev",
+  "build": "next build",
+  "start": "next start",
+  "typecheck": "tsc -p tsconfig.json --noEmit",
+  "lint": "next lint"
+}
+```
+
+No explicit Prettier config was found; formatting is enforced primarily by ESLint/Next and editor defaults.
+
+#### Code formatting standards observed
+
+- Indentation: 2 spaces
+- Quotes: double quotes for strings
+- Semicolons: present
+- JSX props/attributes on new lines when multiline
+
+```1:9:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/components/providers.tsx
+"use client";
+
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import * as React from "react";
+import { supabase } from "@/lib/supabaseClient";
+```
+
+```9:17:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/components/ui/button.tsx
+export function Button({
+  className = "",
+  variant = "default",
+  size = "md",
+  ...props
+}: ButtonProps) {
+```
+
+#### Naming conventions
+
+- Files/directories:
+  - Route files follow Next.js conventions: `route.ts`, `page.tsx`, lower‑case segment folders.
+  - Components are PascalCase (e.g., `Button.tsx`).
+  - Hooks are in `hooks/` and named with `use*` prefix.
+  - Library utilities live under `src/lib/` using camelCase filenames (e.g., `featureFlags.ts`).
+
+```1:5:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/(app)/workspace/page.tsx
+import { redirect } from "next/navigation";
+
+export default function WorkspacePage() {
+  redirect("/workspaces");
+}
+```
+
+```1:8:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/hooks/useJourney.ts
+"use client";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabaseClient";
+
+export function useJourney(projectId?: string, limit = 20) {
+```
+
+```1:6:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/featureFlags.ts
+export function isEnhancerEnabled() {
+  return process.env.NEXT_PUBLIC_FEATURE_ENHANCER === "1";
+}
+export function isTranslatorEnabled() {
+```
+
+#### TypeScript patterns and conventions
+
+- `strict` mode enabled; `noEmit` build with `tsc` for types only.
+- Module resolution via `bundler`; path alias `@/*` to `src/*`.
+- Prefer explicit function return types for exported APIs; component and hook signatures are typed.
+- Zod is used for runtime validation of request bodies in API routes.
+
+```2:8:/Users/raaj/Documents/CS/metamorphs/translalia-web/tsconfig.json
+"strict": true,
+"noEmit": true,
+"moduleResolution": "bundler",
+"paths": {
+  "@/*": ["./src/*"]
+}
+```
+
+```12:17:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/prismatic/route.ts
+const BodySchema = z.object({
+  threadId: z.string().min(1, "threadId is required"),
+  lineIndex: z.number().int().min(0),
+  sourceText: z.string().min(1, "sourceText is required"),
+});
+```
+
+#### Comments and documentation
+
+- Keep comments concise and focused on non‑obvious rationale, invariants, and edge cases.
+- Top‑file notes are used sparingly to mark important conventions.
+
+```1:6:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/models.ts
+// NOTE(cursor): Centralized GPT-5 defaults; envs override without code changes
+export const TRANSLATOR_MODEL = process.env.TRANSLATOR_MODEL?.trim() || "gpt-5";
+
+export const ENHANCER_MODEL =
+  process.env.ENHANCER_MODEL?.trim() || "gpt-5-mini";
+```
+
+#### Import/export conventions
+
+- Group imports: external packages first, then internal alias imports (`@/*`).
+- Use the `@/*` path alias instead of long relative paths.
+- Prefer named exports for utilities; components may use named or default exports depending on usage.
+
+```1:8:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/prismatic/route.ts
+import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
+import { z } from "zod";
+import OpenAI from "openai";
+// import { Redis } from "@upstash/redis"; // Optional dependency
+import { TRANSLATOR_MODEL } from "@/lib/models";
+```
+
+```1:7:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/components/ui/button.tsx
+"use client";
+import * as React from "react";
+
+type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: "default" | "outline" | "ghost";
+  size?: "sm" | "md" | "lg";
+};
+```
+
+#### Testing conventions
+
+No test files (`*.test.*`/`*.spec.*`) were found in the repository at this time. When adding tests, prefer:
+
+- colocated `__tests__/` folders or `*.test.ts(x)` files near the code under test
+- React component tests using Testing Library
+- API route tests using supertest or Next test utilities
+- Naming: `<unit>.test.ts` for unit tests, `<feature>.spec.ts` for higher‑level behavior
+
+---
 
 ### Boilerplate block (embed in new docs)
 

@@ -1,489 +1,236 @@
-### [Last Updated: 2025-09-16]
+### [Last Updated: 2025-11-04]
 
 ## LLM Integration Guide
 
-### Purpose
+### Providers
 
-How to use this documentation set to generate accurate code across APIs, flows, services, and UI.
+- Integrated: OpenAI (chat.completions, responses API, moderation)
+- Not integrated: Anthropic, Google, etc. (see "Add a new provider")
 
-### Navigation
+```1:10:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/ai/openai.ts
+import OpenAI from "openai";
 
-- API endpoints: `docs/context/API_ROUTES.md`, `docs/llm-api.md`, `docs/flow-api.md`
-- Data schema: `docs/context/DATABASE_SCHEMA.md`
-- Components: `docs/context/COMPONENTS_STRUCTURE.md`
-- Services: `docs/context/SERVICES_INTEGRATIONS.md`
-- Policies: `docs/moderation-policy.md`, `docs/spend-and-cache-policy.md`, `docs/flags-and-models.md`
-- State & relationships: `docs/context/STATE_MANAGEMENT.md`, `docs/context/RELATIONSHIPS.md`
-
-## Current LLM Flow (Phase 2 ready)
-
-1. Interview (UI-only defaults ok) → establishes targetLang/style/dialect toggle.
-2. Explode (mock or future `/api/explode`) → yields `ExplodedLine[]` with `TokenOption[]` (equal-weight, dialect-tagged).
-3. Workshop → user selects options / adds custom; grouping word↔phrase.
-4. Compile to Notebook → selections → appended draft (no server write in Phase 2).
-
-**Decolonial guardrails:** equal visual weight, visible dialect tags, translanguaging allowed, avoid "best" language.
-
-### Prompt Locations
-
-| Area                           | File                    | Notes                                                                |
-| ------------------------------ | ----------------------- | -------------------------------------------------------------------- |
-| Translator (system + variants) | `src/lib/ai/prompts.ts` | `TRANSLATOR_SYSTEM`, `getTranslatorSystem(mode)`; prismatic addendum |
-| Enhancer (planner JSON)        | `src/lib/ai/prompts.ts` | `ENHANCER_SYSTEM`                                                    |
-| Router / Classifier            | `src/lib/ai/prompts.ts` | `ROUTER_SYSTEM`; consumed in server `intentLLM`                      |
-| Verifier JSON                  | `src/lib/ai/prompts.ts` | `VERIFIER_SYSTEM`                                                    |
-| Back-translate JSON            | `src/lib/ai/prompts.ts` | `BACKTRANSLATE_SYSTEM`                                               |
-
-Anchors:
-
-```1:33:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/server/flow/intentLLM.ts
-import { ROUTER_SYSTEM } from "@/lib/ai/prompts";
-// …
-messages: [
-  { role: "system", content: ROUTER_SYSTEM },
-  { role: "user", content: user },
-],
-```
-
-Guardrails (Phase 2):
-
-- Equal-weight token options; no ranking language; show dialect tags.
-- Preserve line breaks and stanza structure where applicable.
-
-## Prompt Centralization (planned)
-
-- System prompts currently live in `src/lib/ai/prompts.ts` for translator, enhancer, router, verifier, and back-translate.
-- Phase 2/3 plan: centralize prompt variants per mode and surface under a registry with explicit anchors and versioning.
-- TODO: Add a top-level prompt registry and reference docs with anchors for each surface.
-
-### Code Generation Templates
-
-```ts
-// Protected route handler template
-import { NextRequest, NextResponse } from "next/server";
-import { requireUser } from "@/lib/apiGuard";
-import { z } from "zod";
-
-const Body = z.object({
-  /* fields */
+export const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY!,
 });
-export async function POST(req: NextRequest) {
-  const guard = await requireUser(req);
-  if (guard.res) return guard.res;
-  const parsed = Body.safeParse(await req.json());
-  if (!parsed.success)
-    return NextResponse.json(
-      { error: parsed.error.flatten() },
-      { status: 400 }
-    );
-  // ... business logic
-  return NextResponse.json({ ok: true });
+
+export function getOpenAI() {
+  if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY missing");
+  return openai;
 }
 ```
 
-```ts
-// LLM call with cache + validation (responses.create)
-import { getOpenAI } from "@/lib/ai/openai";
-import { stableHash, cacheGet, cacheSet } from "@/lib/ai/cache";
-import { SomeZodSchema } from "@/types/llm";
+### Client initialization and configuration
 
-const key = "prefix:" + stableHash(payload);
-const cached = await cacheGet(key);
-if (cached) return cached;
-const client = getOpenAI();
-const resp = await client.responses.create({
-  model,
-  input: [
-    { role: "system", content: system },
-    { role: "user", content: user },
-  ],
-  ...(json ? { response_format: { type: "json_object" } } : {}),
-});
-const parsed = SomeZodSchema.safeParse(parseRaw(resp));
-if (!parsed.success)
-  return NextResponse.json({ error: "LLM output invalid" }, { status: 502 });
-await cacheSet(key, parsed.data, 3600);
+- Use a singleton `openai` with the server-side `OPENAI_API_KEY`.
+- Helper `responsesCall` adapts inputs for OpenAI Responses API and strips unsupported params on GPT‑5 models.
+
+```12:21:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/ai/openai.ts
+export type ResponsesCallOptions = {
+  model: string;
+  system: string;
+  user: string | Array<{ role: "user" | "system"; content: string }>;
+  temperature?: number;
+  top_p?: number;
+  response_format?:
+    | { type: "json_object" }
+    | { type: "json_schema"; json_schema: unknown };
+};
 ```
 
-### Rate Limit & Cache Keys
-
-- Preview: rate limit key `preview:${threadId}`; cache key `translator_preview:` + stable hash of bundle (may include placeholder id in code paths to reflect persisted overview).
-
-```55:59:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-const rl = rateLimit(`preview:${threadId}`, 30, 60_000);
-if (!rl.ok)
-  return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
-```
-
-```153:161:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-const key = "translator_preview:" + stableHash({ ...bundle, placeholderId });
-const cached = await cacheGet<unknown>(key);
-if (cached) {
-  // flip placeholder to generated from cached value
-  ...
-}
-```
-
-### Cookies and Auth
-
-- Client posts auth changes to `/api/auth`; middleware ensures SSR cookies for protected routes; use `requireUser` for write routes.
-
-```20:27:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/auth/route.ts
-export async function POST(req: NextRequest) {
-  const body = await req.json().catch(() => ({}));
-  const { event, session } = body as {
-    event?: SupabaseAuthEvent;
-    session?: SupabaseSessionPayload;
-  };
-  const res = NextResponse.json({ ok: true });
-```
-
-```12:20:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/apiGuard.ts
-export async function requireUser(
-  req: NextRequest
-): Promise<GuardOk | GuardFail> {
-  // 1) Try cookie-bound session via App Router helper
-  console.log("[requireUser] starting");
+```37:85:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/ai/openai.ts
+export async function responsesCall({ model, system, user, temperature, top_p, response_format }: ResponsesCallOptions) {
+  const args: Record<string, unknown> = { model };
+  const nonGen = isNonGenerative(model);
+  if (!nonGen && typeof temperature === "number") args.temperature = temperature;
+  if (!nonGen && typeof top_p === "number") args.top_p = top_p;
+  if (typeof user === "string") {
+    args.instructions = system;
+    args.input = user;
+  } else {
+    args.input = [{ role: "system", content: system }, ...user];
+  }
+  if (!nonGen && response_format) args.response_format = response_format;
   try {
-    const cookieStore = await cookies();
-```
-
-### Relationship to Docs
-
-- Use API routes docs for shapes and statuses; DB schema for columns and relations; policies for gating and cost controls.
-
-### Quality Guardrails
-
-- Always validate inputs and outputs (Zod).
-- Use `requireUser` and respect feature flags.
-- Prefer caches and rate limits on hot endpoints.
-
-### Checklist: Adding a new LLM surface
-
-- Auth: gate with `requireUser` or public as intended.
-- Rate limit: apply `rateLimit(key, limit, windowMs)` for hot endpoints.
-- Cache: compute deterministic key via `stableHash(payload)`; write `cacheGet`/`cacheSet`.
-- Responses API: use `getOpenAI().responses.create` and honor JSON `response_format` when structured output is required.
-- Prompt hash: compute and log using `buildPromptHash` and `logLLMRequestPreview`.
-
-Anchors:
-
-```3:13:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/ratelimit.ts
-export function rateLimit(key: string, limit = 30, windowMs = 60_000) {
-  const now = Date.now();
-  const b = buckets.get(key);
-```
-
-```13:21:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/cache.ts
-export async function cacheGet<T>(key: string): Promise<T | null> {
-  const item = mem.get(key);
-  if (!item) return null;
-```
-
-```100:110:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/promptHash.ts
-export function logLLMRequestPreview(args: LogArgs) {
-  const DEBUG =
-    process.env.DEBUG_PROMPTS === "1" ||
-    process.env.NEXT_PUBLIC_DEBUG_PROMPTS === "1";
-  if (!DEBUG) return;
-  // Avoid printing full poem/user content in logs
-  console.info("[LLM]", {
-    route: args.route,
-    model: args.model,
-    hash: args.hash,
-```
-
-### Bad vs Good
-
-- Bad: persisting model text without validation, calling LLM on every keystroke, ignoring 401/403.
-- Good: schema-validated outputs, idempotent cached calls, explicit HTTP status handling.
-
-### Journey Context in Prompts
-
-Updated: 2025-09-16
-
-The translator bundle collects recent journey items scoped to the active thread using a `meta->>thread_id` filter, then both Preview and Instruct append a JOURNEY block to the user prompt.
-
-Evidence (bundle query and return):
-
-```57:66:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/server/translator/bundle.ts
-// Fetch recent journey items scoped to this thread
-const { data: jrows } = await supabase
-  .from("journey_items")
-  .select("id, kind, summary, created_at, meta")
-  .filter("meta->>thread_id", "eq", threadId)
-  .order("created_at", { ascending: false })
-  .limit(5);
-```
-
-```66:83:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/server/translator/bundle.ts
-const journeySummaries = (jrows || []).map((r) => {
-  const s = String(r.summary || "").replace(/\s+/g, " ").slice(0, 200);
-  const maybeLen = (r.meta as { selections?: { length?: number } } | undefined)?.selections?.length;
-  const linesCount = typeof maybeLen === "number" ? ` (lines: ${maybeLen})` : "";
-  return `${r.kind || "activity"}: ${s}${linesCount}`;
-});
-```
-
-Insertion into prompts:
-
-```228:234:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-bundle.journeySummaries?.length
-  ? "JOURNEY (most recent → older):\n" +
-    bundle.journeySummaries.map((s) => `- ${s}`).join("\n")
-  : "",
-```
-
-```194:201:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
-bundle.journeySummaries?.length
-  ? "JOURNEY (most recent → older):\n" +
-    bundle.journeySummaries.map((s) => `- ${s}`).join("\n")
-  : "",
-```
-
-Mini example (format only):
-
-```
-JOURNEY (most recent → older):
-- accept_lines: Draft accepted (lines: 4)
-- compare: Compared A vs B — idiomatic shift noted
-- decision: Adopt internal rhyme for couplet 3
-```
-
-### Journey-aware generation (A→B→C chaining)
-
-- Preview creates Version A; Instruct derives B/C/D by citing the previous version when available.
-
-Parent resolution (thread-scoped latest or cited):
-
-```44:62:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
-const rawMode = (parsed.data.mode as string) || "balanced";
-const effectiveMode = /* ... */
-let parentVersionId: string | null = null;
-if (citeVersionId) {
-  parentVersionId = citeVersionId;
-} else {
-  const { data: latestForThread } = await supabase
-    .from("versions")
-    .select("id, lines, meta, created_at")
-    .eq("project_id", projectId)
-    .filter("meta->>thread_id", "eq", threadId)
-    .order("created_at", { ascending: false })
-    .limit(1);
-  parentVersionId = latestForThread?.[0]?.id ?? null;
-}
-```
-
-Bundle inputs include `journeySummaries` (last ~5):
-
-```43:72:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/server/translator/bundle.ts
-const summary = state.summary ?? "";
-const ledger = (state.decisions_ledger ?? []).slice(-5);
-// ...
-// Fetch recent journey items scoped to this thread
-const { data: jrows } = await supabase
-  .from("journey_items")
-  .select("id, kind, summary, created_at, meta")
-  .filter("meta->>thread_id", "eq", threadId)
-  .order("created_at", { ascending: false })
-  .limit(5);
-const journeySummaries = (jrows || []).map(/* ... */);
-```
-
-Both routes include a JOURNEY block in the prompt:
-
-```206:224:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-const userPrompt = [ /* ... */, bundle.journeySummaries?.length
-  ? "JOURNEY (most recent → older):\n" +
-    bundle.journeySummaries.map((s) => `- ${s}`).join("\n")
-  : "", ].filter(Boolean).join("\n\n")
-```
-
-```148:161:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
-const bundleUser = [ /* ... */, bundle.journeySummaries?.length
-  ? "JOURNEY (most recent → older):\n" +
-    bundle.journeySummaries.map((s) => `- ${s}`).join("\n")
-  : "", ].filter(Boolean).join("\n\n")
-```
-
-Example JOURNEY block (format only):
-
-```
-JOURNEY (most recent → older):
-- accept_lines: Draft accepted (lines: 4)
-- compare: Compared A vs B — idiomatic shift noted
-- decision: Adopt internal rhyme for couplet 3
-```
-
-### LLM Integration Playbook
-
-#### 1) Checklist (copy‑pastable)
-
-1. Gate route with feature flag (if applicable) and auth
-   - Use `requireUser` (cookie → Bearer fallback) for write routes
-2. Apply rate limit to hot endpoints
-   - e.g., `rateLimit(`preview:${threadId}`, 30, 60_000)`
-3. Build a deterministic cache key
-   - `const key = `${prefix}:${stableHash(payload)}`;`
-4. Call Responses API via helper and validate output with Zod
-5. Compute and log `prompt_hash` with redacted previews (dev‑only)
-6. Return typed JSON with explicit error codes (400/401/403/404/409/429/500/502)
-
-Anchors:
-
-```55:59:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-const rl = rateLimit(`preview:${threadId}`, 30, 60_000);
-if (!rl.ok)
-  return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
-```
-
-```157:161:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-const key = "translator_preview:" + stableHash({ ...bundle, placeholderId });
-const cached = await cacheGet<unknown>(key);
-```
-
-```208:216:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-const prompt_hash = buildPromptHash({ route: "translator", model: TRANSLATOR_MODEL, system: getTranslatorSystem(effectiveMode), user: userPrompt });
-logLLMRequestPreview({ route: "translator", model: TRANSLATOR_MODEL, system: getTranslatorSystem(effectiveMode), user: userPrompt, hash: prompt_hash });
-```
-
-#### 2) Templates
-
-- Minimal server handler (protected, cached, rate‑limited)
-
-```ts
-import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
-import { requireUser } from "@/lib/apiGuard";
-import { rateLimit } from "@/lib/ai/ratelimit";
-import { stableHash, cacheGet, cacheSet } from "@/lib/ai/cache";
-import { responsesCall } from "@/lib/ai/openai";
-
-const Body = z.object({ threadId: z.string().uuid() });
-export async function POST(req: NextRequest) {
-  const guard = await requireUser(req);
-  if ("res" in guard) return guard.res;
-
-  const parsed = Body.safeParse(await req.json());
-  if (!parsed.success)
-    return NextResponse.json(
-      { error: parsed.error.flatten() },
-      { status: 400 }
-    );
-  const { threadId } = parsed.data;
-
-  const rl = rateLimit(`example:${threadId}`, 30, 60_000);
-  if (!rl.ok)
-    return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
-
-  const payload = { threadId };
-  const key = "example:" + stableHash(payload);
-  const hit = await cacheGet<unknown>(key);
-  if (hit) return NextResponse.json({ ok: true, data: hit, cached: true });
-
-  const r = await responsesCall({
-    model: "gpt-5",
-    system: "SYSTEM",
-    user: "USER",
-    temperature: 0.2,
-  });
-  // parse/validate r → data
-  await cacheSet(key, /* data */ r, 3600);
-  return NextResponse.json({ ok: true, data: r });
-}
-```
-
-- Prompt‑hash integration (redacted debug preview)
-
-```12:20:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/promptHash.ts
-export function buildPromptHash(args: {
-  route: string; model: string; system: string; user: string; schema?: string;
-}) {
-  const { route, model, system, user, schema } = args;
-  return stableHash({ route, model, system, user, schema });
-}
-```
-
-```30:43:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/promptHash.ts
-const DEBUG = process.env.DEBUG_PROMPTS === "1" || process.env.NEXT_PUBLIC_DEBUG_PROMPTS === "1";
-if (!DEBUG) return;
-// Avoid printing full poem/user content in logs
-console.info("[LLM]", { route: args.route, model: args.model, hash: args.hash, systemPreview: squeeze(args.system), userPreview: squeeze(args.user, 300) });
-```
-
-- Redacted debug preview pattern in a route
-
-```236:249:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-logLLMRequestPreview({
-  route: "translator",
-  model: TRANSLATOR_MODEL,
-  system: getTranslatorSystem(effectiveMode),
-  user: userPrompt,
-  hash: prompt_hash,
-});
-```
-
-#### 3) Do / Don’t
-
-| Do                                                               | Don’t                                                      |
-| ---------------------------------------------------------------- | ---------------------------------------------------------- |
-| Validate all inputs/outputs with Zod before persisting/returning | Return raw model text without validation                   |
-| Rate limit hot endpoints and cache idempotent results            | Log full prompts/poems; always redact and gate logs by env |
-| Compute `prompt_hash` and log redacted previews in dev           | Include secrets or PII in prompts/keys                     |
-| Use feature flags to gate optional surfaces                      | Bypass SSR cookies; always use `requireUser` for writes    |
-
-Anchors:
-
-```3:13:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/ratelimit.ts
-export function rateLimit(key: string, limit = 30, windowMs = 60_000) {
-  const now = Date.now();
-  const b = buckets.get(key);
-```
-
-```13:21:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/cache.ts
-export async function cacheGet<T>(key: string): Promise<T | null> {
-  const item = mem.get(key);
-  if (!item) return null;
-```
-
-#### 4) LLM Surface Registration (JSON schema)
-
-```json
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "LLMSurfaceRegistration",
-  "type": "object",
-  "required": [
-    "route",
-    "model",
-    "flags",
-    "cache_key_template",
-    "rate_limit_bucket"
-  ],
-  "properties": {
-    "route": { "type": "string", "pattern": "^/api/" },
-    "model": { "type": "string" },
-    "flags": { "type": "array", "items": { "type": "string" } },
-    "cache_key_template": {
-      "type": "string",
-      "description": "e.g., prefix:${stableHash(payload)}"
-    },
-    "rate_limit_bucket": {
-      "type": "string",
-      "description": "e.g., preview:${threadId}"
+    return await openai.responses.create(args as any);
+  } catch (e: unknown) {
+    // Fallback: strip unsupported params (e.g., temperature on GPT‑5)
+    const err = e as { error?: { message?: string } } | { message?: string };
+    const msg = String((err as any)?.error?.message || (err as any)?.message || "");
+    const unsupportedTemp = /Unsupported parameter:\s*'temperature'/i.test(msg);
+    if (unsupportedTemp) {
+      const retryArgs: Record<string, unknown> = { ...args };
+      delete (retryArgs as any).temperature;
+      delete (retryArgs as any).top_p;
+      delete (retryArgs as any).response_format;
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[responsesCall:fallback:no-temperature]", { model });
+      }
+      return await openai.responses.create(retryArgs as any);
     }
+    throw e;
   }
 }
 ```
 
-Example (wiring from Preview):
+### Prompt engineering patterns
 
-```55:59:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-const rl = rateLimit(`preview:${threadId}`, 30, 60_000);
+- Consistent system + user prompts with strict JSON outputs via `response_format: { type: "json_object" }`.
+- JSON contract validation happens after parsing; some routes also set defaults for missing fields.
+- Example (Notebook Prismatic):
+
+```147:170:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/prismatic/route.ts
+const system = [
+  "You are a translation variant generator.",
+  "Generate 3 distinct translation variants (A, B, C) for a single line of poetry.",
+  "Variant A: More literal/close to source",
+  "Variant B: Balanced (similar to current translation if provided)",
+  "Variant C: More creative/natural",
+  "Return STRICT JSON only:",
+  '{ "variants": [{ "label": "A"|"B"|"C", "text": string, "rationale": string, "confidence": 0-1 }] }',
+].join(" ");
+...
+completion = await openai.chat.completions.create({
+  model: modelToUse,
+  response_format: { type: "json_object" },
+  messages: [
+    { role: "system", content: system },
+    { role: "user", content: userPrompt },
+  ],
+});
 ```
 
-```153:161:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-const key = "translator_preview:" + stableHash({ ...bundle, placeholderId });
+- Example (Guide Analyze Poem):
+
+```84:93:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/guide/analyze-poem/route.ts
+const system = [
+  "You are a poetry analysis assistant.",
+  "Return STRICT JSON only, no prose.",
+  "Schema: { language: string, wordCount: number, summary: string, tone: string[], dialect?: string|null, themes: string[], keyImages: string[] }",
+].join(" ");
 ```
 
-See also: `docs/llm-api.md`, `docs/flags-and-models.md`.
+### Token management and optimization
+
+- No explicit token counting; optimizations used:
+  - Caching idempotent results (`cacheGet`/`cacheSet`)
+  - Rate limiting hot endpoints (daily limits stubbed via Redis helper)
+  - Compact prompts; strict JSON outputs to reduce churn
+
+```176:186:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/ai-assist/route.ts
+const cached = await cacheGet<AIAssistResponse>(cacheKey);
+if (cached) {
+  return NextResponse.json(cached);
+}
+...
+await cacheSet(cacheKey, result, 3600);
+```
+
+```83:99:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/ai-assist/route.ts
+const rateCheck = await checkDailyLimit(user.id, `notebook:ai-assist:${threadId}`, 10 * 60);
+if (!rateCheck.allowed) {
+  return NextResponse.json({ error: "Rate limit exceeded", current: rateCheck.current, max: rateCheck.max }, { status: 429 });
+}
+```
+
+### Streaming response handling
+
+- Current routes use non-streaming `chat.completions.create` and `responses.create`. No streaming implemented.
+- To add streaming, prefer Server-Sent Events or Web Streams in App Router with `ReadableStream` and `response_type: "stream"` (future work).
+
+### Error handling for LLM failures
+
+- Two layers:
+  - Parameter fallback: remove unsupported params for GPT‑5 in `responsesCall`.
+  - Model fallback: when model is missing/unsupported, switch to `gpt-4o` or `gpt-4o-mini`; otherwise return 502 with an error envelope.
+
+```200:238:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/prismatic/route.ts
+} catch (modelError: any) {
+  const shouldFallback = modelError?.error?.code === "model_not_found" || modelError?.status === 404 || modelError?.status === 400;
+  if (shouldFallback) { /* fallback to gpt-4o */ } else { return err(502, "OPENAI_FAIL", "Upstream prismatic generation failed.", { upstream: String(modelError?.message ?? modelError) }); }
+}
+```
+
+```125:154:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/guide/analyze-poem/route.ts
+} catch (modelError: any) {
+  const shouldFallback = modelError?.error?.code === 'model_not_found' || modelError?.status === 404 || modelError?.status === 400;
+  if (shouldFallback) { /* fallback to gpt-4o-mini */ } else { return err(502, "OPENAI_FAIL", "Upstream analysis failed.", { upstream: String(modelError?.message ?? modelError) }); }
+}
+```
+
+- Moderation uses OpenAI Moderation API; returns flagged/categories only.
+
+```8:20:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/ai/moderation.ts
+export async function moderateText(text: string) {
+  const client = getOpenAI();
+  const res = await client.moderations.create({ model: "omni-moderation-latest", input: text.slice(0, 20000) });
+  const results = (res as any).results;
+  const first = Array.isArray(results) ? results[0] : undefined;
+  const flagged = !!first?.flagged;
+  const categories: Record<string, unknown> = first?.categories ?? {};
+  return { flagged, categories };
+}
+```
+
+### Adding a new LLM provider (pattern)
+
+- Create `src/lib/ai/{provider}.ts` exporting a singleton client and a `responsesCall`-like adapter that normalizes:
+  - Inputs: `model`, `system`, `user`, sampling params, `response_format`
+  - Outputs: text/JSON payload with consistent shape for downstream parsing
+- Update routes to import the provider adapter or inject via a factory selected by env (`LLM_PROVIDER`).
+- Ensure feature parity: JSON mode, model fallback strategy, and error envelopes with 5xx on upstream failures.
+
+Minimal adapter interface:
+
+```ts
+export type LLMCallArgs = {
+  model: string;
+  system: string;
+  user: string | Array<{ role: "user" | "system"; content: string }>;
+  temperature?: number;
+  top_p?: number;
+  response_format?:
+    | { type: "json_object" }
+    | { type: "json_schema"; json_schema: unknown };
+};
+export type LLMCall = (args: LLMCallArgs) => Promise<{ content: string }>;
+```
+
+### Testing strategies
+
+- Contract tests:
+  - Zod-validate outputs for strict JSON routes (fail on structure mismatch)
+  - Include defaults enforcement tests (e.g., fill optional arrays)
+- Determinism:
+  - Use lower temperature (0.0–0.2) for CI tests
+  - Mock OpenAI client; assert adapter is called with expected args
+- Offline tests:
+  - Gate network via env; skip or mock when `OPENAI_API_KEY` is missing
+- Example validation (seen in routes):
+
+```201:211:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/ai-assist/route.ts
+let parsed;
+try {
+  parsed = JSON.parse(text);
+} catch (parseError) {
+  console.error("[ai-assist] Parse error:", parseError);
+  return NextResponse.json({ error: "Invalid AI response format" }, { status: 500 });
+}
+```
+
+### Models and selection
+
+- Defaults via env in `src/lib/models.ts` (translator/enhancer/router/embeddings)
+
+```1:8:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/models.ts
+export const TRANSLATOR_MODEL = process.env.TRANSLATOR_MODEL?.trim() || "gpt-5";
+export const ENHANCER_MODEL = process.env.ENHANCER_MODEL?.trim() || "gpt-5-mini";
+export const ROUTER_MODEL = process.env.ROUTER_MODEL?.trim() || "gpt-5-nano-2025-08-07";
+export const EMBEDDINGS_MODEL = process.env.EMBEDDINGS_MODEL?.trim() || "text-embedding-3-large";
+```
+
+### Summary
+
+- Provider: OpenAI only today; responses + chat.completions + moderation
+- Patterns: strict JSON prompts, Zod validation, caching + rate limits, model/param fallback
+- Gaps: no streaming yet; no third-party monitoring; Anthropic/Gemini adapters not implemented

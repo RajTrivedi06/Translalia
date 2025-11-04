@@ -1,4 +1,4 @@
-Updated: 2025-09-16
+Updated: 2025-11-04
 
 ### DOCS_INTAKE_TABLE (repo index)
 
@@ -200,7 +200,7 @@ Updated: 2025-09-16
 - TanStack Query for async data, Zustand for client state
 - Supabase for auth (SSR helper), OpenAI for LLM
 
-```17:20:/Users/raaj/Documents/CS/Translalia/Translalia-web/package.json
+```21:24:/Users/raaj/Documents/CS/metamorphs/translalia-web/package.json
     "next": "15.4.6",
     "openai": "^4.104.0",
     "react": "19.1.0",
@@ -236,6 +236,29 @@ export function getOpenAI() {
   return openai;
 }
 ```
+
+### High-level architecture (text)
+
+```
+[Browser UI (React 19)]
+  ├─ Components (notebook, workshop, chat)
+  ├─ Zustand stores (thread‑scoped via threadStorage)
+  └─ TanStack Query (fetches)
+        ↓ HTTP
+[Next.js Route Handlers (App Router) under src/app/api/*]
+  ├─ Auth + ownership guard (Supabase SSR cookies)
+  ├─ Business logic (zod validation, caching, quotas)
+  └─ LLM calls (OpenAI SDK; JSON outputs where applicable)
+        ↓ SDK
+[External Services]
+  ├─ Supabase (auth + Postgres storage)
+  └─ OpenAI (translate/assist/analysis)
+```
+
+Communication:
+
+- Client fetches route handlers with fetch; auth via Supabase SSR cookies.
+- Server routes call OpenAI; results cached in process memory for 1h.
 
 ### Main flows
 
@@ -301,6 +324,27 @@ const needsAuth = pathname.startsWith("/workspaces") || pathname.startsWith("/ap
 const hasSupabaseCookies = Array.from(req.cookies.getAll()).some((c) => c.name.startsWith("sb-") || c.name.includes("supabase"));
 if (needsAuth && !hasSupabaseCookies) { /* redirect to sign-in with redirect param */ }
 ```
+
+### Entry points (frontend/backend)
+
+- Frontend UI roots: `src/app/layout.tsx`, `src/app/page.tsx`; workspace shells in `src/components/workspace/*` and V2 in `src/components/workspace/v2/*`.
+- Backend API: `src/app/api/**/route.ts` (e.g., `guide/analyze-poem`, `notebook/*`, `workshop/*`, `journey/*`, `threads/*`).
+
+### Development vs production
+
+- Headers & linting during build:
+
+```3:10:/Users/raaj/Documents/CS/metamorphs/translalia-web/next.config.ts
+const nextConfig: NextConfig = {
+  poweredByHeader: false,
+  images: { domains: ["images.unsplash.com"] },
+  eslint: { ignoreDuringBuilds: true },
+}
+```
+
+- Rate limits/quotas: in‑memory helper available; Redis quota helper is stubbed (always allows) in this snapshot.
+- Caching: in‑process Map with TTL (1h); consider external cache for multi‑instance prod.
+- Env gating: `NODE_ENV !== "production"` enables extra logging in helper retries.
 
 Purpose: High-level map of the repo, stack, and flows for contributors.
 Updated: 2025-09-13

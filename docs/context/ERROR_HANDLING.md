@@ -1,169 +1,228 @@
 Purpose: Error taxonomy, status usage, Retry-After policy vs implementation.
-Updated: 2025-09-16
+Updated: 2025-11-04
 
-### [Last Updated: 2025-09-16]
+### [Last Updated: 2025-11-04]
 
-# Error Handling (2025-09-16)
+# Error Handling (2025-11-04)
 
-## Status codes (observed in code)
+## Strategy
+- Server: standardize JSON error envelopes; validate inputs with Zod; early returns for auth/ownership; include machine `code` where applicable.
+- Client: non-throwing UI; use toasts and inline messages; keep forms usable after failures; skeletons for loading.
+- LLM: fallback to supported models when requested model is unavailable; surface concise upstream errors.
+- Observability: structured console logs with `requestId`; optional prompt hashing and debug flags in dev.
 
-- `401` unauthenticated
+## Helpers and types
+- HTTP helpers for upstream and generic errors:
+```1:23:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/http/errors.ts
+import { NextResponse } from "next/server";
 
-```43:45:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
-if (!me?.user) {
-  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-}
-```
-
-- `403` forbidden/feature-off (policy); used for translator/enhancer feature gates and access guards
-
-```28:30:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-if (process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR !== "1") {
-  return new NextResponse("Feature disabled", { status: 403 });
-}
-```
-
-```50:52:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/flow/peek/route.ts
-return NextResponse.json(
-  { ok: false, code: "FORBIDDEN_THREAD" },
-  { status: 403 }
-);
-```
-
-- `404` not found or feature-off (implementation choice for verify/backtranslate/interview)
-
-```10:15:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/verify/route.ts
-if (!isVerifyEnabled())
-  return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
-```
-
-- `409` invalid phase or conflicting state
-
-```41:43:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translate/route.ts
-return NextResponse.json(
-  { error: "Not ready to translate" },
-  { status: 409 }
-);
-```
-
-- `429` rate limit exceeded (minute or daily)
-
-```49:52:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-if (!rl.ok)
-  return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
-```
-
-```18:23:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/verify/route.ts
-const rl = await checkDailyLimit(user.id, "verify", VERIFY_DAILY_LIMIT);
-if (!rl.allowed)
-  return NextResponse.json(
-    { error: "Daily verification limit reached" },
-    { status: 429 }
-  );
-```
-
-- `500` unexpected server error
-
-```95:97:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-return NextResponse.json(
-  {
-    error: insErr?.message || "Failed to create placeholder",
-  },
-  { status: 500 }
-);
-```
-
-- `502` LLM contract invalid / upstream issues
-
-```205:207:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-return NextResponse.json(
-  { error: "LLM returned empty output" },
-  { status: 502 }
-);
-```
-
-## Retry-After (policy vs implementation)
-
-- Policy intent:
-  - Local minute bucket (preview) should include `Retry-After: 60`.
-  - Daily quotas (verify/backtranslate) should include `Retry-After: 86400`.
-- Implementation: current route handlers return 429 JSON bodies without explicit headers; add headers in future.
-
-```3:10:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/http/errors.ts
 /** Convert LLM client errors to concise HTTP responses, preserving Retry-After on 429. */
 export function respondLLMError(e: any) {
   const status = e?.status ?? e?.response?.status ?? 502;
   const retryAfter = e?.response?.headers?.get?.("retry-after");
-  const res = NextResponse.json({ error: e?.message ?? "LLM error" }, { status });
+  const body = { error: e?.message ?? "LLM error" } as const;
+  const res = NextResponse.json(body, { status });
   if (retryAfter) res.headers.set("Retry-After", String(retryAfter));
+  return res;
+}
+
+export function jsonError(
+  status: number,
+  message: string,
+  opts?: { retryAfterSec?: number }
+) {
+  const res = NextResponse.json({ error: message }, { status });
+  if (opts?.retryAfterSec) {
+    res.headers.set("Retry-After", String(opts.retryAfterSec));
+  }
   return res;
 }
 ```
 
-## Error Taxonomy
-
-| code                             | http_status | retry_after     | is_transient | suggested remediation                        | Anchors                                                                                               |
-| -------------------------------- | ----------- | --------------- | ------------ | -------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| MISSING_THREAD_ID                | 400         | none            | false        | Provide `threadId` query param               | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/flow/peek/route.ts#L10-L16             |
-| MISSING_PROJECT_ID               | 400         | none            | false        | Provide `projectId` query param              | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/threads/list/route.ts#L10-L15          |
-| THREAD_NOT_FOUND                 | 404         | none            | false        | Ensure thread exists and is owned            | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/flow/peek/route.ts#L29-L33             |
-| PROJECT_NOT_FOUND                | 404         | none            | false        | Ensure project exists                        | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/threads/list/route.ts#L42-L46          |
-| FORBIDDEN_THREAD                 | 403         | none            | false        | Use an owned thread                          | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/flow/peek/route.ts#L48-L52             |
-| FORBIDDEN_PROJECT                | 403         | none            | false        | Use an owned project                         | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/threads/list/route.ts#L31-L35          |
-| PREVIEW_ECHOED_SOURCE            | 409         | none            | true         | Retry with `forceTranslate` or adjust prompt | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts#L355-L361  |
-| REQUIRED_TOKENS_MISSING          | 409         | none            | true         | Remove or adjust must_keep; try again        | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts#L399-L409 |
-| INSTRUCT_ECHO_OR_UNTRANSLATED    | 409         | none            | true         | Strengthen instruction; re-run               | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts#L333-L346 |
-| INSTRUCT_RETRY_EMPTY             | 502         | none            | true         | Retry operation later                        | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts#L283-L297 |
-| INSTRUCT_PARSE_RETRY_FAILED      | 502         | none            | true         | Improve schema; re-run                       | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts#L304-L317 |
-| Rate limit exceeded              | 429         | 60s (policy)    | true         | Wait and retry                               | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts#L55-L58    |
-| Daily verification limit reached | 429         | 86400s (policy) | true         | Retry next day                               | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/verify/route.ts#L18-L23     |
-
-### Error Envelope (JSON Schema)
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "ok": { "type": "boolean" },
-    "error": { "type": "string" },
-    "code": { "type": "string" },
-    "retryable": { "type": "boolean" },
-    "prompt_hash": { "type": "string" }
-  },
-  "additionalProperties": true
+- Wrapper to normalize unhandled exceptions:
+```25:46:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/http/errors.ts
+/** Wrap a route handler to standardize unhandled error responses. */
+export function withError<
+  TReq extends Request | import("next/server").NextRequest,
+  TRes extends Response
+>(handler: (req: TReq) => Promise<TRes>): (req: TReq) => Promise<TRes> {
+  return async (req: TReq) => {
+    try {
+      return await handler(req);
+    } catch (e: any) {
+      if (process.env.NODE_ENV !== "production") {
+        // eslint-disable-next-line no-console
+        console.error("[route:error]", e);
+      }
+      const status = e?.statusCode || e?.status || 500;
+      const msg =
+        status >= 500
+          ? "Internal Server Error"
+          : e?.message || "Request failed";
+      return jsonError(status, msg) as unknown as TRes;
+    }
+  };
 }
 ```
 
-## Observability
-
-- `prompt_hash` is attached to JSON responses where LLM calls are proxied.
-
-```70:87:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/enhancer/route.ts
-if (!r.ok) {
-  return NextResponse.json(
-    { error: r.error, prompt_hash: r.prompt_hash },
-    { status: 502 }
-  );
+## API error envelopes and status codes
+- Common envelope (notebook/guide routes): `{ error: { code, message, ...extra } }`
+```20:24:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/prismatic/route.ts
+function err(status: number, code: string, message: string, extra?: any) {
+  return NextResponse.json({ error: { code, message, ...extra } }, { status });
 }
-...
-return NextResponse.json({ ok: true, plan, prompt_hash: r.prompt_hash });
 ```
 
-- Redacted previews are logged only when `DEBUG_PROMPTS` or `NEXT_PUBLIC_DEBUG_PROMPTS` is `1`.
-
-```30:33:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/promptHash.ts
-const DEBUG =
-  process.env.DEBUG_PROMPTS === "1" ||
-  process.env.NEXT_PUBLIC_DEBUG_PROMPTS === "1";
+- Alternate envelope in list endpoints: `{ ok: false, code }`
+```8:15:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/threads/list/route.ts
+export async function GET(req: NextRequest) {
+  const projectId = new URL(req.url).searchParams.get("projectId");
+  if (!projectId) {
+    return NextResponse.json(
+      { ok: false, code: "MISSING_PROJECT_ID" },
+      { status: 400 }
+    );
+  }
+}
 ```
 
-## UI Error Hygiene (V2)
+- Auth failures return 401 JSON:
+```4:15:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/auth/requireUser.ts
+/** Ensures a user session exists; returns 401 JSON response otherwise. */
+export async function requireUser() {
+  const supabase = await supabaseServer();
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data?.user) {
+    return {
+      user: null as any,
+      response: NextResponse.json(
+        { error: "Unauthenticated" },
+        { status: 401 }
+      ),
+    };
+  }
+  return { user: data.user, response: null as any };
+}
+```
 
-### Sidebar cards: Skeleton / Empty / Error
+### Status usage (observed)
+- 400: invalid/missing parameters
+- 401: unauthenticated
+- 403: forbidden (ownership/feature off)
+- 404: not found
+- 409: conflicting state (e.g., locked cell)
+- 429: rate-limited (policy recommends Retry-After)
+- 500: unexpected server error
+- 502: upstream/LLM contract invalid
 
-- Use lightweight skeletons while loading.
+Examples:
+```8:15:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/uploads/list/route.ts
+if (!user)
+  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+```
+```84:92:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/prismatic/route.ts
+if (threadErr || !thread) {
+  log("thread_not_found", threadErr?.message);
+  return err(404, "THREAD_NOT_FOUND", "Thread not found.");
+}
+if (thread.created_by !== user.id) {
+  log("forbidden", { userId: user.id, owner: thread.created_by });
+  return err(403, "FORBIDDEN", "You do not have access to this thread.");
+}
+```
+```117:121:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/locks/route.ts
+if (updateErr) {
+  log("update_fail", updateErr.message);
+  return err(500, "UPDATE_FAILED", "Failed to update locks.");
+}
+```
 
-```85:91:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/sidebar/SourceTextCard.tsx
+## Retry-After and rate limiting
+- Policy: include `Retry-After` on 429s (e.g., 60s for minute bucket, 86400s for daily quotas).
+- Implementation: helper supports setting the header; ensure routes set it when returning 429.
+```13:23:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/http/errors.ts
+export function jsonError(
+  status: number,
+  message: string,
+  opts?: { retryAfterSec?: number }
+) {
+  const res = NextResponse.json({ error: message }, { status });
+  if (opts?.retryAfterSec) {
+    res.headers.set("Retry-After", String(opts.retryAfterSec));
+  }
+  return res;
+}
+```
+
+## LLM retry and fallback
+- GPT-5 to GPT-4 family fallback on unsupported params or missing model; 502 on non-retryable upstream errors.
+```200:238:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/prismatic/route.ts
+} catch (modelError: any) {
+  const shouldFallback =
+    modelError?.error?.code === "model_not_found" ||
+    modelError?.status === 404 ||
+    modelError?.status === 400;
+  if (shouldFallback) {
+    log("fallback_to_gpt4", { from: modelToUse, to: "gpt-4o", reason: modelError?.error?.code || modelError?.error?.message || "error" });
+    modelToUse = "gpt-4o";
+    completion = await openai.chat.completions.create({ /* ... */ });
+  } else {
+    log("openai_fail", modelError?.message);
+    return err(502, "OPENAI_FAIL", "Upstream prismatic generation failed.", { upstream: String(modelError?.message ?? modelError) });
+  }
+}
+```
+```125:154:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/guide/analyze-poem/route.ts
+} catch (modelError: any) {
+  const shouldFallback =
+    modelError?.error?.code === 'model_not_found' ||
+    modelError?.status === 404 ||
+    modelError?.status === 400;
+  if (shouldFallback) {
+    log("fallback_to_gpt4", { from: modelToUse, to: "gpt-4o-mini", reason: modelError?.error?.code || modelError?.error?.message || 'error' });
+    modelToUse = "gpt-4o-mini";
+    completion = await openai.chat.completions.create({ /* ... */ });
+  } else {
+    log("openai_fail", modelError?.message);
+    return err(502, "OPENAI_FAIL", "Upstream analysis failed.", { upstream: String(modelError?.message ?? modelError) });
+  }
+}
+```
+
+## Logging and monitoring
+- Structured logs per request with `requestId`, timing, and phase labels; console only (no external monitoring wired).
+```30:35:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/prismatic/route.ts
+const requestId = crypto.randomUUID();
+const started = Date.now();
+const log = (...a: any[]) =>
+  console.log("[/api/notebook/prismatic]", requestId, ...a);
+```
+```24:28:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/guide/analyze-poem/route.ts
+const requestId = crypto.randomUUID();
+const started = Date.now();
+const log = (...a: any[]) => console.log("[/api/guide/analyze-poem]", requestId, ...a);
+```
+
+## Client-side user messaging
+- Use toasts and inline messages; avoid throwing in UI flows; keep composer/forms interactive.
+```210:216:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/components/workspace/chat/ChatPanel.tsx
+if (!res.ok) {
+  const json = await res.json().catch(() => ({}));
+  toastError(json?.error || "Failed to send");
+  return;
+}
+```
+```221:227:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/components/workspace/chat/ChatPanel.tsx
+try {
+  assertOnline();
+} catch (e) {
+  const msg = e instanceof Error ? e.message : "You’re offline — try again later.";
+  toastError(msg);
+  return;
+}
+```
+- Loading skeletons instead of blocking spinners; inline error copy for panes.
+```166:173:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/components/workspace/v2/sidebar/SourceTextCard.tsx
 {loading && (
   <div aria-busy="true" aria-live="polite" className="space-y-2">
     {[...Array(5)].map((_, i) => (
@@ -172,145 +231,75 @@ const DEBUG =
   </div>
 )}
 ```
-
-- Show concise error state without crashing the pane.
-
-```93:95:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/sidebar/SourceTextCard.tsx
+```179:181:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/components/workspace/v2/sidebar/SourceTextCard.tsx
 {!loading && error && (
   <p className="text-sm text-red-600 dark:text-red-400">{t("couldNotLoadSource")}</p>
 )}
 ```
 
-- Provide empty state with neutral copy.
-
-```97:101:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/sidebar/SourceTextCard.tsx
-{!loading && !error && !hasSource && (
-  <p className="text-sm text-neutral-500">
-    {t("noSource")}
-  </p>
-)}
-```
-
-- Apply the same skeleton pattern to analysis.
-
-```32:37:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/sidebar/AnalysisCard.tsx
-{loading && (
-  <div aria-busy="true" className="space-y-2">
-    {[...Array(3)].map((_, i) => (
-      <div key={i} className="h-4 w-full animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
-    ))}
-  </div>
-)}
-```
-
-### Non-throwing UI guidelines
-
-- Chat send: toast on failure; keep composer usable.
-
-```393:396:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/chat/ChatPanel.tsx
-if (!res.ok) {
-  const json = await res.json().catch(() => ({}));
-  toastError(json?.error || "Failed to send");
-  return;
+## Circuit breakers and recovery
+- Circuit breakers: none centralized; upstream failure short-circuits the specific request with 502 and a concise error envelope.
+- Recovery strategies:
+  - LLM fallback (see above)
+  - Non-blocking persistence: operations may succeed without saving secondary state
+```160:170:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/guide/analyze-poem/route.ts
+const { error: saveErr } = await supabase
+  .from("chat_threads")
+  .update({ state: newState })
+  .eq("id", body.threadId);
+if (saveErr) {
+  log("save_fail", saveErr.message);
+  return ok({ analysis, saved: false });
 }
 ```
-
-- Offline send guard surfaces a user-friendly toast.
-
-```70:75:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/chat/ChatPanel.tsx
-try {
-  assertOnline();
-} catch (e) {
-  const msg = e instanceof Error ? e.message : "You’re offline — try again later.";
-  toastError(msg);
-  return;
-}
-```
-
-- Silent fallbacks for auxiliary flows (intent, peek, nodes): swallow non-critical errors and proceed.
-
-```493:495:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/chat/ChatPanel.tsx
+  - UI continues after auxiliary failures; errors surfaced via toasts.
+```233:235:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/components/workspace/chat/ChatPanel.tsx
 } catch {
   // ignore and proceed; errors surface via toasts elsewhere
 }
 ```
 
-### A11y surfacing
+## Recommended response format (server)
+- Prefer one of these envelopes consistently:
+  - Error object: `{ error: { code, message, details? } }`
+  - Boolean flag: `{ ok: false, code, error? }`
+- Include `Retry-After` when returning 429s and when proxying upstream 429s.
 
-- Timeline uses `role="log"` with `aria-live="polite"` for incremental updates.
+## Example: Proper route error handling
+```1:52:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/locks/route.ts
+import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
+import { z } from "zod";
 
-```11:14:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/chat/ChatView.tsx
-<div
-  role="log"
-  aria-live="polite"
-  className="flex-1 overflow-y-auto bg-gray-50 p-6 md:p-8"
->
-```
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-- Toasts should be announced politely; prefer `aria-live="polite"` region in the toast system if available (non-blocking to screen readers).
+const BodySchema = z.object({
+  threadId: z.string().min(1, "threadId is required"),
+  lineIndex: z.number().int().min(0),
+  wordPositions: z.array(z.number().int().min(0)),
+});
 
-### Patterns (non-throwing UI)
-
-- Chat send toasts on failure; form remains usable:
-
-```393:396:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/chat/ChatPanel.tsx
-if (!res.ok) {
-  const json = await res.json().catch(() => ({}));
-  toastError(json?.error || "Failed to send");
-  return;
+function ok<T>(data: T, status = 200) {
+  return NextResponse.json(data as any, { status });
 }
-```
-
-- Offline upload guard → toast, no crash:
-
-```69:75:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/chat/ChatPanel.tsx
-try {
-  assertOnline();
-} catch (e) {
-  const msg = e instanceof Error ? e.message : "You’re offline — try again later.";
-  toastError(msg);
-  return;
+function err(status: number, code: string, message: string, extra?: any) {
+  return NextResponse.json({ error: { code, message, ...extra } }, { status });
 }
-```
 
-- Retryable preview trigger is wrapped with try/catch in UI:
-
-```201:211:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/chat/ChatPanel.tsx
-try {
-  const pv = await translatorPreview.mutateAsync(undefined);
-  setTranslatorData({ lines: pv.preview.lines, notes: pv.preview.notes });
-  setTranslatorError(null);
-} catch {
-  setTranslatorError("Preview failed. Please retry.");
-}
-```
-
-- Plan Builder side-effects are isolated with try/catch and error logs:
-
-```111:136:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/flow/PlanBuilderOverviewSheet.tsx
-try {
-  const peekRes = await fetch(`/api/flow/peek?threadId=${threadId}`);
-  // … confirm phase
-} catch (err) {
-  console.error("Failed to check/confirm phase:", err);
-}
-```
-
-### Guards (navigation/redirection)
-
-- WorkspaceShell peeks thread; on 401/403/404, shows code and can redirect user to select/start a chat:
-
-```47:59:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/WorkspaceShell.tsx
-try {
-  const res = await fetch(`/api/flow/peek?threadId=${effectiveThreadId}`);
-  if (res.status === 404 || res.status === 403 || res.status === 401) {
-    let code = String(res.status);
-    try { const json = await res.json(); code = json?.code || code; } catch {}
-    // UI can route user to chats list/select existing thread
+export async function POST(req: NextRequest) {
+  const requestId = crypto.randomUUID();
+  const log = (...a: any[]) => console.log("[/api/notebook/locks]", requestId, ...a);
+  try {
+    let body = BodySchema.parse(await req.json());
+    // ... auth, ownership, conflict checks
+  } catch (e: any) {
+    console.error("[/api/notebook/locks] fatal", e);
+    return err(500, "INTERNAL", "Internal server error");
   }
-} catch {}
+}
 ```
 
-### A11y
-
-- Use `aria-live="polite"` where possible for transient status/toast regions (TODO if toast system lacks landmark).
+## Monitoring
+- Current: console-based. Consider wiring a structured logger and external sink (e.g., Logtail/Datadog/Sentry) with request correlation IDs and redaction.

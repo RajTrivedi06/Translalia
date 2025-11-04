@@ -1,342 +1,140 @@
-### [Last Updated: 2025-09-16]
+### [Last Updated: 2025-11-04]
 
 ## Testing Strategies
 
-### LLM Quick Reference
-
-- Test pure logic (questions/parse) with unit tests.
-- Contract-test APIs: validate 4xx/5xx codes and shapes.
-- Mock Supabase and OpenAI clients.
-
-### Context Boundaries
-
-- Covers testing approaches; does not duplicate API specs.
-
-### Unit Testing
-
-- Targets: `server/flow/questions.ts`, `server/translator/parse.ts`, helpers in `lib/*`.
-- Patterns: arrange/act/assert; test invalid inputs and edge cases.
-
-Examples (parser):
-
-```10:18:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/server/translator/parse.ts
-export function parseTranslatorOutput(raw: string): TranslatorParsed {
-  const text = raw ?? "";
-  const afterA = text.split(/---VERSION A---/i)[1] ?? "";
-  const [poemRaw, notesRaw] = afterA.split(/---NOTES---/i);
-```
-
-Assert that missing markers throws Zod error when notes are empty; valid markers yield `{ lines[], notes[] }`.
-
-### Testing Matrix
-
-| Module                       | Test Level(s) | Core Assertions                                                  | Anchors                                                                                    |
-| ---------------------------- | ------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `server/translator/parse.ts` | Unit          | Parses markers; trims lines; caps notes at 10; throws on invalid | ```10:17:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/server/translator/parse.ts |
-
-const afterA = text.split(/---VERSION A---/i)[1] ?? "";
-const [poemRaw, notesRaw] = afterA.split(/---NOTES---/i);
-
-````|
-| `server/flow/questions.ts` | Unit | `computeNextQuestion` routing; `processAnswer` normalization; list parsing | ```96:105:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/server/flow/questions.ts
-export function computeNextQuestion(state: SessionState): Question | null {
-  const f = state.collected_fields ?? {};
-  if (!f.target_lang_or_variety) return QUESTIONS[0];
-  if (!f.style_form?.meter || !f.style_form?.rhyme) return QUESTIONS[1];
-``` |
-| `app/api/translator/preview` | Integration | 403 when feature off; 401 on missing user; 429 on rate limit; 409 on echo; 500/502 on LLM/DB failures; 200 with cached flag | ```34:36:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-if (process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR !== "1") {
-  return new NextResponse("Feature disabled", { status: 403 });
-}
-````
-
-```55:58:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-const rl = rateLimit(`preview:${threadId}`, 30, 60_000);
-if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
-```
-
-````157:165:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-const key = "translator_preview:" + stableHash({ ...bundle, placeholderId });
-const cached = await cacheGet<unknown>(key);
-``` |
-| `app/api/enhancer` | Integration | 403 feature off; 404 no thread; 409 no poem; 400 moderation; 200 cached | ```52:56:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/enhancer/route.ts
-const payload = { poem, fields };
-const key = "enhancer:" + stableHash(payload);
-const cached = await cacheGet<unknown>(key);
-``` |
-| `app/api/translate` | Integration | 409 not ready; 400 moderation; 502 invalid parse; 200 cached | ```38:44:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translate/route.ts
-if (state.phase !== "translating" && state.phase !== "review") {
-  return NextResponse.json(
-    { error: "Not ready to translate" },
-    { status: 409 }
-  );
-}
-``` |
-| `lib/ai/cache.ts` | Unit | Stable key hashing sorted keys; TTL expiry deletes | ```5:11:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/cache.ts
-export function stableHash(obj: unknown): string {
-  const json = JSON.stringify(
-    obj,
-    Object.keys(obj as Record<string, unknown>).sort()
-  );
-  return crypto.createHash("sha256").update(json).digest("hex");
-}
-``` |
-| `lib/ai/ratelimit.ts` | Unit | Window reset; count increments; deny at limit | ```1:8:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/ratelimit.ts
-const buckets = new Map<string, { count: number; until: number }>();
-export function rateLimit(key: string, limit = 30, windowMs = 60_000) {
-  const now = Date.now();
-  const b = buckets.get(key);
-  if (!b or now > b.until) { /* resets */ }
-}
-``` |
-| `lib/ratelimit/redis.ts` | Integration (with test Redis) | Increments; sets TTL on first; respects max | ```33:39:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ratelimit/redis.ts
-const res = await l.redis.incr(id);
-if (res === 1) {
-  const ttl = 24 * 60 * 60;
-  await l.redis.expire(id, ttl);
-}
-``` |
-
-### End-to-End
-
-- Happy paths: sign-in → start flow → answer → confirm → preview → accept-lines.
-
-Anchors to validate payloads along the path:
-
-```120:131:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-const placeholderMeta = {
-  thread_id: threadId,
-  display_label: displayLabel,
-  status: "placeholder" as const,
-  parent_version_id: null as string | null,
-};
-````
-
-### Fixtures & Mocks
-
-- Create minimal thread/project fixtures in a test schema or via Supabase test project.
-- Mock OpenAI chat completions to return deterministic outputs.
-
-### Performance Tests
-
-- Measure translator preview latency and cache hit rates.
-
-Anchors:
-
-```153:156:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-const key = "translator_preview:" + stableHash({ ...bundle, placeholderId });
-const cached = await cacheGet<unknown>(key);
-```
-
-### Related Files
-
-- docs/flow-api.md
-- docs/llm-api.md
-
-### Route Tests (Translator)
-
-- Instruct returns 409 on echo/untranslated after retry; 502 on empty or parse failure; 409 on missing must_keep after retry; 422 on missing target variety.
-
-```270:279:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
-if (echoish1 || untranslated1 || hangulUntranslated1) {
-  const hardReq = `\n\nHARD REQUIREMENT: Output must be fully in the target language; do NOT echo or quote SOURCE_POEM lines or reproduce non-target script.`;
-  const retryUser = bundleUser + hardReq;
-  const respRetryUnknown: unknown = await responsesCall({ /* ... */ });
+### Current tooling status
+- No test runner or browser E2E framework is configured in `package.json` (no `test` script, no Jest/Vitest/Playwright deps)
+```1:11:/Users/raaj/Documents/CS/metamorphs/translalia-web/package.json
+"scripts": {
+  "dev": "next dev",
+  "build": "next build",
+  "start": "next start",
+  "typecheck": "tsc -p tsconfig.json --noEmit",
+  "lint": "next lint"
 }
 ```
+- CI: no workflows committed; tests do not run in CI today
 
-```332:346:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
-return NextResponse.json(
-  { ok: false, code: "INSTRUCT_ECHO_OR_UNTRANSLATED", retryable: true },
-  { status: 409 }
-);
-```
+### Recommended setup (proposal)
+- Unit/Integration: Vitest + TS + ts-dom for small DOM utilities
+- API route integration: Supertest on Next Route Handlers via Next testing utilities or spin up dev server with fetch against localhost
+- E2E: Playwright (headed/headless) for critical flows
+- Coverage: `c8` with targets listed below
 
-```283:297:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
-return NextResponse.json(
-  { ok: false, code: "INSTRUCT_RETRY_EMPTY", retryable: true },
-  { status: 502 }
-);
-```
-
-```304:317:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
-return NextResponse.json(
-  { ok: false, code: "INSTRUCT_PARSE_RETRY_FAILED", retryable: true },
-  { status: 502 }
-);
-```
-
-```389:409:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
-return NextResponse.json(
-  {
-    ok: false,
-    code: "REQUIRED_TOKENS_MISSING",
-    retryable: true,
-    missing: missing2,
-  },
-  { status: 409 }
-);
-```
-
-```108:116:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translate/route.ts
-if (state.phase !== "translating" && state.phase !== "review") {
-  return NextResponse.json(
-    { error: "Not ready to translate" },
-    { status: 409 }
-  );
-}
-```
-
-### Flow Tests (Chaining)
-
-- When creating B, set `parent_version_id = A`; similarly C→B, D→C; verify via `GET /api/versions/nodes?threadId=...` ordered ascending.
-
-```33:38:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/nodes/route.ts
-.from("versions")
-.select("id, tags, meta, created_at")
-.eq("project_id", th.project_id)
-.filter("meta->>thread_id", "eq", threadId)
-```
-
-### UI Tests (VersionCanvas)
-
-- Canvas renders directed edges count = (versions − 1) with arrow markers and stroke width.
-
-```151:161:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/versions/VersionCanvas.tsx
-const lineage: Edge[] = (apiNodes || [])
-  .filter((n) => !!n.parent_version_id)
-  .map((n) => ({
-    id: `lineage:${String(n.parent_version_id)}->${n.id}`,
-    source: String(n.parent_version_id),
-    target: n.id,
-    type: "straight",
-    markerEnd: { type: MarkerType.ArrowClosed },
-  }));
-```
-
-```327:331:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/versions/VersionCanvas.tsx
-defaultEdgeOptions={{ animated: true, markerEnd: { type: MarkerType.ArrowClosed }, style: { strokeWidth: 3 } }}
-```
-
-### Phase 2 Stabilization Tests
-
-Unit:
-
-- useWorkspace actions
-  - `setTokenSelection(lineId, tokenId, selectionId)` updates `tokensSelections` map
-  - `appendNotebook(text)` appends to `workshopDraft.notebookText`
-
-```124:133:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/store/workspace.ts
-setTokenSelection: (lineId, tokenId, selectionId) =>
-  set((s) => {
-    const next = { ...(s.tokensSelections as Record<string, Record<string, string>>) };
-    const line = { ...(next[lineId] || {}) };
-    line[tokenId] = selectionId;
-    next[lineId] = line;
-    return { tokensSelections: next } as Partial<WorkspaceState>;
-  }),
-```
-
-```139:144:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/store/workspace.ts
-appendNotebook: (text) =>
-  set((s) => ({
-    workshopDraft: {
-      notebookText: (s.workshopDraft?.notebookText || "") + text,
-    },
-  })),
-```
-
-- Grouping utilities
-  - `groupWithNext(line, idx)` creates phrase token from adjacent words
-  - `ungroup(line, idx)` splits phrase back into words
-
-```4:15:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/_utils/grouping.ts
-export function groupWithNext(line: ExplodedLine, atIndex: number): ExplodedLine {
-  // merges tokens[atIndex] and tokens[atIndex+1]
-}
-```
-
-```18:29:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/_utils/grouping.ts
-export function ungroup(line: ExplodedLine, atIndex: number): ExplodedLine {
-  // splits phrase token into words
-}
-```
-
-- Selection reducer
-  - Range selection, toggle, select-all/clear
-
-```15:38:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/_utils/selection.ts
-export function selectionReducer(state: SelectionState, action: SelectionAction): SelectionState {
-  // SELECT_SINGLE, SELECT_RANGE, TOGGLE_SINGLE, SELECT_ALL, CLEAR_ALL
-}
-```
-
-Integration (UI):
-
-- Line selection keyboard behavior and roles
-
-```203:216:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/views/LineSelectionView.tsx
-onKeyDown={(e) => {
-  if (e.key === "Enter" || e.key === " ") {
-    e.preventDefault();
-    // Create a synthetic mouse event for keyboard interaction
-    const syntheticEvent = {
-      shiftKey: e.shiftKey,
-      metaKey: e.metaKey,
-      ctrlKey: e.ctrlKey,
-      preventDefault: () => {},
-      stopPropagation: () => {},
-    } as React.MouseEvent;
-    handleLineClick(lineId, syntheticEvent);
-  }
-}}
-```
-
-- Token chip `aria-pressed` reflects selection; click updates store
-
-```133:141:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/components/TokenCard.tsx
-const active = selected === opt.id;
-return (
-  <button
-    onClick={() => setTokenSelection(lineId, token.tokenId, opt.id)}
-    aria-pressed={active}
-  >
-```
-
-- Drawer focus trap and Escape to close
-
-```49:76:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/ui/sheet.tsx
-function onKeyDown(e: KeyboardEvent) {
-  if (e.key === "Escape") {
-    ctx?.onOpenChange(false);
-  }
-  if (e.key === "Tab") {
-    // basic focus trap
-    const fEls = el?.querySelectorAll<HTMLElement>(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-    );
-    // …
+Add scripts (proposal):
+```json
+{
+  "scripts": {
+    "test": "vitest",
+    "test:ui": "playwright test",
+    "coverage": "vitest run --coverage"
   }
 }
 ```
 
-Contract:
+### Organization (proposal)
+- Tests colocated next to modules: `*.test.ts` for units; `*.spec.ts` for route integrations under `src/app/api/**`
+- E2E under `e2e/` with Playwright fixtures
 
-- Nodes query key remains stable
+### Unit testing patterns and targets
+- Pure logic helpers: hashing, rate limit math, selection reducers
+```5:11:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/ai/cache.ts
+export function stableHash(obj: unknown): string { /* sorted keys, sha256 */ }
+```
+```1:16:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/ai/ratelimit.ts
+export function rateLimit(key: string, limit = 30, windowMs = 60_000) { /* window */ }
+```
+- Store reducers and actions: notebook mutations, guide merges
+```436:450:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/store/notebookSlice.ts
+if (p.meta?.threadId && p.meta.threadId !== tid) { /* discard persisted */ }
+return { ...current, ...p, hydrated: true, meta: { threadId: tid } };
+```
 
-```44:49:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/hooks/useNodes.ts
-return useQuery({
-  queryKey: ["nodes", projectId, threadId],
-  queryFn: () => fetchNodes(threadId!),
-  enabled,
-  staleTime: 0,
+Example test (vitest sketch):
+```ts
+import { describe, it, expect } from "vitest";
+import { stableHash } from "@/lib/ai/cache";
+
+describe("stableHash", () => {
+  it("hashes with deterministic key ordering", () => {
+    const a = stableHash({ b: 1, a: 2 });
+    const b = stableHash({ a: 2, b: 1 });
+    expect(a).toBe(b);
+  });
 });
 ```
 
-- Mock `useExplodeTokens` to provide deterministic `ExplodedLine[]`
+### Integration testing approach (API)
+- Route handlers: validate status codes and envelopes, mocking external services
+```8:15:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/projects/route.ts
+const parsed = createProjectSchema.safeParse(await req.json());
+if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+```
+- Auth variants: cookie vs Bearer
+```12:22:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/apiGuard.ts
+export async function requireUser(req: NextRequest): Promise<GuardOk | GuardFail> { /* cookie → bearer */ }
+```
+- Caching and rate-limiting behaviors
+```101:109:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/ai-assist/route.ts
+const cached = await cacheGet<AIAssistResponse>(cacheKey);
+if (cached) { return NextResponse.json(cached); }
+```
+```83:99:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/ai-assist/route.ts
+const rateCheck = await checkDailyLimit(/* ... */);
+if (!rateCheck.allowed) { return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 }); }
+```
 
-```36:54:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/_utils/useExplodeTokens.ts
-export function useExplodeTokens(sourceLines: string[]): ExplodeTokensResult {
-  // explode lines into tokens with equal-weight options (mockable in tests)
+### E2E testing strategy (proposal)
+- Critical paths:
+  - Sign-in → list threads → create thread → open → send chat → see message
+  - Guide: set poem → analyze → see JSON analysis persisted
+  - Notebook: locks update → verify persisted state via API
+- Use Playwright fixtures for Supabase auth (seed via API or stub session cookies in dev-only build)
+
+### Coverage goals (proposal)
+- Unit: ≥ 70% statements/branches in `lib/**` and `store/**`
+- Routes: smoke coverage for all `src/app/api/**` handlers; happy path + major error branches (401/403/404/409/429/500/502)
+- E2E: 3 critical flows per release
+
+### Mocking strategies
+- OpenAI: mock `openai.chat.completions.create` and `openai.responses.create` to return deterministic JSON blocks
+```147:156:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/prismatic/route.ts
+messages: [ { role: "system", content: system }, { role: "user", content: userPrompt } ]
+```
+- Supabase: mock `createServerClient` and client methods (`auth.getUser`, `from().select().single()`, etc.)
+- Rate limit/cache: inject stubs or reset in beforeEach
+
+### CI/CD test execution
+- Today: none. Recommended pipeline steps:
+  - Install deps (cache)
+  - `npm run lint && npm run typecheck`
+  - `npm run test` (Vitest)
+  - `npm run test:ui` (Playwright) on main/nightly only
+
+### Running tests locally (proposal)
+- Unit/integration:
+  - `npm run test` (after adding Vitest)
+- E2E:
+  - `npm run dev` in one terminal, then `npm run test:ui` (after adding Playwright)
+- Env notes:
+  - For API tests, set dummy `OPENAI_API_KEY` and stub OpenAI client; for Supabase, either mock client or point to test project with RLS relaxed
+
+### Appendices: key anchors for assertions
+- Retry-After support
+```13:23:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/http/errors.ts
+export function jsonError(status: number, message: string, opts?: { retryAfterSec?: number }) {
+  const res = NextResponse.json({ error: message }, { status });
+  if (opts?.retryAfterSec) { res.headers.set("Retry-After", String(opts.retryAfterSec)); }
+  return res;
+}
+```
+- Model fallback logic (assert path switch)
+```200:238:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/prismatic/route.ts
+if (shouldFallback) { /* switch to gpt-4o */ } else { return err(502, "OPENAI_FAIL", /* ... */); }
+```
+- Thread‑aware persistence merge
+```446:450:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/store/notebookSlice.ts
+if (p.meta?.threadId && p.meta.threadId !== tid) {
+  return { ...current, hydrated: true, meta: { threadId: tid } };
 }
 ```

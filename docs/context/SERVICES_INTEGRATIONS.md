@@ -1,131 +1,139 @@
 Purpose: External services used (Supabase, OpenAI, Upstash), usage points, and env names.
-Updated: 2025-09-16
+Updated: 2025-11-04
 
-### [Last Updated: 2025-09-16]
+### [Last Updated: 2025-11-04]
 
-# Services & Integrations (2025-09-16)
+# Services & Integrations (2025-11-04)
 
-## Supabase (Auth + DB)
+## Supabase (Auth + DB + Storage)
 
-- SSR client creation:
+- SSR client creation
 
-```7:10:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/supabaseServer.ts
+```7:16:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/supabaseServer.ts
 return createServerClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  { cookies: {/* implemented per middleware/request */} }
+);
 ```
 
-- Client (browser) for hooks:
+- Browser client for hooks
 
-```4:5:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/supabaseClient.ts
+```4:5:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/supabaseClient.ts
 process.env.NEXT_PUBLIC_SUPABASE_URL || "",
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
 ```
 
-- Guarded routes pattern:
+- Auth guard (cookies → Bearer fallback)
 
-```16:19:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/route.ts
-export async function POST(req: NextRequest) {
-  const guard = await requireUser(req);
-  if ("res" in guard) return guard.res;
-```
-
-Required envs (names only): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
-
-## OpenAI (LLM)
-
-- API key usage and validation:
-
-```1:5:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/openai.ts
-import OpenAI from "openai";
-
-export const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
-});
-```
-
-```7:10:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/openai.ts
-export function getOpenAI() {
-  if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY missing");
-  return openai;
+```12:22:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/apiGuard.ts
+export async function requireUser(req: NextRequest): Promise<GuardOk | GuardFail> {
+  // 1) cookies → SSR helper
+  // 2) Authorization: Bearer <token>
 }
 ```
 
-- Model defaults and env overrides (names only):
-  - `TRANSLATOR_MODEL`, `ENHANCER_MODEL`, `ROUTER_MODEL`, `EMBEDDINGS_MODEL`, `MODERATION_MODEL`
+- Storage usage (avatars bucket)
 
-```2:15:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/models.ts
+```150:154:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/components/account/ProfileForm.tsx
+const { error: upErr } = await supabase.storage
+  .from("avatars")
+  .upload(path, file, { upsert: true });
+```
+
+- Configuration (names only)
+  - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- SDKs
+  - `@supabase/ssr`, `@supabase/supabase-js`
+- Error handling
+  - 401 JSON when no session (guard), 403/404 on ownership/RLS, 500 on DB errors
+
+```8:15:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/uploads/list/route.ts
+if (!user)
+  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+```
+
+- Testing locally
+  - Create a Supabase project; set envs; sign-in via UI; verify `/api/auth/whoami` returns uid
+
+## OpenAI (LLM: Chat/Responses/Moderation)
+
+- Client singleton and getter
+
+```1:10:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/ai/openai.ts
+export const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY!, });
+export function getOpenAI() { if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY missing"); return openai; }
+```
+
+- Responses adapter with GPT‑5 param fallback
+
+```37:85:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/ai/openai.ts
+export async function responsesCall({ model, system, user, temperature, top_p, response_format }: ResponsesCallOptions) { /* strips unsupported params and retries */ }
+```
+
+- Moderation
+
+```8:20:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/ai/moderation.ts
+const res = await client.moderations.create({ model: "omni-moderation-latest", input: text.slice(0, 20000) });
+```
+
+- Model selection via env
+
+```1:8:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/models.ts
 export const TRANSLATOR_MODEL = process.env.TRANSLATOR_MODEL?.trim() || "gpt-5";
-export const ENHANCER_MODEL =
-  process.env.ENHANCER_MODEL?.trim() || "gpt-5-mini";
-export const ROUTER_MODEL =
-  process.env.ROUTER_MODEL?.trim() || "gpt-5-nano-2025-08-07";
-export const EMBEDDINGS_MODEL =
-  process.env.EMBEDDINGS_MODEL?.trim() || "text-embedding-3-large";
-export const MODERATION_MODEL = "omni-moderation-latest";
+export const ENHANCER_MODEL = process.env.ENHANCER_MODEL?.trim() || "gpt-5-mini";
+export const ROUTER_MODEL = process.env.ROUTER_MODEL?.trim() || "gpt-5-nano-2025-08-07";
+export const EMBEDDINGS_MODEL = process.env.EMBEDDINGS_MODEL?.trim() || "text-embedding-3-large";
 ```
 
-- Optional: `VERIFIER_MODEL`, `BACKTRANSLATE_MODEL`
+- Configuration (names only)
+  - `OPENAI_API_KEY`, optional `TRANSLATOR_MODEL`, `ENHANCER_MODEL`, `ROUTER_MODEL`, `EMBEDDINGS_MODEL`
+- SDKs
+  - `openai`
+- Error handling and fallback
+  - GPT‑5 param removal; model fallback to `gpt-4o`/`gpt-4o-mini`; 502 with concise envelope on upstream failure
 
-```12:15:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/verify.ts
-const VERIFIER_MODEL = process.env.VERIFIER_MODEL?.trim() || ROUTER_MODEL;
-const BACKTRANSLATE_MODEL =
-  process.env.BACKTRANSLATE_MODEL?.trim() || ENHANCER_MODEL;
+```200:238:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/prismatic/route.ts
+} catch (modelError: any) {
+  const shouldFallback = /* 400/404/model_not_found */
+  if (shouldFallback) { /* switch to gpt-4o and retry */ } else { return err(502, "OPENAI_FAIL", "Upstream prismatic generation failed.", { upstream: String(modelError?.message ?? modelError) }); }
+}
 ```
 
-- Moderation note (Policy vs Implementation):
+- Cost considerations
+  - Prefer caching idempotent results; rate-limit hot endpoints; use smaller models for routing/enhancing where acceptable
+- Testing locally
+  - Set `OPENAI_API_KEY`; run routes like `/api/guide/analyze-poem` and `/api/notebook/prismatic`; verify JSON output
 
-```9:13:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/moderation.ts
-const res = await client.moderations.create({
-  model: "omni-moderation-latest",
-  input: text.slice(0, 20000),
-});
+## Upstash Redis (Daily quotas; optional)
+
+- Helper (may be stubbed if client not configured)
+
+```176:191:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/ratelimit/redis.ts
+export async function checkDailyLimit(userId: string, key: string, max: number) { /* incr with 24h TTL; returns allowed/current/max */ }
 ```
 
-> TODO-VERIFY: Although `MODERATION_MODEL` is exported in `lib/models.ts`, the moderation call uses a hard-coded literal.
+- Usage example (rate 429)
 
-### Moderation Lifecycle Link
-
-- See `docs/moderation-policy.md` for lifecycle diagram, enforcement table, and JSON examples.
-
-Required envs (names only): `OPENAI_API_KEY`, `TRANSLATOR_MODEL`, `ENHANCER_MODEL`, `ROUTER_MODEL`, `EMBEDDINGS_MODEL`, optional `VERIFIER_MODEL`, `BACKTRANSLATE_MODEL`.
-
-## Upstash Redis (Quotas)
-
-- Daily quota helper:
-
-```1:3:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ratelimit/redis.ts
-import { Ratelimit } from "@upstash/ratelimit";
-import { Redis } from "@upstash/redis";
+```83:99:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/ai-assist/route.ts
+const rateCheck = await checkDailyLimit(user.id, `notebook:ai-assist:${threadId}`, 10 * 60);
+if (!rateCheck.allowed) { return NextResponse.json({ error: "Rate limit exceeded", current: rateCheck.current, max: rateCheck.max }, { status: 429 }); }
 ```
 
-- Verify/back-translate routes use daily limits:
+- Configuration (names only)
+  - `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`
+- SDKs
+  - `@upstash/redis`, `@upstash/ratelimit` (if enabled)
+- Error handling & fallback
+  - If Redis client absent, helper allows by default; API still protected by local per-minute limiter when implemented
+- Testing locally
+  - Omit envs to effectively disable daily quotas; rely on in-memory limiter for basic protection
 
-```18:23:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/verify/route.ts
-const rl = await checkDailyLimit(user.id, "verify", VERIFY_DAILY_LIMIT);
-if (!rl.allowed)
-  return NextResponse.json(
-    { error: "Daily verification limit reached" },
-    { status: 429 }
-  );
-```
+## Feature flags (exposure control)
 
-Required envs (names only): `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`.
+- Routes gated by `NEXT_PUBLIC_FEATURE_*`
 
-## Integration Map (usage points & failure modes)
-
-| Service             | Usage points                                                    | Env vars                                                    | Failure modes                                                          | Anchors                                                                                                                                                                                        |
-| ------------------- | --------------------------------------------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Supabase            | Auth guard, threads/projects CRUD, versions insert/update, RPCs | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 401 when missing session; 403/404 on RLS or ownership; 500 on DB error | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/route.ts#L16-L24; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts#L135-L146 |
-| OpenAI (Responses)  | Translator/Enhancer/Router/Verifier calls via helper            | `OPENAI_API_KEY`, model envs                                | 502 on upstream errors; helper preserves Retry-After on 429            | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/openai.ts#L38-L61; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/http/errors.ts#L3-L10                              |
-| OpenAI (Moderation) | Pre/post screening for routes                                   | `OPENAI_API_KEY`, `MODERATION_MODEL`                        | 400 block on flagged content; generic messages                         | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/moderation.ts#L10-L13; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translate/route.ts#L81-L86                 |
-| Upstash Redis       | Daily quotas for verify/backtranslate                           | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`        | 429 JSON when over quota; header TODO                                  | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ratelimit/redis.ts#L26-L39; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/verify/route.ts#L18-L23       |
-
-## Feature Flags (exposure control)
-
-- Routes gate access via `NEXT_PUBLIC_FEATURE_*`.
-
-```28:30:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
+```28:31:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/translator/preview/route.ts
 if (process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR !== "1") {
   return new NextResponse("Feature disabled", { status: 403 });
 }
@@ -135,22 +143,15 @@ if (process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR !== "1") {
 
 - No Stripe/S3/Sendgrid integrations found in code.
 
+## Local integration testing checklist
+
+- Set required envs
+  - Supabase URL & anon key; OpenAI API key; optional Redis
+- Validate auth & cookies
+  - Hit `/api/auth/whoami` to confirm uid; access a protected route and expect redirect when unauthenticated
+- Exercise LLM endpoints
+  - `POST /api/guide/analyze-poem` and `/api/notebook/prismatic` with minimal payloads; expect strict JSON
+- Verify storage
+  - Upload an avatar in Profile to confirm bucket permissions
+
 > Redaction: Do not print secret values. List env names only.
-
-## Uploads & Buckets (Phase 2)
-
-- Storage bucket names (names only):
-  - `corpora` (default via `STORAGE_BUCKETS_CORPORA` env)
-  - `avatars` (profile images)
-
-```6:7:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/storage.ts
-export const BUCKET = process.env.STORAGE_BUCKETS_CORPORA ?? "corpora";
-```
-
-```42:49:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/account/ProfileForm.tsx
-const { error: upErr } = await supabase.storage
-  .from("avatars")
-  .upload(path, file, { upsert: true });
-```
-
-- Uploads Tray: Reuses existing uploads endpoints and storage helpers; no API changes in Phase 2.

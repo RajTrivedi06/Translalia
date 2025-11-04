@@ -1,186 +1,163 @@
-### [Last Updated: 2025-09-16]
+### [Last Updated: 2025-11-04]
 
 ## Domain: Data Flow
 
-End-to-end: Interview → Plan → Preview → Accept → Canvas
+End-to-end: Interview → Plan → Preview → Accept → Canvas → Notebook
 
-### Phase 2 Front-End Flow (UI-first)
-
-Input (source text via Welcome/Upload) → `getSourceLines()`
-→ `LineSelectionView` (select ids)
-→ `useExplodeTokens(lineIds, settings)` [mock]
-→ `WorkshopView` (`TokenCard`, grouping, selections)
-→ `appendNotebook(text)` → `NotebookView`
-
-Anchors:
-
-```42:74:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/_utils/data.ts
-export function getSourceLines({ flowPeek, nodes }: GetSourceArgs): string[] | null {
-  // peek → state.source_text/poem_text; fallback to nodes.overviewLines
-}
+### Request lifecycle (client → server)
+1) Client prepares request with SSR cookies (by default) and optionally `Authorization: Bearer <access_token>`
+```19:33:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/(app)/workspaces/[projectId]/page.tsx
+const { data: sessionData } = await supabase.auth.getSession();
+const accessToken = sessionData.session?.access_token;
+const headers: HeadersInit = accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
+const res = await fetch(`/api/threads/list?projectId=${projectId}`, { cache: "no-store", credentials: "include", headers });
+```
+2) Middleware wires SSR cookies and enforces auth on protected paths; non‑authed redirected
+```25:41:/Users/raaj/Documents/CS/metamorphs/translalia-web/middleware.ts
+const needsAuth = pathname.startsWith("/workspaces") || pathname.startsWith("/api/threads") || pathname.startsWith("/api/flow") || pathname.startsWith("/api/versions");
+if (needsAuth && !hasSupabaseCookies) { /* redirect to /auth/sign-in?redirect=... */ }
+```
+3) Route handler authenticates (cookie → Bearer), validates input (Zod), performs business logic, persists, and returns JSON
+```12:22:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/apiGuard.ts
+export async function requireUser(req: NextRequest): Promise<GuardOk | GuardFail> { /* cookie then bearer */ }
+```
+```8:15:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/projects/route.ts
+const parsed = createProjectSchema.safeParse(await req.json());
+if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 ```
 
-```23:37:/Users/raaj/Documents/CS/Translalia-met amorphs-web/src/components/workspace/v2/views/LineSelectionView.tsx
-export function LineSelectionView({ flowPeek, nodes, onProceed }: LineSelectionViewProps) {
-  // keyboard range selection and checkboxes
-}
+### Data transformation at each layer
+- Client: constructs fetch payloads, attaches Bearer; transforms UI selections into server payloads
+```72:83:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/(app)/workspaces/[projectId]/page.tsx
+body: JSON.stringify({ projectId }),
+```
+- Server: parses/validates input → shapes DB rows → shapes response envelope
+```95:141:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/cells/route.ts
+const workshopLine = workshopLines[index];
+const translatedText = workshopLine?.translated || workshopLine?.text || "";
+let status: NotebookCell["translation"]["status"] = "untranslated";
+/* …build cells[] for response… */
 ```
 
-```36:54:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/_utils/useExplodeTokens.ts
-export function useExplodeTokens(sourceLines: string[]): ExplodeTokensResult {
-  // explode lines into tokens with equal-weight options (mocked in Phase 2)
-}
+### Validation points
+- Zod schemas in handlers and server utilities
+```12:18:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/prismatic/route.ts
+const BodySchema = z.object({ threadId: z.string().min(1), lineIndex: z.number().int().min(0), sourceText: z.string().min(1) });
+```
+- Query validation
+```12:14:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/cells/route.ts
+const QuerySchema = z.object({ threadId: z.string().min(1, "threadId is required") });
+```
+- Ownership validation before heavy reads/writes
+```21:35:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/threads/list/route.ts
+if (proj.owner_id !== user.id) return NextResponse.json({ ok: false, code: "FORBIDDEN_PROJECT" }, { status: 403 });
 ```
 
-```111:140:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/views/WorkshopView.tsx
-const handleCompileLine = React.useCallback(() => {
-  // assemble selected options → append to notebook; advance to next or notebook view
-}, [/* ... */]);
+### Persistence mechanisms
+- Supabase Postgres via SSR client or scoped bearer client
+```51:61:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/prismatic/route.ts
+const supabase = createServerClient(/* url, anon, cookies */);
+```
+- Writes: `versions` insert/update, `chat_threads.state` JSONB updates, `journey_items` insert
+```124:134:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/translator/preview/route.ts
+await sb.from("versions").insert({ project_id: projectId, title: displayLabel, lines: [], meta: placeholderMeta, tags: ["translation"] }).select("id").single();
+```
+```116:125:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/server/guide/updateGuideState.ts
+await supabase.from("chat_threads").update({ state: { ...currentState, guide_answers: mergedAnswers } }).eq("id", threadId);
 ```
 
-```11:43:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/views/NotebookView.tsx
-export function NotebookView() {
-  // shows compiled draft; copy/clear/back actions
-}
+### Cache interactions
+- In‑memory TTL cache with stable key; checked before expensive LLM calls
+```101:109:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/ai-assist/route.ts
+const cached = await cacheGet<AIAssistResponse>(cacheKey);
+if (cached) { return NextResponse.json(cached); }
+```
+- Stored after computation
+```241:244:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/ai-assist/route.ts
+await cacheSet(cacheKey, result, 3600);
+return NextResponse.json(result);
+```
+- Rate limit guard before work
+```3:16:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/ai/ratelimit.ts
+export function rateLimit(key: string, limit = 30, windowMs = 60_000) { /* token bucket */ }
 ```
 
-### Flow Diagram
+### Response generation
+- JSON envelopes with `{ ok }` or `{ error: { code, message } }` patterns
+```20:24:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/prismatic/route.ts
+function err(status: number, code: string, message: string, extra?: any) { return NextResponse.json({ error: { code, message, ...extra } }, { status }); }
+```
+- Partial success returns to avoid blocking the UI on secondary failures
+```160:170:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/guide/analyze-poem/route.ts
+if (saveErr) { log("save_fail", saveErr.message); return ok({ analysis, saved: false }); }
+```
 
+### Error propagation
+- Standard status mapping: 400/401/403/404/409/429/500/502
+```8:15:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/threads/list/route.ts
+if (!projectId) { return NextResponse.json({ ok: false, code: "MISSING_PROJECT_ID" }, { status: 400 }); }
+```
+- LLM errors: parameter/model fallback then `502 OPENAI_FAIL` with concise envelope
+```200:238:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/prismatic/route.ts
+if (shouldFallback) { /* switch to gpt-4o */ } else { return err(502, "OPENAI_FAIL", "Upstream prismatic generation failed.", { upstream: String(modelError?.message ?? modelError) }); }
+```
+
+### Sequence diagrams
+
+#### A) Translator Preview (happy path)
 ```mermaid
-flowchart LR
-  A[Interview] --> B[Plan Confirm]
-  B --> C[Preview]
-  C --> D[Accept Lines]
-  D --> E[Canvas Nodes]
-  subgraph DB
-    T[(chat_threads.state)]
-    V[(versions)]
-    J[(journey_items)]
+sequenceDiagram
+  participant UI
+  participant API as /api/translator/preview
+  participant DB as Supabase
+  participant LLM as OpenAI
+  participant Cache
+  UI->>API: POST threadId, bundle
+  API->>API: validate body (Zod), rateLimit
+  API->>DB: insert versions placeholder (title, meta: placeholder)
+  API->>Cache: cacheGet(key)
+  alt cache hit
+    Cache-->>API: preview
+  else miss
+    API->>LLM: prompt (system+user)
+    LLM-->>API: JSON (lines, notes)
+    API->>DB: update version meta.status=generated, meta.overview
+    API->>Cache: cacheSet(key, preview)
   end
-  A -->|store fields| T
-  B -->|phase: translating| T
-  C -->|insert placeholder/update meta| V
-  D -->|RPC accept_line + ledger| T
-  C -->|log journey| J
+  API-->>UI: 200 { preview }
 ```
 
-### Pipeline (textual diagram with anchors)
-
-1. Interview (collect fields in `chat_threads.state`)
-
-```60:71:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/flow/peek/route.ts
-const phase = state.phase || (has_poem ? "interviewing" : "welcome");
-if (phase === "interviewing") {
-  const q = computeNextQuestion({ ...state, collected_fields: state.collected_fields || {} });
-}
+#### B) Notebook Locks Update
+```mermaid
+sequenceDiagram
+  participant UI
+  participant API as /api/notebook/locks
+  participant DB as Supabase
+  UI->>API: POST threadId, lineIndex, wordPositions
+  API->>API: validate (Zod), auth (SSR), ownership
+  API->>DB: select chat_threads.state
+  API->>API: merge notebook_cells[line].translation.lockedWords
+  API->>DB: update chat_threads.state
+  API-->>UI: 200 { lockedWords }
 ```
 
-2. Plan (confirm gate → translating)
-
-```28:34:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/flow/confirm/route.ts
-if (state.phase !== "await_plan_confirm") {
-  return NextResponse.json({ error: "Not at plan gate" }, { status: 409 });
-}
-await patchThreadState(threadId, { phase: "translating" });
-```
-
-3. Preview (LLM + anti-echo + cache; placeholder node → generated)
-
-```55:58:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-const rl = rateLimit(`preview:${threadId}`, 30, 60_000);
-if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
-```
-
-```124:134:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-const { data: inserted } = await sb.from("versions").insert({ project_id: projectId, title: displayLabel, lines: [], meta: placeholderMeta, tags: ["translation"] }).select("id").single();
-```
-
-```361:396:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-await cacheSet(key, preview, 3600);
-const { error: upErr2 } = await sb.from("versions").update({ meta: updatedMeta }).eq("id", placeholderId);
-```
-
-4. Accept (merge lines via RPC and append ledger)
-
-```63:71:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/accept-lines/route.ts
-for (const s of selections) { await supabase.rpc("accept_line", { p_thread_id: threadId, p_line_index: s.index + 1, p_new_text: s.text, p_actor: userId }); }
-```
-
-```72:76:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/accept-lines/route.ts
-await appendLedger(threadId, { ts, kind: "accept", note: `Accepted ${selections.length} line(s)` });
-```
-
-5. Canvas (React Query lists nodes by thread)
-
-```33:38:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/nodes/route.ts
-.from("versions").select("id, tags, meta, created_at").eq("project_id", th.project_id).filter("meta->>thread_id", "eq", threadId)
+#### C) Journey Reflection
+```mermaid
+sequenceDiagram
+  participant UI
+  participant API as /api/journey/generate-reflection
+  participant DB as Supabase
+  participant LLM as OpenAI
+  UI->>API: POST threadId, context
+  API->>API: validate (Zod), auth, ownership
+  API->>DB: select chat_threads
+  API->>LLM: prompt (progress, guide answers)
+  LLM-->>API: JSON reflection
+  API->>DB: update chat_threads.state.poem_analysis (best effort)
+  API-->>UI: 200 { reflection, saved: bool }
 ```
 
 ### Notes
-
-- Target variety is enforced before translate/preview.
-
-### JSON: Entities and Stages
-
-```json
-{
-  "entities": {
-    "projects": ["id", "owner_id"],
-    "chat_threads": ["id", "project_id", "title", "state", "created_at"],
-    "versions": [
-      "id",
-      "project_id",
-      "title",
-      "lines",
-      "tags",
-      "meta",
-      "created_at"
-    ],
-    "journey_items": ["project_id", "kind", "summary", "meta", "created_at"]
-  },
-  "stages": [
-    {
-      "stage": "Interview",
-      "affected_entities": ["chat_threads"],
-      "anchors": [
-        "/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/flow/answer/route.ts#L86-L108"
-      ]
-    },
-    {
-      "stage": "Plan Confirm",
-      "affected_entities": ["chat_threads", "journey_items"],
-      "anchors": [
-        "/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/flow/confirm/route.ts#L28-L48"
-      ]
-    },
-    {
-      "stage": "Preview",
-      "affected_entities": ["versions", "journey_items"],
-      "anchors": [
-        "/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts#L124-L146",
-        "/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts#L472-L487"
-      ]
-    },
-    {
-      "stage": "Accept Lines",
-      "affected_entities": ["chat_threads", "journey_items"],
-      "anchors": [
-        "/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/accept-lines/route.ts#L63-L71",
-        "/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/accept-lines/route.ts#L78-L84"
-      ]
-    },
-    {
-      "stage": "Canvas",
-      "affected_entities": ["versions"],
-      "anchors": [
-        "/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/nodes/route.ts#L33-L40"
-      ]
-    }
-  ]
-}
-```
-
-```103:121:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translate/route.ts
-const hasTarget = Boolean(state.collected_fields?.target_lang_or_variety || enhanced?.target);
-if (!hasTarget) return NextResponse.json({ error: "MISSING_TARGET_VARIETY" }, { status: 422 });
-```
+- All write routes use auth guards; ownership validated before reading heavy data.
+- Cache and rate limit are applied to hot LLM endpoints.
+- Error envelopes are consistent to simplify client handling.

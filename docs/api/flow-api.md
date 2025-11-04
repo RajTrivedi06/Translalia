@@ -1,355 +1,276 @@
-Purpose: Contracts and behaviors for flow-related API endpoints, with flags and errors.
-Updated: 2025-09-16
+Purpose: Contracts and behaviors for flow-related API endpoints (guide, journey, notebook, workshop, interview), with auth, schemas, examples, and limits.
+Updated: 2025-11-04
 
-### [Last Updated: 2025-09-16]
+### [Last Updated: 2025-11-04]
 
-# Flow API (2025-09-16)
+# Flow API (2025-11-04)
 
-All endpoints are thread-scoped (`projectId`, `threadId`) and auth-guarded unless stated.
+All endpoints are thread-scoped where applicable and auth-guarded unless stated.
 
-## Contracts Index
+## Endpoints Index
 
-| Route                         | Method | Request schema                                                                                          | Response schema                                                                | Error codes                       | Flags                               | Anchors                                                                                                                                                                                                            |
-| ----------------------------- | ------ | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | --------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| /api/flow/answer              | POST   | `{ threadId: uuid, questionId: enum, answer: string }`                                                  | `{ ok: true, phase, nextQuestion?, snapshot? }`                                | 400, 404                          | —                                   | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/flow/answer/route.ts#L13-L26; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/flow/answer/route.ts#L86-L108                          |
-| /api/flow/start               | POST   | `{ threadId: uuid, poem: string }`                                                                      | `{ ok: true, phase: "interviewing", nextQuestion }`                            | 400, 404                          | —                                   | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/flow/start/route.ts#L8-L12; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/flow/start/route.ts#L55-L59                              |
-| /api/flow/confirm             | POST   | `{ threadId: uuid }`                                                                                    | `{ ok: true, phase: "translating" }`                                           | 400, 404, 409                     | —                                   | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/flow/confirm/route.ts#L7-L15; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/flow/confirm/route.ts#L28-L31                          |
-| /api/flow/intent              | POST   | `{ message: string, phase: string }`                                                                    | `{ intent: string                                                              | null }`                           | 400                                 | `NEXT_PUBLIC_FEATURE_ROUTER` (indirect)                                                                                                                                                                            | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/flow/intent/route.ts#L5-L12; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/server/flow/intentLLM.ts#L11-L18 |
-| /api/translator/preview       | POST   | `{ threadId: uuid, forceTranslate?: boolean, mode?: enum }`                                             | `{ ok: true, preview, mode, sections?, versionId, displayLabel, prompt_hash }` | 400, 401, 403, 409, 429, 500, 502 | `NEXT_PUBLIC_FEATURE_TRANSLATOR`    | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts#L33-L41; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts#L268-L276           |
-| /api/translator/instruct      | POST   | `{ threadId: uuid, instruction: string, citeVersionId?: uuid, mode?: enum }`                            | `{ ok: true, versionId, displayLabel, prompt_hash, mode, sections? }`          | 400, 401, 403, 409, 500, 502      | `NEXT_PUBLIC_FEATURE_TRANSLATOR`    | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts#L24-L32; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts#L445-L456         |
-| /api/translate                | POST   | `{ threadId: uuid }`                                                                                    | `{ ok: true, result, usage? }`                                                 | 400, 403, 404, 409, 422, 502      | `NEXT_PUBLIC_FEATURE_TRANSLATOR`    | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translate/route.ts#L13-L21; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translate/route.ts#L149-L153                             |
-| /api/enhancer                 | POST   | `{ threadId: uuid }`                                                                                    | `{ ok: true, plan, prompt_hash }`                                              | 400, 403, 404, 502                | `NEXT_PUBLIC_FEATURE_ENHANCER`      | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/enhancer/route.ts#L11-L16; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/enhancer/route.ts#L86-L86                                 |
-| /api/translator/verify        | POST   | `{ projectId: uuid, threadId: uuid, source: string, candidate: string }`                                | `{ data, prompt_hash }`                                                        | 400, 404, 429, 502                | `NEXT_PUBLIC_FEATURE_VERIFY`        | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/verify/route.ts#L7-L16; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/verify/route.ts#L25-L31                |
-| /api/translator/backtranslate | POST   | `{ projectId: uuid, threadId: uuid, candidate: string }`                                                | `{ data, prompt_hash }`                                                        | 400, 404, 429, 502                | `NEXT_PUBLIC_FEATURE_BACKTRANSLATE` | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/backtranslate/route.ts#L10-L19; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/backtranslate/route.ts#L32-L39 |
-| /api/versions                 | POST   | `{ projectId: uuid, title: string, lines: string[], tags?: string[], meta?: object, summary?: string }` | `{ version }`                                                                  | 400                               | —                                   | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/route.ts#L16-L24; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/route.ts#L51-L51                                 |
-| /api/versions/nodes           | GET    | `?threadId=uuid`                                                                                        | `{ ok: true, nodes: [] }`                                                      | 400, 403, 404, 500                | —                                   | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/nodes/route.ts#L8-L15; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/nodes/route.ts#L63-L69                      |
-| /api/versions/positions       | PATCH  | `{ projectId, positions: [{id, pos:{x,y}}...] }`                                                        | `{ ok: true }`                                                                 | 400                               | —                                   | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/positions/route.ts#L5-L15; /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/positions/route.ts#L31-L34              |
+| Route                              | Method | Request schema (TS/Zod)                                        | Response schema                           | Auth | Errors                       | Anchors                                            |
+| ---------------------------------- | ------ | -------------------------------------------------------------- | ----------------------------------------- | ---- | ---------------------------- | -------------------------------------------------- |
+| `/api/guide/analyze-poem`          | POST   | `{ poem: string; threadId: string }`                           | `{ analysis: {...}, saved: boolean }`     | Yes  | 400, 401, 403, 404, 500, 502 | `src/app/api/guide/analyze-poem/route.ts`          |
+| `/api/journey/generate-reflection` | POST   | `{ threadId: string; context: {...} }`                         | `{ reflection: {...}, modelUsed: string}` | Yes  | 400, 401, 403, 404, 500, 502 | `src/app/api/journey/generate-reflection/route.ts` |
+| `/api/notebook/cells`              | GET    | `?threadId=string`                                             | `{ cells: NotebookCell[] }`               | Yes  | 400, 401, 403, 404, 500      | `src/app/api/notebook/cells/route.ts`              |
+| `/api/notebook/ai-assist`          | POST   | `RequestSchema` (selected words, cell/thread ids, instruction) | `AIAssistResponse` (typed)                | Yes  | 400, 401, 404, 500, 502      | `src/app/api/notebook/ai-assist/route.ts`          |
+| `/api/notebook/prismatic`          | POST   | `{ threadId: string; lineIndex: number; sourceText: string }`  | `{ variants: Array<{label,text,...}> }`   | Yes  | 400, 401, 403, 404, 500, 502 | `src/app/api/notebook/prismatic/route.ts`          |
+| `/api/workshop/generate-options`   | POST   | `{ threadId: string; lineIndex: number; lineText: string }`    | `GenerateOptionsResponse`                 | Yes  | 400, 401, 404, 429?, 500     | `src/app/api/workshop/generate-options/route.ts`   |
+| `/api/workshop/save-line`          | POST   | `{ threadId: string; lineIndex: number; selections: [...] }`   | `{ ok: true; translatedLine; lineIndex}`  | Yes  | 400, 401, 404, 500           | `src/app/api/workshop/save-line/route.ts`          |
+| `/api/interview/next`              | POST   | `{ gap: string; baseQuestion: string; context?: object }`      | `{ question: string }`                    | Yes  | 401, 404 (feature), 502      | `src/app/api/interview/next/route.ts`              |
 
-## Translator (Preview)
+## Schemas and Types (evidence)
 
-`POST /api/translator/preview`
+### Guide: Analyze Poem
 
-- Flags: `NEXT_PUBLIC_FEATURE_TRANSLATOR` (OFF → 403)
+```12:15:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/guide/analyze-poem/route.ts
+const BodySchema = z.object({
+  poem: z.string().min(1, "poem is required"),
+  threadId: z.string().min(1, "threadId is required"),
+});
+```
 
-```28:30:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-if (process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR !== "1") {
-  return new NextResponse("Feature disabled", { status: 403 });
+Response and persistence:
+
+```156:173:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/guide/analyze-poem/route.ts
+const content = completion.choices?.[0]?.message?.content?.trim() || "{}";
+const analysis = JSON.parse(content);
+...
+return ok({ analysis, saved: true });
+```
+
+Auth and thread checks:
+
+```53:74:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/guide/analyze-poem/route.ts
+const { data: userRes, error: authErr } = await supabase.auth.getUser();
+...
+if (thread.created_by !== user.id) {
+  return err(403, "FORBIDDEN", "You do not have access to this thread.");
 }
 ```
 
-- Body: `{ threadId: uuid, forceTranslate?: boolean, mode?: 'balanced'|'creative'|'prismatic' }`
-- Returns: `{ ok, preview, sections?, mode, versionId, displayLabel, prompt_hash }`
-- Errors: `400` invalid, `401` unauthenticated, `403` feature-off, `409` echo guard, `429` rate limit, `500` DB errors, `502` LLM contract
+### Journey: Generate Reflection
 
-```49:52:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-if (!rl.ok)
-  return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+```11:23:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/journey/generate-reflection/route.ts
+const BodySchema = z.object({
+  threadId: z.string().min(1, "threadId is required"),
+  context: z.object({
+    poemLines: z.array(z.string()),
+    completedLines: z.record(z.string()),
+    totalLines: z.number(),
+    completedCount: z.number(),
+    guideAnswers: z.object({}).passthrough(),
+    translationZone: z.string().nullable().optional(),
+    translationIntent: z.string().nullable().optional(),
+    progressPercentage: z.number(),
+  }),
+});
 ```
 
-```220:231:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-if (!forceTranslate && looksLikeEcho(sourceLines, outLines)) {
-  return NextResponse.json({ ok: false, code: "PREVIEW_ECHOED_SOURCE", error: "Model echoed source text." }, { status: 409 });
-}
+```227:229:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/journey/generate-reflection/route.ts
+return ok({ reflection, modelUsed: modelToUse });
 ```
 
-- Placeholder node behavior: inserts `versions` row with `status: "placeholder"`, updates to `generated` with `overview` upon success; if cache hit, flips status from cached preview.
+### Notebook: Cells
 
-```124:141:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-const { data: inserted, error: insErr } = await sb
-  .from("versions")
-  .insert({
-    project_id: projectId,
-    title: displayLabel,
-    lines: [],
-    meta: placeholderMeta,
-    tags: ["translation"],
-  })
-  .select("id")
-  .single();
+```12:14:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/cells/route.ts
+const QuerySchema = z.object({
+  threadId: z.string().min(1, "threadId is required"),
+});
 ```
 
-```161:169:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-const updatedMeta: Record<string, unknown> = {
-  ...placeholderMeta,
-  status: "generated" as const,
-  overview: {
-    lines: cachedPrev?.lines ?? [],
-    notes: cachedPrev?.notes ?? [],
-  },
-};
-```
+Returns `NotebookCell[]`:
 
-## Translator (Instruct)
-
-`POST /api/translator/instruct`
-
-- Flags: `NEXT_PUBLIC_FEATURE_TRANSLATOR` (OFF → 403)
-- Auth: uses `requireUser()` (401 on missing)
-- Creates placeholder node; updates on success
-
-```22:24:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
-if (process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR !== "1") {
-  return new NextResponse("Feature disabled", { status: 403 });
-}
-```
-
-```43:45:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
-if (!me?.user) {
-  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-}
-```
-
-```252:266:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
-const updatedMeta: Record<string, unknown> = {
-  ...placeholderMeta,
-  status: "generated" as const,
-  overview: {
-    lines: parsedOut.lines,
-    notes: parsedOut.notes,
-  },
-};
-const { error: upErr } = await supabase
-  .from("versions")
-  .update({ meta: updatedMeta })
-  .eq("id", newVersionId);
-if (upErr)
-  return NextResponse.json({ error: upErr.message }, { status: 500 });
-```
-
-## Translate (Full)
-
-`POST /api/translate`
-
-- Flags: `NEXT_PUBLIC_FEATURE_TRANSLATOR` (OFF → 403)
-- Requires thread phase readiness; else 409
-
-```16:18:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translate/route.ts
-if (process.env.NEXT_PUBLIC_FEATURE_TRANSLATOR !== "1") {
-  return new NextResponse("Feature disabled", { status: 403 });
-}
-```
-
-```41:43:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translate/route.ts
-return NextResponse.json(
-  { error: "Not ready to translate" },
-  { status: 409 }
+```95:105:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/cells/route.ts
+const cells: NotebookCell[] = sourceLines.map(
+  (sourceLine: any, index: number) => {
+    ...
+    return {
+      id: `cell-${index}`,
+      lineIndex: index,
+      source: { ... },
+      translation: { ... },
+      notes: ..., footnotes: ..., prismaticVariants: ..., metadata: { ... },
+    };
+  }
 );
 ```
 
-## Enhancer (Planner)
+### Notebook: AI Assist
 
-`POST /api/enhancer`
+```16:43:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/ai-assist/route.ts
+const RequestSchema = z.object({
+  threadId: z.string().uuid(),
+  cellId: z.string(),
+  selectedWords: z.array(z.object({ id: z.string(), text: z.string(), ... })),
+  sourceLineText: z.string(),
+  instruction: z.enum(["refine","rephrase","expand","simplify"]).optional(),
+});
+```
 
-- Flags: `NEXT_PUBLIC_FEATURE_ENHANCER` (OFF → 403)
-- Returns: `{ ok, plan, prompt_hash }` or `{ error, prompt_hash }`
+```45:51:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/ai-assist/route.ts
+const ResponseSchema = z.object({
+  cellId: z.string(),
+  suggestion: z.string(),
+  confidence: z.number().min(0).max(100),
+  reasoning: z.string().optional(),
+  alternatives: z.array(z.string()).optional(),
+});
+```
 
-```14:16:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/enhancer/route.ts
-if (process.env.NEXT_PUBLIC_FEATURE_ENHANCER !== "1") {
-  return new NextResponse("Feature disabled", { status: 403 });
+### Notebook: Prismatic Variants
+
+```12:16:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/prismatic/route.ts
+const BodySchema = z.object({
+  threadId: z.string().min(1, "threadId is required"),
+  lineIndex: z.number().int().min(0),
+  sourceText: z.string().min(1, "sourceText is required"),
+});
+```
+
+### Workshop: Generate Options
+
+```15:19:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/workshop/generate-options/route.ts
+const RequestSchema = z.object({
+  threadId: z.string().uuid(),
+  lineIndex: z.number().int().min(0),
+  lineText: z.string(),
+});
+```
+
+```28:33:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/workshop/generate-options/route.ts
+const ResponseSchema = z.object({
+  lineIndex: z.number(),
+  words: z.array(WordOptionSchema),
+  modelUsed: z.string().optional(),
+});
+```
+
+### Workshop: Save Line
+
+```11:16:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/workshop/save-line/route.ts
+const RequestSchema = z.object({
+  threadId: z.string().uuid(),
+  lineIndex: z.number().int().min(0),
+  originalLine: z.string().optional(),
+  selections: z.array(SelectionSchema),
+});
+```
+
+```111:115:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/workshop/save-line/route.ts
+return NextResponse.json({
+  ok: true,
+  translatedLine,
+  lineIndex,
+});
+```
+
+### Interview: Next Clarifying Question (feature-off)
+
+```7:12:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/interview/next/route.ts
+export async function POST(req: Request) {
+  const { user, response } = await requireUser();
+  if (!user) return response;
+  if (!isSmartInterviewLLMEnabled())
+    return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
+```
+
+## Authentication
+
+- Most endpoints require a signed-in user and verify thread ownership via Supabase cookies.
+
+```63:69:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/cells/route.ts
+const { data: userRes, error: authErr } = await supabase.auth.getUser();
+if (authErr || !user) {
+  return err(401, "UNAUTHENTICATED", "Please sign in.");
 }
 ```
 
-```70:76:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/enhancer/route.ts
-if (!r.ok) {
-  return NextResponse.json(
-    { error: r.error, prompt_hash: r.prompt_hash },
-    { status: 502 }
-  );
+## Responses and Errors
+
+- Standard JSON `{ error: { code, message, ... } }` on failures with 4xx/5xx.
+
+```20:31:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/guide/analyze-poem/route.ts
+function err(status: number, code: string, message: string, extra?: any) {
+  return NextResponse.json({ error: { code, message, ...extra } }, { status });
 }
 ```
 
-## Verify (Optional)
+Common status codes:
 
-`POST /api/translator/verify`
+- 400 invalid body/query
+- 401 unauthenticated
+- 403 forbidden (ownership)
+- 404 not found (thread)
+- 500 internal, 502 upstream LLM contract
 
-- Flags: `NEXT_PUBLIC_FEATURE_VERIFY` (OFF → 404 implementation)
-- Daily limit with 429 on exceed
+## Usage Examples
 
-```10:12:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/verify/route.ts
-if (!isVerifyEnabled())
-  return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
+Analyze poem (POST):
+
+```http
+POST /api/guide/analyze-poem
+Content-Type: application/json
+{
+  "poem": "...",
+  "threadId": "uuid"
+}
 ```
 
-```18:23:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/verify/route.ts
-const rl = await checkDailyLimit(user.id, "verify", VERIFY_DAILY_LIMIT);
-if (!rl.allowed)
-  return NextResponse.json(
-    { error: "Daily verification limit reached" },
-    { status: 429 }
-  );
+```json
+{ "analysis": { "language": "en", "tone": ["lyrical"], ... }, "saved": true }
 ```
 
-## Back-translate (Optional)
+Notebook AI assist (POST):
 
-`POST /api/translator/backtranslate`
-
-- Flags: `NEXT_PUBLIC_FEATURE_BACKTRANSLATE` (OFF → 404 implementation)
-- Daily limit with 429 on exceed
-
-```13:15:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/backtranslate/route.ts
-if (!isBacktranslateEnabled())
-  return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
+```http
+POST /api/notebook/ai-assist
+Content-Type: application/json
+{ "threadId":"uuid","cellId":"cell-3","selectedWords":[...],"sourceLineText":"...","instruction":"refine" }
 ```
 
-```21:29:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/backtranslate/route.ts
-const rl = await checkDailyLimit(
+```json
+{
+  "cellId": "cell-3",
+  "suggestion": "...",
+  "confidence": 85,
+  "alternatives": ["...", "..."]
+}
+```
+
+Workshop save line (POST):
+
+```http
+POST /api/workshop/save-line
+Content-Type: application/json
+{ "threadId":"uuid","lineIndex":0,"selections":[{"position":0,"selectedWord":"..."}] }
+```
+
+```json
+{ "ok": true, "translatedLine": "...", "lineIndex": 0 }
+```
+
+## Rate Limits and Constraints
+
+- In this snapshot, daily quota helper returns allowed; endpoints include 429 patterns where enabled later.
+
+```83:99:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/ai-assist/route.ts
+const rateCheck = await checkDailyLimit(
   user.id,
-  "backtranslate",
-  BACKTRANSLATE_DAILY_LIMIT
+  `notebook:ai-assist:${threadId}`,
+  10 * 60
 );
-if (!rl.allowed)
-  return NextResponse.json(
-    { error: "Daily back-translation limit reached" },
-    { status: 429 }
-  );
-```
-
-## Interview Clarifier
-
-Deprecated. Interview itself (Q1) collects the target variety; the clarifier LLM endpoint is unused by the client.
-
-## Stepwise Chaining (A → B → C → D)
-
-- Preview produces Version A; `meta.parent_version_id = null`.
-
-```129:135:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-const placeholderMeta = {
-  thread_id: threadId,
-  display_label: displayLabel,
-  status: "placeholder" as const,
-  parent_version_id: null as string | null,
-};
-```
-
-- Instruct determines `parent_version_id` as:
-  - If `citeVersionId` provided, use that.
-  - Else use latest version in the same `thread_id` (most recent by `created_at`).
-
-```60:72:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
-let parentVersionId: string | null = null;
-if (citeVersionId) {
-  parentVersionId = citeVersionId;
-} else {
-  const { data: latestForThread } = await supabase
-    .from("versions")
-    .select("id, lines, meta, created_at")
-    .eq("project_id", projectId)
-    .filter("meta->>thread_id", "eq", threadId)
-    .order("created_at", { ascending: false })
-    .limit(1);
-  parentVersionId = latestForThread?.[0]?.id ?? null;
+if (!rateCheck.allowed) {
+  return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 }
 ```
 
-- When a cited or implicit parent exists, Instruct includes a whole‑text block to evolve from the prior version.
+- Cache where applicable to reduce spend:
 
-```125:142:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
-if (cited) {
-  const m = ((cited.meta ?? null) as Record<string, unknown>) || {};
-  const ov = (m["overview"] as { lines?: string[] } | null) || null;
-  const ovLines: string[] = Array.isArray(ov?.lines)
-    ? (ov!.lines as string[])
-    : [];
-  const lnLines: string[] = Array.isArray(cited.lines)
-    ? (cited.lines as string[])
-    : [];
-  const arr = ovLines.length ? ovLines : lnLines;
-  citedText = arr.join("\n");
-}
+```101:108:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/ai-assist/route.ts
+const wordsKey = selectedWords.map((w) => w.text).join("_");
+const cacheKey = `ai-assist:${threadId}:${cellId}:${wordsKey}:${instruction || "refine"}`;
+const cached = await cacheGet<AIAssistResponse>(cacheKey);
+if (cached) return NextResponse.json(cached);
 ```
-
-- Preview and Instruct append JOURNEY context into prompts.
-
-```228:234:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-bundle.journeySummaries?.length
-  ? "JOURNEY (most recent → older):\n" +
-    bundle.journeySummaries.map((s) => `- ${s}`).join("\n")
-  : "",
-```
-
-```194:201:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
-bundle.journeySummaries?.length
-  ? "JOURNEY (most recent → older):\n" +
-    bundle.journeySummaries.map((s) => `- ${s}`).join("\n")
-  : "",
-```
-
-### Fields written on success
-
-- Both routes write:
-  - `meta.overview.lines`
-  - `meta.overview.notes`
-  - `meta.overview.line_policy` (preview)
-  - `meta.status = "generated"`
-
-```438:447:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-const updatedMeta: Record<string, unknown> = {
-  ...placeholderMeta,
-  status: "generated" as const,
-  overview: {
-    lines: preview.lines,
-    notes: preview.notes,
-    line_policy: bundle.line_policy,
-  },
-};
-```
-
-```428:436:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
-const updatedMeta: Record<string, unknown> = {
-  ...placeholderMeta,
-  status: "generated" as const,
-  overview: {
-    lines: parsedOut.lines,
-    notes: parsedOut.notes,
-    line_policy: (bundle as unknown as { line_policy?: unknown })?.line_policy,
-  },
-};
-```
-
-### Error codes (Instruct)
-
-| Code                          | HTTP | Meaning                                    |
-| ----------------------------- | ---- | ------------------------------------------ |
-| INSTRUCT_ECHO_OR_UNTRANSLATED | 409  | Echo or wrong language even after retry    |
-| INSTRUCT_RETRY_EMPTY          | 502  | Retry returned empty output                |
-| INSTRUCT_PARSE_RETRY_FAILED   | 502  | Retry output could not be parsed           |
-| REQUIRED_TOKENS_MISSING       | 409  | Tokens still missing after must_keep retry |
-
-```332:346:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
-return NextResponse.json(
-  { ok: false, code: "INSTRUCT_ECHO_OR_UNTRANSLATED", retryable: true },
-  { status: 409 }
-);
-```
-
-```283:297:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
-return NextResponse.json(
-  { ok: false, code: "INSTRUCT_RETRY_EMPTY", retryable: true },
-  { status: 502 }
-);
-```
-
-```304:317:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
-return NextResponse.json(
-  { ok: false, code: "INSTRUCT_PARSE_RETRY_FAILED", retryable: true },
-  { status: 502 }
-);
-```
-
-```399:409:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/instruct/route.ts
-return NextResponse.json(
-  {
-    ok: false,
-    code: "REQUIRED_TOKENS_MISSING",
-    retryable: true,
-    missing: missing2,
-  },
-  { status: 409 }
-);
-```
-
-### Planned (prompt centralization & banned-phrases)
-
-- Centralize system/user prompt assembly as constants/functions, reusing `src/lib/ai/prompts.ts` with mode-aware variants.
-- Introduce a banned-phrases check to enforce decolonial guardrails (reject/replace harmful wording before Requests API call).
-- No immediate API contract changes; server routes keep current schemas.

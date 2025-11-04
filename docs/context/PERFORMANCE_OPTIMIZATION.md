@@ -1,370 +1,178 @@
-### [Last Updated: 2025-09-16]
+### [Last Updated: 2025-11-04]
 
 ## Performance Optimization
 
-### LLM Quick Reference
+### Caching strategies
 
-- Cache identical LLM requests; limit bundle sizes; use lower-cost models for planning.
+- In-memory TTL cache (default 3600s) for idempotent LLM results; stable SHA-256 key
 
-### Bottlenecks & Solutions
+```1:11:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/ai/cache.ts
+const mem = new Map<string, { expires: number; value: unknown }>();
+export function stableHash(obj: unknown): string {
+  const json = JSON.stringify(
+    obj,
+    Object.keys(obj as Record<string, unknown>).sort()
+  );
+  return crypto.createHash("sha256").update(json).digest("hex");
+}
+```
 
-- Nodes polling (1.5s): consider backoff or user-triggered refresh
+```13:29:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/ai/cache.ts
+export async function cacheGet<T>(key: string): Promise<T | null> { /* TTL check */ }
+export async function cacheSet<T>(key: string, value: T, ttlSec = 3600) { /* set */ }
+```
 
-  - V2 visibility-gated polling: pause when view != "workshop"; keep legacy unchanged.
+- Example usages
 
-  Visibility-Gated Polling rule:
+```101:109:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/ai-assist/route.ts
+const cacheKey = `ai-assist:${threadId}:${cellId}:${wordsKey}:${instruction || "refine"}`;
+const cached = await cacheGet<AIAssistResponse>(cacheKey);
+if (cached) {
+  return NextResponse.json(cached);
+}
+```
 
-  - useNodes should poll only when `ui.currentView === "workshop"` in V2. Combine with existing `enabled` option.
+```241:244:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/ai-assist/route.ts
+await cacheSet(cacheKey, result, 3600);
+return NextResponse.json(result);
+```
 
-  Evidence:
+### Rate limiting (API protection)
 
-  ```35:53:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/hooks/useNodes.ts
-  export function useNodes(
-    projectId: string | undefined,
-    threadId: string | undefined,
-    opts?: { enabled?: boolean }
-  ) {
-    const enabled = (!!projectId && !!threadId && (opts?.enabled ?? true)) as boolean;
-    return useQuery({
-      queryKey: ["nodes", projectId, threadId],
-      queryFn: () => fetchNodes(threadId!),
-      enabled,
-      staleTime: 0,
-      refetchOnWindowFocus: true,
-      refetchInterval: enabled ? 1500 : false,
-    });
-  }
-  ```
+- In-memory sliding window for hot endpoints; returns remaining and `retryAfterSec` when exceeded
 
-  ```110:116:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/store/workspace.ts
-  ui: {
-    currentView: "chat",
-    targetLang: "en",
-    targetStyle: "balanced",
-    includeDialectOptions: false,
-    currentLine: 0,
+```1:16:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/ai/ratelimit.ts
+export function rateLimit(key: string, limit = 30, windowMs = 60_000) { /* ... */ }
+```
+
+- Daily quotas stub via Upstash Redis helper (optional)
+
+```176:191:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/ratelimit/redis.ts
+export async function checkDailyLimit(userId: string, key: string, max: number) { /* ... */ }
+```
+
+### Database query optimization
+
+- Narrow projections (select only needed columns), explicit `order` and `limit`
+
+```40:46:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/journey/list/route.ts
+const { data, error } = await supabase
+  .from("journey_items")
+  .select("id, kind, summary, meta, created_at")
+  .eq("project_id", projectId)
+  .order("created_at", { ascending: false })
+  .limit(limit);
+```
+
+- Typed validation for query params to avoid unnecessary round trips
+
+```7:10:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/journey/list/route.ts
+const Q = z.object({ projectId: z.string().uuid(), limit: z.coerce.number().int().min(1).max(50).default(20), });
+```
+
+- Ownership checks before heavy reads to short-circuit early
+
+```21:31:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/threads/list/route.ts
+const { data: proj } = await sb.from("projects").select("id, owner_id").eq("id", projectId).single();
+if (!proj) return NextResponse.json({ ok: false, code: "PROJECT_NOT_FOUND" }, { status: 404 });
+if (proj.owner_id !== user.id) return NextResponse.json({ ok: false, code: "FORBIDDEN_PROJECT" }, { status: 403 });
+```
+
+### Frontend performance
+
+- TanStack Query caches server data and controls refetch behavior
+
+```19:33:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/(app)/workspaces/[projectId]/page.tsx
+const { data, refetch, isFetching } = useQuery({
+  enabled: !!projectId,
+  queryKey: ["chat_threads", projectId],
+  queryFn: async () => {
+    const res = await fetch(`/api/threads/list?projectId=${projectId}`, { cache: "no-store", credentials: "include", headers });
+    const payload = await res.json();
+    if (!res.ok) throw new Error(payload?.error || payload?.code || "THREADS_LIST_FAILED");
+    return (payload.items ?? []) as Thread[];
   },
-  ```
-
-  Evidence:
-
-  ```35:53:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/hooks/useNodes.ts
-  export function useNodes(
-    projectId: string | undefined,
-    threadId: string | undefined,
-    opts?: { enabled?: boolean }
-  ) {
-    const enabled = (!!projectId && !!threadId && (opts?.enabled ?? true)) as boolean;
-    return useQuery({
-      queryKey: ["nodes", projectId, threadId],
-      queryFn: () => fetchNodes(threadId!),
-      enabled,
-      staleTime: 0,
-      refetchOnWindowFocus: true,
-      refetchInterval: enabled ? 1500 : false,
-    });
-  }
-  ```
-
-- Translator preview latency: cache and reduce prompt size
-
-  - Use placeholder version update + cached overview to minimize repeated model calls.
-
-  ```101:109:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-  const key = "translator_preview:" + stableHash({ ...bundle, placeholderId });
-  const cached = await cacheGet<unknown>(key);
-  if (cached) {
-    // ...update node meta and return cached preview
-  }
-  ```
-
-### Perf Findings (Bottlenecks → Metrics → Mitigation)
-
-| Bottleneck                            | Metric (before → after)        | Mitigation                                             | Evidence                                                                                              |
-| ------------------------------------- | ------------------------------ | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| Translator preview repeated LLM calls | p95 ~6.5s → ~1.2s on cache hit | In-memory TTL cache with stable key; early return path | ```157:165:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts |
-
-const key = "translator*preview:" + stableHash({ ...bundle, placeholderId });
-const cached = await cacheGet<unknown>(key);
-if (cached) { /* return \_/ }
-
-````|
-| Enhancer repeated calls | p95 ~3.2s → ~0.9s hit | Cache by payload hash | ```52:56:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/enhancer/route.ts
-const payload = { poem, fields };
-const key = "enhancer:" + stableHash(payload);
-const cached = await cacheGet<unknown>(key);
-``` |
-| Translate endpoint | p95 ~5.7s → ~1.1s hit | Cache by bundle hash | ```89:93:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translate/route.ts
-const bundle = { poem, enhanced, summary, ledger, acceptedLines, glossary };
-const key = "translate:" + stableHash(bundle);
-const cached = await cacheGet<unknown>(key);
-``` |
-| Preview spam | 429s enforced | In-memory sliding window rate limit | ```55:57:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-const rl = rateLimit(`preview:${threadId}`, 30, 60_000);
-if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
-``` |
-
-### Caching Recipes
-
-- In-memory TTL cache (default 3600s)
-
-  - Implementation
-
-  ```23:29:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/cache.ts
-  export async function cacheSet<T>(
-    key: string,
-    value: T,
-    ttlSec = 3600
-  ): Promise<void> {
-    mem.set(key, { expires: Date.now() + ttlSec * 1000, value });
-  }
-````
-
-- Key derivation patterns
-
-  - "translator_preview:" + stableHash({ bundle, placeholderId })
-  - "translate:" + stableHash(bundle)
-  - "enhancer:" + stableHash({ poem, fields })
-
-- TTLs
-  - Default: 3600s
-  - Preview TTL constant: see `PREVIEW_CACHE_TTL_SEC`
-
-```4:6:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/policy.ts
-/** Cache TTL for identical preview requests (seconds). */
-export const PREVIEW_CACHE_TTL_SEC = 3600;
-```
-
-- Invalidation triggers
-
-  - Translator preview: auto-invalidates by key change when any of poem/enhanced/glossary/acceptedLines/ledger changes; placeholderId also scopes the cache per request.
-  - Enhancer: poem excerpt or fields change → new hash.
-  - Translate: bundle contents change → new hash.
-
-- Pseudocode
-
-```
-// On request
-const key = `${prefix}:${stableHash(payload)}`;
-const cached = await cacheGet(key);
-if (cached) return cached;
-const result = await compute();
-await cacheSet(key, result, TTL_SEC);
-return result;
-```
-
-### Rate Limiting
-
-- Sliding window (in-memory) for preview endpoint
-
-```1:13:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/ratelimit.ts
-export function rateLimit(key: string, limit = 30, windowMs = 60_000) {
-  const now = Date.now();
-  const b = buckets.get(key);
-  if (!b || now > b.until) {
-    buckets.set(key, { count: 1, until: now + windowMs });
-    return { ok: true, remaining: limit - 1 } as const;
-  }
-  if (b.count >= limit) return { ok: false, remaining: 0 } as const;
-  b.count += 1;
-  return { ok: true, remaining: limit - b.count } as const;
-}
-```
-
-- Daily per-user verification limit via Upstash Redis
-
-```26:40:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ratelimit/redis.ts
-export async function checkDailyLimit(
-  userId: string,
-  key: string,
-  max: number
-) {
-  const l = getLimiter();
-  if (!l) return { allowed: true } as const;
-  const id = `llm:${key}:${userId}:${new Date().toISOString().slice(0, 10)}`;
-  const res = await l.redis.incr(id);
-  if (res === 1) {
-    const ttl = 24 * 60 * 60;
-    await l.redis.expire(id, ttl);
-  }
-  return { allowed: res <= max, current: res, max } as const;
-}
-```
-
-### Caching Strategies
-
-- In-memory TTL (3600s) for enhancer and preview
-
-  - Preview cache keyed by stable bundle hash; aligns with persisted `versions.meta.overview`.
-
-  ```23:29:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/cache.ts
-  export async function cacheSet<T>(
-    key: string,
-    value: T,
-    ttlSec = 3600
-  ): Promise<void> {
-    mem.set(key, { expires: Date.now() + ttlSec * 1000, value });
-  }
-  ```
-
-### DB Optimization
-
-- Index filters used frequently: `(project_id)`, `(thread_id)`, `(created_at)`
-- Composite indexes: `(project_id, created_at)` on `versions`/`journey_items`
-
-### Frontend Patterns
-
-- Use React Query for caching and background refetch
-- Keep components pure; lift effects into hooks
-
-  ```3:9:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/providers.tsx
-  import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-  export function Providers({ children }: { children: React.ReactNode }) {
-    const [client] = React.useState(() => new QueryClient());
-  }
-  ```
-
-### Polling (TanStack Query)
-
-- Nodes list polling (`useNodes`):
-
-```44:50:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/hooks/useNodes.ts
-return useQuery({
-  queryKey: ["nodes", projectId, threadId],
-  queryFn: () => fetchNodes(threadId!),
-  enabled,
-  staleTime: 0,
-  refetchOnWindowFocus: true,
-  refetchInterval: enabled ? 1500 : false,
 });
 ```
 
-- Visibility gating: Prefer pausing polling when not in Workshop (V2). If not wired, TODO to gate via `opts.enabled` with `useWorkspace((s)=>s.ui.currentView==="workshop")`.
+- Avoid unnecessary re-renders via narrow selectors and memoization (examples in V2 sidebar and views)
 
-### Graph (React Flow)
-
-- Version canvas renders via React Flow with fit/controls and thick edges:
-
-```195:206:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/versions/VersionCanvas.tsx
-<ReactFlow
-  nodes={nodes}
-  edges={edges}
-  nodeTypes={nodeTypes}
-  fitView
-  defaultEdgeOptions={{ animated: true, markerEnd: { type: MarkerType.ArrowClosed }, style: { strokeWidth: 3 } }}
-  proOptions={{ hideAttribution: true }}
-  panOnScroll
-  zoomOnDoubleClick={false}
-  minZoom={0.5}
-  maxZoom={1.5}
-/>
+```28:36:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/components/workspace/v2/sidebar/SourceTextCard.tsx
+const stanzas = React.useMemo(() => { /* split stanzas once */ }, [hasSource, sourceLines]);
 ```
 
-### Lists
-
-- FullPoemOverview and side overlays: no virtualization noted; consider windowing if performance degrades with large poems.
-- Journey list (overlay) renders a small window of recent items:
-
-```229:239:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/versions/VersionCanvas.tsx
-<JourneyList items={(journeyData?.items || []).map(/* … */)} />
-```
-
-### Memoization & Callbacks
-
-- Nodes and edges are memoized; lineage computed once per data change:
-
-```45:75:/Users/raaj/Documents/CS/Translalia-met amorphs-web/src/components/workspace/versions/VersionCanvas.tsx
-const apiNodes: NodeRow[] = React.useMemo(() => nodesData || [], [nodesData]);
-const lineageIds = React.useMemo(() => { /* … */ }, [apiNodes]);
-```
-
-```80:116:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/versions/VersionCanvas.tsx
-const nodes = React.useMemo<Node[]>(() => { /* map apiNodes→reactflow nodes */ }, [apiNodes, lineageIds]);
-```
-
-```117:131:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/versions/VersionCanvas.tsx
-const edges = React.useMemo<Edge[]>(() => { /* build lineage edges */ }, [apiNodes]);
-```
-
-- SourceTextCard stanza split & filtering are memoized; windowing when >400 lines:
-
-```28:41:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/sidebar/SourceTextCard.tsx
-const stanzas = React.useMemo(() => { /* splitStanzas */ }, [hasSource, sourceLines]);
-const filtered = React.useMemo(() => { /* filter per query */ }, [stanzas, query]);
-```
-
-```54:56:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/sidebar/SourceTextCard.tsx
+```54:56:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/components/workspace/v2/sidebar/SourceTextCard.tsx
 const { visible, canLoadMore, loadMore, count, total } = useWindowedList(flatLines, 400);
-const shouldUseWindowing = total > 400;
 ```
 
-#### Memoization rules (V2)
+### API response optimization
 
-- Stanza split: memoize stanza groups and filtered views.
+- Early validation and early returns on auth/ownership failures
 
-  ```28:36:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/sidebar/SourceTextCard.tsx
-  const stanzas = React.useMemo(() => {
-    if (!hasSource || !sourceLines) return [];
-    const sourceText = sourceLines.join('\n');
-    return splitStanzas(sourceText);
-  }, [hasSource, sourceLines]);
-  ```
+```8:15:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/projects/route.ts
+const parsed = createProjectSchema.safeParse(await req.json());
+if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+```
 
-- Token lists: memoize exploded tokens and visible slices.
+- Projected columns only; limit and sort to bound payload sizes (see journey list above)
+- Non-blocking persistence: do not delay user response on secondary save failures
 
-  ```53:61:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/views/WorkshopView.tsx
-  const tokens = React.useMemo(() => currentLine?.tokens ?? [], [currentLine]);
-  const WINDOW = 150;
-  const [tokenCount, setTokenCount] = React.useState(WINDOW);
-  const visibleTokens = React.useMemo(() =>
-    tokens.filter(token => token.options.length > 0).slice(0, tokenCount),
-    [tokens, tokenCount]
-  );
-  ```
+```160:170:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/guide/analyze-poem/route.ts
+const { error: saveErr } = await supabase.from("chat_threads").update({ state: newState }).eq("id", body.threadId);
+if (saveErr) { log("save_fail", saveErr.message); return ok({ analysis, saved: false }); }
+```
 
-- Selectors: prefer narrow store selectors to avoid re-renders.
+### Resource pooling and connection management
 
-  ```16:25:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/views/WorkshopView.tsx
-  const currentLineIdx = useWorkspace((s) => s.ui.currentLine);
-  const includeDialectOptions = useWorkspace((s) => s.ui.includeDialectOptions);
-  const threadId = useWorkspace((s) => s.threadId);
-  const tokenSelections = useWorkspace((s) => s.tokensSelections);
-  const notebookText = useWorkspace((s) => s.workshopDraft.notebookText);
-  ```
+- OpenAI client: singleton reused across requests
 
-#### Windowing
+```1:10:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/ai/openai.ts
+export const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY!, });
+export function getOpenAI() { if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY missing"); return openai; }
+```
 
-- Use list windowing for large inputs: suggest enabling when >400 lines or >200 tokens.
+- Supabase: per-request server client using SSR helpers; leverages platform HTTP connection reuse
 
-  Evidence:
+```51:61:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/prismatic/route.ts
+const supabase = createServerClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  { cookies: { get: (n)=>cookieStore.get(n)?.value, set(){}, remove(){} } }
+);
+```
 
-  ```54:56:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/sidebar/SourceTextCard.tsx
-  const { visible: visibleLines, canLoadMore, loadMore, count, total } = useWindowedList(flatLines, 400);
-  const shouldUseWindowing = total > 400;
-  ```
+- Bearer-auth fallback creates a scoped client only when needed
 
-  ```55:61:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/v2/views/WorkshopView.tsx
-  const WINDOW = 150;
-  const [tokenCount, setTokenCount] = React.useState(WINDOW);
-  const visibleTokens = React.useMemo(() =>
-    tokens.filter(token => token.options.length > 0).slice(0, tokenCount),
-    [tokens, tokenCount]
-  );
-  ```
+```35:44:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/journey/list/route.ts
+const supabase = token ? createClient(supabaseUrl, supabaseAnonKey, { global: { headers: { Authorization: `Bearer ${token}` } } }) : await supabaseServer();
+```
 
-### Monitoring
+### Known bottlenecks
 
-- Track cache hit rate, request latencies, and error rates
+- LLM latency on cold prompts; mitigated with caching and strict JSON prompts
+- Chat/Nodes polling when backgrounded; mitigate with `enabled` gating (future)
+- No shared cache/ratelimit store in multi-instance deployments (in-memory only) → consider Redis for consistency
 
-  ```3:10:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/ratelimit.ts
-  export function rateLimit(key: string, limit = 30, windowMs = 60_000) {
-    const now = Date.now();
-    const b = buckets.get(key);
-  }
-  ```
+### Monitoring and profiling
 
-### Related Files
+- Logging: structured console logs with request IDs and timing in LLM routes
 
-- docs/spend-and-cache-policy.md
-- docs/context/DATABASE_SCHEMA.md
-- docs/context/API_ROUTES.md
+```30:35:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/prismatic/route.ts
+const requestId = crypto.randomUUID();
+const started = Date.now();
+const log = (...a: any[]) => console.log("[/api/notebook/prismatic]", requestId, ...a);
+```
+
+- No external APM/metrics wired; consider adding request timing, cache hit ratios, and LLM usage metrics to an external sink
+
+### Performance budgets and targets (proposed)
+
+- API: p95 < 1.5s on cache hit; p95 < 6s on LLM miss
+- UI: route transition TTI < 1.5s; list interactions < 100ms
+- DB: list endpoints return ≤ 100 items by default; payloads ≤ 200KB
+
+### Related docs
+
+- `docs/policies/spend-and-cache-policy.md`
+- `docs/context/LLM_INTEGRATION_GUIDE.md`
+- `docs/context/ERROR_HANDLING.md`

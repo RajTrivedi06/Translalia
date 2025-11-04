@@ -1,267 +1,141 @@
-### [Last Updated: 2025-09-16]
+### [Last Updated: 2025-11-04]
 
 ## Relationships Map
 
-### 1) Component → Component Imports
-
-- `src/components/workspace/WorkspaceShell.tsx`
-  - imports: `./chat/ChatPanel`, `./versions/VersionCanvas`, `./journey/JourneyPanel`, `./compare/CompareSheet`, `@/store/workspace`, `@/lib/supabaseClient`
-- `src/components/workspace/chat/ChatPanel.tsx`
-  - imports: `./ThreadsDrawer`, `../flow/PlanBuilderOverviewSheet`, `../translate/TranslatorPreview`, `@/store/workspace`, `@/hooks/useThreadMessages`, `@/hooks/useInterviewFlow`, `@/lib/supabaseClient`, `@/server/flow/intent`, `@/server/flow/softReplies`
-- `src/components/workspace/chat/ThreadsDrawer.tsx`
-  - imports: `@/lib/supabaseClient`, `@/store/workspace`, `@tanstack/react-query`
-- `src/components/workspace/flow/PlanPreviewSheet.tsx`
-  - used by: `ChatPanel`
-- `src/components/workspace/translate/TranslatorPreview.tsx`
-  - used by: `ChatPanel`
-- `src/components/auth/AuthButton.tsx`
-  - imports: `./AuthSheet`, `@/hooks/useSupabaseUser`, `@/hooks/useProfile`, `@/lib/supabaseClient`, `next/link`
-- `src/components/auth/AuthNav.tsx`
-  - imports: `next/link`, `next/navigation`, `@/lib/supabaseClient`, `@/hooks/useSupabaseUser`, `@/hooks/useProfile`
-- `src/components/account/ProfileForm.tsx`
-  - imports: `@/hooks/useSupabaseUser`, `@/hooks/useProfile`, `@/lib/supabaseClient`
-
-### 2) Files → Services Dependencies
-
-- Supabase (client):
-  - `src/components/workspace/WorkspaceShell.tsx`, `src/components/workspace/chat/ThreadsDrawer.tsx`, `src/hooks/useThreadMessages.ts`, `src/hooks/useProfile.ts`, `src/components/auth/*`, `src/components/account/ProfileForm.tsx`, `src/app/(app)/workspaces/**/*.tsx`, `src/lib/authHelpers.ts`
-- Supabase (server SSR):
-  - `src/lib/supabaseServer.ts`, API routes that call it indirectly via `@/lib/apiGuard` or directly
-- OpenAI SDK:
-  - `src/lib/ai/openai.ts` (factory), used by `src/app/api/translator/preview/route.ts`
-- Moderation:
-  - `src/lib/ai/moderation.ts`, used by translator routes and accept-lines
-- Rate limit & cache:
-  - `src/lib/ai/ratelimit.ts`, `src/lib/ai/cache.ts`, used by translator preview
-- Zod validation:
-  - `src/lib/schemas.ts`, and inline in `src/app/api/flow/*`, `src/app/api/translator/*`, etc.
-- React Query:
-  - providers in `src/components/providers.tsx`, hooks in `src/hooks/*`, components (`ThreadsDrawer`, `ChatPanel`)
-- Zustand:
-  - `src/store/workspace.ts` consumed by many workspace components
-
-### 3) UI → API Routes
-
-- `ChatPanel.tsx`
-  - `/api/chat/[threadId]/messages` (POST)
-  - `/api/variants` (POST), then `/api/versions` (POST)
-  - `/api/flow/start` (POST), `/api/flow/answer` (POST), `/api/flow/confirm` (POST)
-  - `/api/flow/intent` (POST) [feature flagged]
-  - `/api/translator/preview` (POST), `/api/translator/accept-lines` (POST), `/api/translator/instruct` (POST) [flagged]
-- `ThreadsDrawer.tsx`
-  - `/api/threads` (POST)
-- `WorkspaceShell.tsx`
-  - reads via Supabase client (no route calls) for `versions`, `journey_items`, `compares`
-- `useInterviewFlow.ts`
-  - `/api/flow/peek?threadId=...` (GET)
-- `Projects/threads` pages
-  - `/api/projects` (POST/DELETE), `/api/threads` (DELETE)
-
-### 4) Database Tables → Accessing Functions/Files
-
-- `profiles`
-  - `src/hooks/useProfile.ts` (read/upsert), `src/components/auth/AuthSheet.tsx` (exists check, upsert), `src/lib/authHelpers.ts` (lookup by username)
-- `projects`
-  - `src/app/api/projects/route.ts` (insert/delete), `src/app/(app)/workspaces/page.tsx` (list)
-- `chat_threads`
-  - `src/app/api/threads/route.ts` (insert/delete), `src/app/api/flow/*/route.ts` (select for project), `src/server/threadState.ts` (select/update `state`), `src/components/workspace/chat/ThreadsDrawer.tsx` (list)
-- `chat_messages`
-  - `src/app/api/chat/[threadId]/messages/route.ts` (insert), `src/hooks/useThreadMessages.ts` (select)
-- `versions`
-  - `src/app/api/versions/route.ts` (insert), `src/app/api/versions/positions/route.ts` (upsert pos), `src/components/workspace/WorkspaceShell.tsx` (select)
-- `compares`
-  - `src/app/api/compares/route.ts` (insert), `src/components/workspace/WorkspaceShell.tsx` (select)
-- `journey_items`
-  - `src/server/flow/journeyLog.ts` (insert), `src/app/api/versions/route.ts` (insert), `src/app/api/compares/route.ts` (insert), `src/components/workspace/WorkspaceShell.tsx` (select)
-- Storage `avatars`
-  - `src/components/account/ProfileForm.tsx` (upload/getPublicUrl)
-- RPC `accept_line`
-  - `src/app/api/translator/accept-lines/route.ts`
-
-### 5) Data Flow Diagram (Mermaid)
-
-```mermaid
-graph TD
-  A[User] --> B[WorkspaceShell]
-  B --> C[ChatPanel]
-  B --> D[VersionCanvas]
-  B --> E[JourneyPanel]
-  C --> F[/api/flow/start]
-  C --> G[/api/flow/answer]
-  C --> H[/api/flow/confirm]
-  C --> I[/api/chat/:threadId/messages]
-  C --> J[/api/translator/preview]
-  C --> K[/api/translator/accept-lines]
-  C --> K2[/api/translator/instruct]
-  C --> L[/api/variants]
-  C --> M[/api/versions]
-  B --> N{Supabase Client}
-  N --> V[(versions)]
-  N --> JI[(journey_items)]
-  N --> CP[(compares)]
-  I --> CM[(chat_messages)]
-  F --> CT[(chat_threads)]
-  G --> CT
-  H --> CT
-  J --> O{OpenAI}
-  J --> P{Moderation}
-  J --> Q[(Cache)]
-  J --> RL[(Rate Limit)]
-  K --> R[[RPC accept_line]]
-  R --> CT
-  subgraph DB[Supabase DB]
-    CT
-    CM
-    V
-    JI
-    CP
-  end
+### Frontend ⇄ Backend communication
+- App Router fetch with Supabase Bearer when present; falls back to cookies
+```19:33:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/(app)/workspaces/[projectId]/page.tsx
+const { data, refetch, isFetching } = useQuery({
+  enabled: !!projectId,
+  queryKey: ["chat_threads", projectId],
+  queryFn: async () => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    const headers: HeadersInit = accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
+    const res = await fetch(`/api/threads/list?projectId=${projectId}`, { cache: "no-store", credentials: "include", headers });
+    const payload = await res.json();
+    if (!res.ok) throw new Error(payload?.error || payload?.code || "THREADS_LIST_FAILED");
+    return (payload.items ?? []) as Thread[];
+  },
+});
+```
+- API routes require auth via guard (cookie first, then Bearer)
+```12:22:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/apiGuard.ts
+export async function requireUser(
+  req: NextRequest
+): Promise<GuardOk | GuardFail> {
+  // 1) Try cookie-bound session via App Router helper
+  const cookieStore = await cookies();
+  // ...
+  // 2) Fallback: Authorization: Bearer <access_token>
+}
 ```
 
-Notes:
-
-- Most protected routes use `src/lib/apiGuard.ts` to require a Supabase session.
-- Feature-flagged areas: translator preview/accept-lines, router, enhancer.
-- Node listing API filters by `project_id` and `meta->>thread_id`.
-
-### Versions Lineage (A → B → C → D)
-
-- Lineage is defined in `versions.meta`:
-  - `thread_id`: thread scope for nodes
-  - `parent_version_id`: previous version id in the chain
-
-Reads (nodes API uses thread-scoped filter):
-
-```33:38:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/nodes/route.ts
-.from("versions")
-.select("id, tags, meta, created_at")
-.eq("project_id", th.project_id)
-.filter("meta->>thread_id", "eq", threadId)
+### Service-to-service dependencies
+- Supabase (DB/Auth): SSR client per request; client SDK in UI
+```51:61:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/prismatic/route.ts
+const supabase = createServerClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  { cookies: { get: (name) => cookieStore.get(name)?.value, set() {}, remove() {} } }
+);
+```
+- OpenAI (LLM): singleton client; used by guide/notebook/interview routes
+```1:10:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/ai/openai.ts
+export const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY!, });
+export function getOpenAI() { if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY missing"); return openai; }
+```
+- Optional Upstash Redis (quotas): helper stub for daily limits
+```176:191:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/ratelimit/redis.ts
+export async function checkDailyLimit(userId: string, key: string, max: number) { /* ... */ }
 ```
 
-Journey items are currently read by `meta->>thread_id`:
-
-```59:66:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/server/translator/bundle.ts
-const { data: jrows } = await supabase
-  .from("journey_items")
-  .select("id, kind, summary, created_at, meta")
-  .filter("meta->>thread_id", "eq", threadId)
-  .order("created_at", { ascending: false })
-  .limit(5);
+### Module import/export relationships (selected)
+- API routes import guards, models, and AI helpers
+```1:8:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/ai-assist/route.ts
+import { requireUser } from "@/lib/auth/requireUser";
+import { openai } from "@/lib/ai/openai";
+import { TRANSLATOR_MODEL } from "@/lib/models";
+import { supabaseServer } from "@/lib/supabaseServer";
+import { cacheGet, cacheSet } from "@/lib/ai/cache";
+import { checkDailyLimit } from "@/lib/ratelimit/redis";
+```
+- UI pulls state via hooks and calls API via fetch; avoids direct DB writes
+```19:41:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/(app)/workspaces/[projectId]/page.tsx
+const { data, refetch, isFetching } = useQuery({ /* fetch /api/threads/list */ });
 ```
 
-> TODO-VERIFY: If a physical `thread_id` column is added to `journey_items`, switch to `.eq("thread_id", threadId)` (code has a comment noting this intent).
-
-Mermaid (conceptual lineage):
-
-```mermaid
-flowchart TD
-  A[Version A] --> B[Version B]
-  B --> C[Version C]
-  C --> D[Version D]
+### Data flow between layers
+- Example: Notebook Prismatic
+  - UI posts to `/api/notebook/prismatic` → route validates (Zod), auth (Supabase SSR), reads `chat_threads`, builds prompts, calls OpenAI, returns JSON
+```12:24:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/prismatic/route.ts
+const BodySchema = z.object({ threadId: z.string().min(1), lineIndex: z.number().int().min(0), sourceText: z.string().min(1), });
+function ok<T>(data: T, status = 200) { return NextResponse.json(data as any, { status }); }
+function err(status: number, code: string, message: string, extra?: any) { return NextResponse.json({ error: { code, message, ...extra } }, { status }); }
+```
+- Example: Journey List
+  - UI fetches `/api/journey/list?projectId=...` with optional Bearer → route validates query, uses token or cookies to list `journey_items`
+```30:45:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/journey/list/route.ts
+const hdrs = await headers();
+const auth = hdrs.get("authorization") || "";
+const token = auth.startsWith("Bearer ") ? auth.slice(7) : undefined;
+const supabase = token ? createClient(supabaseUrl, supabaseAnonKey, { global: { headers: { Authorization: `Bearer ${token}` } } }) : await supabaseServer();
+const { data, error } = await supabase.from("journey_items").select("id, kind, summary, meta, created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(limit);
 ```
 
----
+### External service dependencies
+- Supabase: Auth, Postgres, Storage (avatars)
+- OpenAI: Chat Completions, Responses API (adapter), Moderations
+- Optional: Upstash Redis for quotas/rate-limits
 
-### 6) Module Dependency Overview
-
-```mermaid
-graph LR
-  subgraph UI
-    WS[WorkspaceShell] --> CP[ChatPanel]
-    WS --> VC[VersionCanvas]
-    WS --> JP[JourneyPanel]
-    CP --> TD[ThreadsDrawer]
-    CP --> PPS[PlanPreviewSheet]
-  end
-  subgraph Hooks
-    UTM[useThreadMessages]
-    UJ[useJourney]
-    UN[useNodes]
-    UIF[useInterviewFlow]
-  end
-  subgraph Server
-    TS[threadState]
-    Q[flow/questions]
-    JL[flow/journeyLog]
-    B[translator/bundle]
-    P[translator/parse]
-  end
-  subgraph API
-    A1[/flow/*/]
-    A2[/translator/*/]
-    A3[/versions/*/]
-    A4[/compares/]
-    A5[/projects|threads/]
-  end
-  CP --> UIF
-  VC --> UN
-  WS --> UJ
-  A1 --> TS
-  A1 --> Q
-  A2 --> B
-  A2 --> P
-  A3 --> TS
+### Dependency injection patterns
+- Singleton clients (OpenAI) and per-request clients (Supabase SSR). Guards return a ready client and user identity for downstream use.
+```9:18:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/apiGuard.ts
+type GuardOk = { user: { id: string }; sb: SupabaseClient };
+...
+if (u1?.user) return { user: { id: u1.user.id }, sb: sbCookie };
+```
+- Model selection injected via env and passed into routes
+```1:8:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/models.ts
+export const TRANSLATOR_MODEL = process.env.TRANSLATOR_MODEL?.trim() || "gpt-5";
+export const ENHANCER_MODEL = process.env.ENHANCER_MODEL?.trim() || "gpt-5-mini";
+export const ROUTER_MODEL = process.env.ROUTER_MODEL?.trim() || "gpt-5-nano-2025-08-07";
+export const EMBEDDINGS_MODEL = process.env.EMBEDDINGS_MODEL?.trim() || "text-embedding-3-large";
 ```
 
-### 7) Component Relationships & Data Flow
+### ASCII dependency graph
+```
+UI (React/Next)
+  ├─ State (Zustand) ───────► Hooks (TanStack Query)
+  │                             │
+  │                             └─ fetch() ───────► API Routes (Next Route Handlers)
+  │                                                   │
+  │                                                   ├─ Auth Guard (cookies→Bearer) ──► Supabase SSR Client
+  │                                                   │                                   └─ Postgres (tables: projects, chat_threads, journey_items, versions, uploads)
+  │                                                   ├─ LLM Helpers (OpenAI client) ──► OpenAI APIs (chat/responses/moderation)
+  │                                                   ├─ Cache/RateLimit (in-memory) ──► Map-based TTL and token bucket
+  │                                                   └─ Models/env (selection) ───────► process.env
+  │
+  └─ Components (WorkspaceShell, ChatPanel, VersionCanvas, etc.)
+        └─ Consume hooks/store; render UI; no direct DB writes
+```
 
-- Parent-child: `WorkspaceShell` → `ChatPanel`, `VersionCanvas`, `JourneyPanel`, `CompareSheet`
-- Data paths:
-  - `ChatPanel` → flow routes → `threadState` → UI prompts
-  - `VersionCanvas` → `useNodes` → `/api/versions/nodes` → labels/overview
-  - `JourneyPanel` → `useJourney` → `journey_items`
+### Component and service relationships (selected)
+- `WorkspaceShell` → `ChatPanel`, `VersionCanvas`, `JourneyPanel`
+- `ChatPanel` → fetch chat messages, peek/flows, and notebook/guide routes
+- `VersionCanvas` → nodes data (versions lineage)
+- `JourneyPanel` → journey list
+- Services: OpenAI used by `guide/analyze-poem`, `notebook/prismatic`, `interview/next`
+```1:8:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/guide/analyze-poem/route.ts
+import OpenAI from "openai";
+import { ENHANCER_MODEL } from "@/lib/models";
+```
+```1:8:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/interview/next/route.ts
+import { ROUTER_MODEL } from "@/lib/models";
+import { openai } from "@/lib/ai/openai";
+```
 
-Shared state:
-
-- `useWorkspace` store holds `projectId`, `threadId`, versions, compares, selection
-
-### 8) Service Relationships
-
-- OpenAI via `lib/ai/openai.ts` used by translator/enhancer routes
-- Moderation wraps text pre/post LLM calls
-- Cache and rate limiter used only by preview to date
-
-Error propagation:
-
-- API handlers map validation/moderation failures to 4xx; parse failures to 502; DB/RLS failures to 500
-
-Initialization order:
-
-- Middleware sets up Supabase session → route handlers call guards → server modules execute logic → responses shaped
-
-### 9) Database Relationships (business context)
-
-- `projects` own `chat_threads`, `versions`, `compares`, `journey_items`
-- `chat_threads.state` stores the flow; accepts updates via `threadState` helpers
-- `versions.meta` carries thread-scoped fields (`thread_id`, `display_label`, `parent_version_id`, `overview`, `status`)
-
-Consistency:
-
-- For preview/instruct, placeholder first, then update overview; UI tolerates eventual consistency via polling
-
-Transactions:
-
-- Individual inserts/updates are single-statement; RPCs encapsulate atomic accept-line writes
-
-### 10) Relationship Patterns (LLM)
-
-- Keep routes thin; move logic into `server/*` and reuse across handlers
-- Prefer thread-scoped filters (e.g., `meta->>thread_id`) to avoid cross-thread leakage
-- Validate inputs at boundaries; keep stores as projection layers only
-
-### 11) Integration Guidelines
-
-- Adding a new route: validate with Zod → `requireUser` (if writing) → call server modules → return typed JSON
-- Adding a new component: fetch via hooks; write via API; update store minimally; avoid duplicating server state
-
-### 12) Boundary Rules
-
-- UI never mutates DB directly; all writes through routes
-- Server modules avoid accessing browser-only APIs
-
-### 13) Change Impact Analysis
-
-- Changes in `threadState` shape affect: flow routes, enhancer/translator bundling, UI that snapshot state
-- Changes in `versions.meta` affect: nodes API, canvas rendering, instruct/preview
-- Adjusting rate limit/cache affects: user experience on preview and cost profile
+### Notes
+- UI never writes to DB directly; writes go through API routes.
+- Guards centralize auth and client creation; routes stay thin and compose helpers.
+- Feature flags and model envs influence route behavior without changing UI code.

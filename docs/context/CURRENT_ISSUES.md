@@ -1,130 +1,121 @@
-### [Last Updated: 2025-09-16]
+### [Last Updated: 2025-11-04]
 
 ## Current Issues
 
-<!-- TODO: Link to relevant helper in UTILITIES_HELPERS.md -->
-<!-- TODO: Link to relevant overview in CODEBASE_OVERVIEW.md -->
+### Active bugs
+- Preview echo persists first‑pass output (priority: medium)
+  - Symptoms: preview sometimes shows echoed lines even after retry logic
+  - Evidence
+    ```298:306:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/prismatic/route.ts
+    // retry & fallback logic exists but ensure final data bound before persist
+    ```
+    ```250:254:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/prismatic/route.ts
+    // Return result (caching disabled for now)
+    const response = { variants };
+    return ok(response);
+    ```
+  - Suspected cause: not all branches rebind parsed retry output before persistence/cache
+  - Workaround: manual retry in UI; verify lines before accept
+  - Status: open
 
-### Issue Card 1: Preview echo persists first-pass output
+- 403 on nodes after rapid thread switch (priority: low)
+  - Symptoms: canvas briefly shows 403 until next poll
+  - Evidence
+    ```38:45:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/hooks/useNodes.ts
+    return useQuery({ queryKey: ["nodes", projectId, threadId], /* ... */ refetchInterval: enabled ? 1500 : false });
+    ```
+    ```21:30:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/versions/nodes/route.ts
+    const { data: th } = await sb.from("chat_threads").select("id, project_id").eq("id", threadId).single();
+    if (!th) return NextResponse.json({ ok: false, error: "FORBIDDEN_OR_NOT_FOUND" }, { status: 403 });
+    ```
+  - Suspected cause: auth/session handoff races with polling
+  - Workaround: pause polling during thread change; backoff on 403
+  - Status: open
 
-- Title: Preview may persist first-pass echo instead of retry result
-- Symptoms: Preview nodes sometimes show echoed lines even though server retry should replace them.
-- Scope: Translator Preview route; echo detection helper; DB meta persistence.
-- Evidence (≥2 anchors from different layers):
-  ```298:306:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-  if (!forceTranslate && (echoish || untranslated)) {
-    const hardReq = `\n\nHARD REQUIREMENT: Output must be fully in the target language (English if requested).\nDo NOT echo or quote SOURCE_POEM lines or reproduce Urdu/Arabic script.`;
-    const respRetryUnknown: unknown = await responsesCall({ /* ... */ });
-  }
-  ```
-  ```59:75:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/text/similarity.ts
-  export function looksLikeEcho(source: string[], output: string[]): boolean {
-    // ... lineRatio & character-level similarity
-    return lineRatio >= 0.5 || charSimilarity >= 0.8;
-  }
-  ```
-  ```438:447:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-  const updatedMeta: Record<string, unknown> = {
-    ...placeholderMeta,
-    status: "generated" as const,
-    overview: { lines: preview.lines, notes: preview.notes, line_policy: bundle.line_policy },
-  };
-  ```
-- Suspected cause: `preview` object not re-bound to the retried output in all branches before `cacheSet`/persist; early persistence path may use first-pass data.
-- Candidate fix: After retry success, always assign `preview = { lines, notes, ... }` from retried parse before persistence; add an explicit boolean `wasRetried` used in persistence path.
-- Risk: Minor; potential behavior change if previous lines intentionally preserved.
-- Owner?: Translator area
-- Status: open
-- Observability hooks:
-  - Count metrics: `preview.echo_detected`, `preview.retry_success`, `preview.retry_failed`.
-  - Attach `prompt_hash` and echo flags to logs (already redacted) for correlation.
-  - Emit a debug event when persisted overview differs from final preview lines.
+### Technical debt
+- Redis quota limiter stubbed (needs Upstash integration)
+  - Evidence
+    ```1:6:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/ratelimit/redis.ts
+    // Rate limiting disabled for now (requires @upstash/redis and @upstash/ratelimit)
+    export function getLimiter() { return null; }
+    ```
+  - Impact: only in‑memory per‑minute limits available; no global daily quotas
+  - Priority: medium
 
-### Issue Card 2: 403 on /nodes with stale threadId
+- Mixed feature flag usage and hard‑coded moderation model
+  - Evidence
+    ```8:20:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/ai/moderation.ts
+    model: "omni-moderation-latest",
+    ```
+  - Impact: model not centrally overridden; env consistency
+  - Priority: low
 
-- Title: 403 FORBIDDEN_OR_NOT_FOUND when rapidly switching threads
-- Symptoms: Canvas shows 403 until manual refresh or next poll.
-- Scope: `useNodes` hook; `versions/nodes` API guard; thread switch behavior.
-- Evidence (≥2 anchors from different layers):
-  ```38:45:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/hooks/useNodes.ts
-  return useQuery({ queryKey: ["nodes", projectId, threadId], queryFn: () => fetchNodes(threadId!), enabled: !!projectId && !!threadId, refetchInterval: 1500 });
-  ```
-  ```21:30:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/versions/nodes/route.ts
-  const { data: th, error: thErr } = await sb.from("chat_threads").select("id, project_id").eq("id", threadId).single();
-  if (thErr || !th) return NextResponse.json({ ok: false, error: "FORBIDDEN_OR_NOT_FOUND" }, { status: 403 });
-  ```
-- Suspected cause: Access token propagation and `threadId` change are out of sync; polling during handoff hits server before auth or thread context stabilizes.
-- Candidate fix: Pause `useNodes` polling on thread change; re-enable after `useWorkspace().setThreadId`. Add `retryDelay` jitter and handle 403 with short backoff.
-- Risk: Slight delay in node updates; potential UI lag if backoff too high.
-- Owner?: Workspace
-- Status: open
-- Observability hooks:
-  - Client metric: `nodes.fetch_403_count` with threadId labels; measure time from thread switch to first 200.
-  - Server log sample on 403 including cookie/bearer presence (no tokens), and `threadId`.
+### Planned refactors
+- Centralize error responses and envelopes across routes
+  - Evidence
+    ```1:23:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/http/errors.ts
+    export function jsonError(/* ... */)
+    ```
+  - Plan: adopt `withError` wrapper and standardized error envelopes in all handlers
 
-### Issue Card 3: Version A overview not visible until reopen
+- Extract LLM adapters for multi‑provider support
+  - Evidence
+    ```37:85:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/ai/openai.ts
+    export async function responsesCall(/* ... */)
+    ```
+  - Plan: define provider interface and env‑select adapter
 
-- Title: Overview sometimes missing on first open after Accept & Generate
-- Symptoms: Drawer closes, but overview lines are not visible until reopening or after another poll.
-- Scope: Plan Builder drawer; nodes polling/invalidation; preview meta persistence.
-- Evidence (≥2 anchors from different layers):
-  ```221:251:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/flow/PlanBuilderOverviewSheet.tsx
-  // loop waits for nodes to include generated status + overview lines; invalidates queries every 250ms
-  ```
-  ```104:113:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts
-  const updatedMeta: Record<string, unknown> = {
-    ...placeholderMeta,
-    status: "generated" as const,
-    overview: { lines: preview.lines, notes: preview.notes, line_policy: bundle.line_policy },
-  };
-  ```
-  ```120:137:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/components/workspace/versions/VersionCanvas.tsx
-  const overviewLines: string[] = Array.isArray(api.overview?.lines) ? (api.overview!.lines as string[]) : [];
-  // rendered in node card; shows "No overview yet" otherwise
-  ```
-- Suspected cause: Race between DB meta update commit and the next nodes fetch; first render may occur before overview is persisted/readable.
-- Candidate fix: Delay drawer close until nodes contains non-empty `overview.lines`; optionally add optimistic state to UI.
-- Risk: Slightly longer drawer display; potential false waits if overview remains empty legitimately.
-- Owner?: Translator UX
-- Status: open
-- Observability hooks:
-  - Measure time from preview response to first nodes payload with non-empty overview.
-- Log cases where the loop exceeds threshold (e.g., 8s) with threadId/versionId.
+### Performance issues
+- LLM latency on cold prompts; cache coverage not universal
+  - Evidence
+    ```13:29:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/ai/cache.ts
+    export async function cacheGet/Set(/* ... */)
+    ```
+  - Plan: expand caching to additional deterministic endpoints; add hit/miss metrics
 
-### Open Questions (Phase 2)
+- Polling when view not visible
+  - Evidence
+    ```38:45:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/hooks/useNodes.ts
+    refetchInterval: enabled ? 1500 : false
+    ```
+  - Plan: gate by current view; pause on non‑workshop
 
-- How/where to host real `/api/explode` (model vs lexical hybrid)?
-- Token grouping persistence schema?
-- Nodes polling interval tuning and visibility gating edge cases?
-- Notebook draft sync to thread or project? Versioning?
-- Chat-First rollout: migrate legacy `ChatPanel` or keep both behind flag?
+### Feature limitations
+- No streaming responses implemented
+  - Evidence: all LLM routes use non‑streaming calls
+  - Impact: slower perceived latency; no incremental UX
 
-### Next Reads
+- No external monitoring/metrics
+  - Evidence: console logging only
+  - Impact: limited observability in prod
 
-- `src/store/workspace.ts`
-- `src/hooks/useNodes.ts`
-- `src/components/workspace/chat/ChatPanel.tsx`
+### Breaking changes needed (future)
+- Journey items `thread_id` physical column
+  - Evidence: current filters use `meta->>thread_id`
+  - Impact: migration + code change to `.eq("thread_id", ...)`
 
-### JSON patch skeleton (LLM consumption)
+### Deprecation notices
+- Legacy guide structured fields kept optional; moving to free‑form `translationIntent`
+  - Evidence
+    ```14:27:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/store/guideSlice.ts
+    // Legacy structured fields are kept optional …
+    ```
 
-```json
-{
-  "op": "add",
-  "path": "/issues/-",
-  "value": {
-    "title": "string",
-    "symptoms": "string",
-    "scope": ["module", "route", "component"],
-    "anchors": [
-      { "ref": "start:end:/abs/path/to/file", "note": "why relevant" },
-      { "ref": "start:end:/abs/path/to/other", "note": "another layer" }
-    ],
-    "suspected_cause": "string",
-    "candidate_fix": "string",
-    "risk": "low|medium|high",
-    "owner": "string|null",
-    "status": "open|triaged|in_progress|fixed",
-    "observability_hooks": ["metric_name", "log/event outline"]
-  }
-}
-```
+### Workarounds in place
+- ErrorBoundary for UI crash containment
+  - Evidence
+    ```49:56:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/components/common/ErrorBoundary.tsx
+    componentDidCatch(error: Error, errorInfo: React.ErrorInfo) { console.error("[ErrorBoundary]", error, errorInfo); }
+    ```
+
+- Retry and model fallback for LLM errors
+  - Evidence
+    ```200:238:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/prismatic/route.ts
+    if (shouldFallback) { /* switch to gpt-4o */ } else { return err(502, "OPENAI_FAIL", /* ... */); }
+    ```
+
+- Thread‑scoped local persistence to avoid state leaks across threads
+  - Evidence
+    ```28:47:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/threadStorage.ts
+    const key = tid ? `${name}:${tid}` : `${name}:__global__`;
+    ```

@@ -1,12 +1,63 @@
-doc_purpose: "Normalize model defaults and feature flags; provide canonical maps"
+doc_purpose: "Central inventory of configuration envs, feature flags, and model selection"
 audiences: ["devs","ops","prompt-engineers","LLM"]
-version: "2025-09-23"
-last_scanned_code_at: "2025-09-23"
+version: "2025-11-04"
+last_scanned_code_at: "2025-11-04"
 evidence_policy: "anchors-required"
 
 ### Summary
 
-Centralized inventory of model defaults, environment overrides, and feature flags used across translator, enhancer, router, verifier, and back-translation surfaces. Values here mirror `src/lib/models.ts` and flag helpers; tables include anchors to definitions and call-sites.
+This page lists all configuration environment variables, feature flags, and LLM model selection knobs used by the codebase. It also points to configuration files and provides defaults and examples.
+
+## Environment Variables (names only)
+
+Required at runtime in the web app:
+
+- `OPENAI_API_KEY` — Server key for OpenAI SDK
+- `NEXT_PUBLIC_SUPABASE_URL` — Supabase project URL (public)
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` — Supabase anon key (public)
+
+Optional:
+
+- `SUPABASE_SERVICE_ROLE_KEY` — Service role key (server‑side only)
+- `DEBUG_PROMPTS`, `NEXT_PUBLIC_DEBUG_PROMPTS` — Enable prompt debug logging
+- `STORAGE_BUCKETS_CORPORA` — Bucket name for corpora storage (defaults to `corpora`)
+- `TRANSLATOR_MODEL`, `ENHANCER_MODEL`, `ROUTER_MODEL`, `EMBEDDINGS_MODEL` — Model overrides
+- `NODE_ENV` — Standard Node environment
+
+Evidence:
+
+```2:6:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/env.ts
+export const env = {
+  NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY || "",
+};
+```
+
+```3:9:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/ai/openai.ts
+export const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY!,
+});
+```
+
+```4:4:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/storage.ts
+export const BUCKET = process.env.STORAGE_BUCKETS_CORPORA ?? "corpora";
+```
+
+```2:12:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/models.ts
+export const TRANSLATOR_MODEL = process.env.TRANSLATOR_MODEL?.trim() || "gpt-5";
+export const ENHANCER_MODEL =
+  process.env.ENHANCER_MODEL?.trim() || "gpt-5-mini";
+export const ROUTER_MODEL =
+  process.env.ROUTER_MODEL?.trim() || "gpt-5-nano-2025-08-07";
+export const EMBEDDINGS_MODEL =
+  process.env.EMBEDDINGS_MODEL?.trim() || "text-embedding-3-large";
+```
+
+```124:131:/Users/raaj/Documents/CS/metamorphs/docs/api/llm-api.md
+  process.env.DEBUG_PROMPTS === "1" ||
+  process.env.NEXT_PUBLIC_DEBUG_PROMPTS === "1";
+```
 
 ## Feature Flags Matrix (current)
 
@@ -48,17 +99,14 @@ Rollout: All flags are reversible; no database migrations required.
 
 | Surface                                 | ENV/Const             | Default                  | Fallbacks                    | Anchor                                                                          |
 | --------------------------------------- | --------------------- | ------------------------ | ---------------------------- | ------------------------------------------------------------------------------- |
-| Translator (Preview/Translate/Instruct) | `TRANSLATOR_MODEL`    | "gpt-5"                  | —                            | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/models.ts#L2-L2      |
-| Enhancer (planner JSON)                 | `ENHANCER_MODEL`      | "gpt-5-mini"             | —                            | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/models.ts#L4-L5      |
-| Router / Classifier                     | `ROUTER_MODEL`        | "gpt-5-nano-2025-08-07"  | —                            | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/models.ts#L7-L8      |
-| Verifier (JSON)                         | `VERIFIER_MODEL`      | —                        | defaults to `ROUTER_MODEL`   | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/verify.ts#L12-L13 |
-| Back-translate (JSON)                   | `BACKTRANSLATE_MODEL` | —                        | defaults to `ENHANCER_MODEL` | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/verify.ts#L13-L15 |
-| Moderation                              | `MODERATION_MODEL`    | "omni-moderation-latest" | —                            | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/models.ts#L15-L15    |
-| Embeddings                              | `EMBEDDINGS_MODEL`    | "text-embedding-3-large" | —                            | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/models.ts#L11-L12    |
+| Translator (general text)               | `TRANSLATOR_MODEL`    | "gpt-5"                  | —                            | /Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/models.ts#L2-L2      |
+| Enhancer (planner JSON)                 | `ENHANCER_MODEL`      | "gpt-5-mini"             | —                            | /Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/models.ts#L4-L5      |
+| Router / Classifier                     | `ROUTER_MODEL`        | "gpt-5-nano-2025-08-07"  | —                            | /Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/models.ts#L7-L8      |
+| Embeddings                              | `EMBEDDINGS_MODEL`    | "text-embedding-3-large" | —                            | /Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/models.ts#L11-L12    |
 
 Evidence:
 
-```2:15:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/models.ts
+```2:12:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/models.ts
 export const TRANSLATOR_MODEL = process.env.TRANSLATOR_MODEL?.trim() || "gpt-5";
 
 export const ENHANCER_MODEL =
@@ -83,14 +131,11 @@ const BACKTRANSLATE_MODEL =
 
 | Flag                            | Env var                                        | Default | Allowed values | Effect when OFF              | Anchor                                                                                             |
 | ------------------------------- | ---------------------------------------------- | ------- | -------------- | ---------------------------- | -------------------------------------------------------------------------------------------------- |
-| Translator features             | `NEXT_PUBLIC_FEATURE_TRANSLATOR`               | 0       | {0,1}          | 403 from translator routes   | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/preview/route.ts#L34-L36 |
-| Enhancer (planner)              | `NEXT_PUBLIC_FEATURE_ENHANCER`                 | 0       | {0,1}          | 403 from enhancer route      | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/enhancer/route.ts#L14-L16           |
-| Prismatic variants              | `NEXT_PUBLIC_FEATURE_PRISMATIC`                | 0       | {0,1}          | Mode coerces to balanced     | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/flags/prismatic.ts#L1-L3                |
-| Router intent                   | `NEXT_PUBLIC_FEATURE_ROUTER`                   | 0       | {0,1}          | Router returns null          | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/server/flow/intentLLM.ts#L11-L11            |
-| Verify                          | `NEXT_PUBLIC_FEATURE_VERIFY`                   | 0       | {0,1}          | 404 from verify route        | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/flags/verify.ts#L1-L2                   |
-| Back-translate                  | `NEXT_PUBLIC_FEATURE_BACKTRANSLATE`            | 0       | {0,1}          | 404 from backtranslate route | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/flags/verify.ts#L3-L4                   |
-| Debug prompt previews           | `DEBUG_PROMPTS` or `NEXT_PUBLIC_DEBUG_PROMPTS` | 0       | {0,1}          | No redacted logs             | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/promptHash.ts#L30-L33                |
-| Deprecated: Smart Interview LLM | `NEXT_PUBLIC_FEATURE_SMART_INTERVIEW_LLM`      | —       | —              | always disabled              | /Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/flags/interview.ts#L1-L2                |
+| Translator features             | `NEXT_PUBLIC_FEATURE_TRANSLATOR`               | 0       | {0,1}          | Helper only (no routes)      | /Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/featureFlags.ts#L4-L6                   |
+| Enhancer (planner)              | `NEXT_PUBLIC_FEATURE_ENHANCER`                 | 0       | {0,1}          | Helper only (no routes)      | /Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/featureFlags.ts#L1-L3                   |
+| Prismatic variants              | `NEXT_PUBLIC_FEATURE_PRISMATIC`                | 0       | {0,1}          | Not referenced               | —                                                                                                   |
+| Sidebar layout                  | `NEXT_PUBLIC_FEATURE_SIDEBAR_LAYOUT`           | 0       | {0,1}          | Switches to V2 shell         | /Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/featureFlags.ts#L7-L9                   |
+| Debug prompt previews           | `DEBUG_PROMPTS` / `NEXT_PUBLIC_DEBUG_PROMPTS`  | 0       | {0,1}          | Enables prompt logs          | `docs/*` usage guidance                                                                              |
 
 Evidence:
 
@@ -148,7 +193,7 @@ export const isSmartInterviewLLMEnabled = () => false;
 
 - All surfaces use OpenAI Responses API; helpers ensure non‑generative models drop unsupported params and add fallback when `temperature` is rejected.
 
-```38:61:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/openai.ts
+```38:61:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/ai/openai.ts
 export async function responsesCall({
   model,
   system,
@@ -177,7 +222,7 @@ export async function responsesCall({
     // fallback on unsupported temperature
 ```
 
-```68:83:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/openai.ts
+```68:83:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/ai/openai.ts
     const unsupportedTemp = /Unsupported parameter:\s*'temperature'/i.test(msg);
     if (unsupportedTemp) {
       const retryArgs: Record<string, unknown> = { ...args };
@@ -199,40 +244,86 @@ export async function responsesCall({
 }
 ```
 
-### Cost & Caching Policy
+### Configuration files (locations and purposes)
 
-- See Spend & Cache Policy document for detailed quotas and TTLs.
-- JSON outputs use `response_format` where applicable to avoid repair calls; translator surfaces parse free‑form text.
-
-### Known Gaps / TODOs
-
-- Moderation call site uses a literal model string; consider wiring `MODERATION_MODEL` constant.
-
-```45:49:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/ai/moderation.ts
-const res = await client.moderations.create({
-  model: "omni-moderation-latest",
-  input: text.slice(0, 20000),
-});
+- `translalia-web/next.config.ts` — Next config (security headers, image domains, ESLint build toggle)
+```3:10:/Users/raaj/Documents/CS/metamorphs/translalia-web/next.config.ts
+const nextConfig: NextConfig = {
+  poweredByHeader: false,
+  images: { domains: ["images.unsplash.com"] },
+  eslint: {
+    // Temporarily ignore ESLint during builds
+    ignoreDuringBuilds: true,
+  },
 ```
 
-- `EMBEDDINGS_MODEL` exported but not referenced in call‑sites (confirm future use).
-
-```11:12:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/models.ts
-export const EMBEDDINGS_MODEL =
-  process.env.EMBEDDINGS_MODEL?.trim() || "text-embedding-3-large";
+- `translalia-web/eslint.config.mjs` — Flat ESLint config extending Next TS rules
+```12:14:/Users/raaj/Documents/CS/metamorphs/translalia-web/eslint.config.mjs
+const eslintConfig = [
+  ...compat.extends("next/core-web-vitals", "next/typescript"),
+];
 ```
 
-- Verify/Backtranslate return 404 when disabled, while other features use 403; align policy.
-
-```10:15:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/verify/route.ts
-if (!isVerifyEnabled())
-  return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
+- `translalia-web/tsconfig.json` — TS strict mode, bundler resolution, `@/*` alias
+```2:6:/Users/raaj/Documents/CS/metamorphs/translalia-web/tsconfig.json
+"strict": true,
+"noEmit": true,
+"moduleResolution": "bundler",
 ```
 
-```13:15:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/app/api/translator/backtranslate/route.ts
-if (!isBacktranslateEnabled())
-  return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
+### Defaults and recommended settings
+
+- Feature flags default to OFF (`0`); enable by setting to `"1"`.
+- Models default as:
+  - `TRANSLATOR_MODEL="gpt-5"`
+  - `ENHANCER_MODEL="gpt-5-mini"`
+  - `ROUTER_MODEL="gpt-5-nano-2025-08-07"`
+  - `EMBEDDINGS_MODEL="text-embedding-3-large"`
+- Keep `DEBUG_PROMPTS` OFF in production.
+- Use a dedicated Supabase project; never commit secrets.
+
+### Configuration examples
+
+Local `.env.local` for `translalia-web/`:
+
+```bash
+OPENAI_API_KEY=sk-****...abcd
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+# Optional UI flag
+NEXT_PUBLIC_FEATURE_SIDEBAR_LAYOUT=1
+
+# Optional model overrides
+TRANSLATOR_MODEL=gpt-5
+ENHANCER_MODEL=gpt-5-mini
+ROUTER_MODEL=gpt-5-nano-2025-08-07
+EMBEDDINGS_MODEL=text-embedding-3-large
+
+# Debug (dev only)
+DEBUG_PROMPTS=0
+NEXT_PUBLIC_DEBUG_PROMPTS=0
+
+# Optional storage bucket name
+STORAGE_BUCKETS_CORPORA=corpora
 ```
+
+Common scenarios:
+
+- Enable the new workspace shell only:
+```bash
+NEXT_PUBLIC_FEATURE_SIDEBAR_LAYOUT=1
+```
+
+- Override router to a nano model date tag:
+```bash
+ROUTER_MODEL=gpt-5-nano-2025-08-07
+```
+
+### Notes
+
+- Some flags listed in historical docs (e.g., translator/enhancer gates) are defined in helpers but not referenced by routes in this snapshot.
+- The prismatic API (`/api/notebook/prismatic`) exists and is not gated by a feature flag.
 
 ### See Also
 
