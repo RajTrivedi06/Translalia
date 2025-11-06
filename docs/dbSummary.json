@@ -1,0 +1,3011 @@
+{
+    "tables": [
+        {
+            "table": "chat_messages",
+            "columns": [
+                {
+                    "fk": [
+                    ],
+                    "pk": true,
+                    "name": "id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": "gen_random_uuid()",
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                        {
+                            "ref_table": "chat_threads",
+                            "constraint": "chat_messages_thread_id_fkey",
+                            "ref_column": "id",
+                            "ref_schema": "public"
+                        }
+                    ],
+                    "pk": false,
+                    "name": "thread_id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                        {
+                            "ref_table": "projects",
+                            "constraint": "chat_messages_project_id_fkey",
+                            "ref_column": "id",
+                            "ref_schema": "public"
+                        }
+                    ],
+                    "pk": false,
+                    "name": "project_id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "role",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "content",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "model",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "meta",
+                    "type": "jsonb",
+                    "comment": null,
+                    "default": "'{}'::jsonb",
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "created_by",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "comment": null,
+                    "default": "now()",
+                    "nullable": true
+                }
+            ],
+            "comment": null,
+            "force_rls": false,
+            "rls_enabled": true,
+            "table_bytes": 0,
+            "total_bytes": 90112,
+            "row_estimate": 0,
+            "check_constraints": [
+            ],
+            "unique_constraints": [
+            ]
+        },
+        {
+            "table": "chat_threads",
+            "columns": [
+                {
+                    "fk": [
+                    ],
+                    "pk": true,
+                    "name": "id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": "gen_random_uuid()",
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                        {
+                            "ref_table": "projects",
+                            "constraint": "chat_threads_project_id_fkey",
+                            "ref_column": "id",
+                            "ref_schema": "public"
+                        }
+                    ],
+                    "pk": false,
+                    "name": "project_id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "title",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "created_by",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "comment": null,
+                    "default": "now()",
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                        {
+                            "ref_table": "versions",
+                            "constraint": "chat_threads_accepted_version_fk",
+                            "ref_column": "id",
+                            "ref_schema": "public"
+                        }
+                    ],
+                    "pk": false,
+                    "name": "accepted_version_id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "state",
+                    "type": "jsonb",
+                    "comment": null,
+                    "default": "'{}'::jsonb",
+                    "nullable": false
+                }
+            ],
+            "comment": null,
+            "force_rls": false,
+            "rls_enabled": true,
+            "table_bytes": 16384,
+            "total_bytes": 106496,
+            "row_estimate": 2,
+            "check_constraints": [
+            ],
+            "unique_constraints": [
+            ]
+        },
+        {
+            "table": "compares",
+            "columns": [
+                {
+                    "fk": [
+                    ],
+                    "pk": true,
+                    "name": "id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": "gen_random_uuid()",
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                        {
+                            "ref_table": "projects",
+                            "constraint": "compares_project_id_fkey",
+                            "ref_column": "id",
+                            "ref_schema": "public"
+                        }
+                    ],
+                    "pk": false,
+                    "name": "project_id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                        {
+                            "ref_table": "versions",
+                            "constraint": "compares_left_version_id_fkey",
+                            "ref_column": "id",
+                            "ref_schema": "public"
+                        }
+                    ],
+                    "pk": false,
+                    "name": "left_version_id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                        {
+                            "ref_table": "versions",
+                            "constraint": "compares_right_version_id_fkey",
+                            "ref_column": "id",
+                            "ref_schema": "public"
+                        }
+                    ],
+                    "pk": false,
+                    "name": "right_version_id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "lens",
+                    "type": "text",
+                    "comment": null,
+                    "default": "'meaning'::text",
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "granularity",
+                    "type": "text",
+                    "comment": null,
+                    "default": "'line'::text",
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "notes",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "created_by",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "comment": null,
+                    "default": "now()",
+                    "nullable": true
+                }
+            ],
+            "comment": null,
+            "force_rls": false,
+            "rls_enabled": true,
+            "table_bytes": 0,
+            "total_bytes": 40960,
+            "row_estimate": -1,
+            "check_constraints": [
+            ],
+            "unique_constraints": [
+            ]
+        },
+        {
+            "table": "corpora",
+            "columns": [
+                {
+                    "fk": [
+                    ],
+                    "pk": true,
+                    "name": "id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": "gen_random_uuid()",
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                        {
+                            "ref_table": "projects",
+                            "constraint": "corpora_project_id_fkey",
+                            "ref_column": "id",
+                            "ref_schema": "public"
+                        }
+                    ],
+                    "pk": false,
+                    "name": "project_id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "title",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "description",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "scope",
+                    "type": "text",
+                    "comment": null,
+                    "default": "'project'::text",
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "created_by",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "comment": null,
+                    "default": "now()",
+                    "nullable": true
+                }
+            ],
+            "comment": null,
+            "force_rls": false,
+            "rls_enabled": true,
+            "table_bytes": 0,
+            "total_bytes": 32768,
+            "row_estimate": -1,
+            "check_constraints": [
+            ],
+            "unique_constraints": [
+            ]
+        },
+        {
+            "table": "corpus_chunks",
+            "columns": [
+                {
+                    "fk": [
+                    ],
+                    "pk": true,
+                    "name": "id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": "gen_random_uuid()",
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                        {
+                            "ref_table": "corpora",
+                            "constraint": "corpus_chunks_corpus_id_fkey",
+                            "ref_column": "id",
+                            "ref_schema": "public"
+                        }
+                    ],
+                    "pk": false,
+                    "name": "corpus_id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                        {
+                            "ref_table": "corpus_files",
+                            "constraint": "corpus_chunks_source_file_id_fkey",
+                            "ref_column": "id",
+                            "ref_schema": "public"
+                        }
+                    ],
+                    "pk": false,
+                    "name": "source_file_id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "idx",
+                    "type": "integer",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "content",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "embedding",
+                    "type": "vector(1536)",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "metadata",
+                    "type": "jsonb",
+                    "comment": null,
+                    "default": "'{}'::jsonb",
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "comment": null,
+                    "default": "now()",
+                    "nullable": true
+                }
+            ],
+            "comment": null,
+            "force_rls": false,
+            "rls_enabled": true,
+            "table_bytes": 0,
+            "total_bytes": 32768,
+            "row_estimate": -1,
+            "check_constraints": [
+            ],
+            "unique_constraints": [
+                {
+                    "name": "corpus_chunks_corpus_id_idx_key",
+                    "columns": [
+                        "corpus_id",
+                        "idx"
+                    ]
+                }
+            ]
+        },
+        {
+            "table": "corpus_files",
+            "columns": [
+                {
+                    "fk": [
+                    ],
+                    "pk": true,
+                    "name": "id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": "gen_random_uuid()",
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                        {
+                            "ref_table": "corpora",
+                            "constraint": "corpus_files_corpus_id_fkey",
+                            "ref_column": "id",
+                            "ref_schema": "public"
+                        }
+                    ],
+                    "pk": false,
+                    "name": "corpus_id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "storage_path",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "mime_type",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "bytes",
+                    "type": "bigint",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "comment": null,
+                    "default": "now()",
+                    "nullable": true
+                }
+            ],
+            "comment": null,
+            "force_rls": false,
+            "rls_enabled": true,
+            "table_bytes": 0,
+            "total_bytes": 24576,
+            "row_estimate": -1,
+            "check_constraints": [
+            ],
+            "unique_constraints": [
+            ]
+        },
+        {
+            "table": "human_evals",
+            "columns": [
+                {
+                    "fk": [
+                    ],
+                    "pk": true,
+                    "name": "id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": "gen_random_uuid()",
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                        {
+                            "ref_table": "projects",
+                            "constraint": "human_evals_project_id_fkey",
+                            "ref_column": "id",
+                            "ref_schema": "public"
+                        }
+                    ],
+                    "pk": false,
+                    "name": "project_id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                        {
+                            "ref_table": "versions",
+                            "constraint": "human_evals_version_id_fkey",
+                            "ref_column": "id",
+                            "ref_schema": "public"
+                        }
+                    ],
+                    "pk": false,
+                    "name": "version_id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "adequacy",
+                    "type": "integer",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "fluency",
+                    "type": "integer",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "culture",
+                    "type": "integer",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "notes",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "created_by",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "comment": null,
+                    "default": "now()",
+                    "nullable": true
+                }
+            ],
+            "comment": null,
+            "force_rls": false,
+            "rls_enabled": true,
+            "table_bytes": 0,
+            "total_bytes": 40960,
+            "row_estimate": -1,
+            "check_constraints": [
+            ],
+            "unique_constraints": [
+                {
+                    "name": "human_evals_project_id_version_id_created_by_key",
+                    "columns": [
+                        "project_id",
+                        "version_id",
+                        "created_by"
+                    ]
+                }
+            ]
+        },
+        {
+            "table": "journey_items",
+            "columns": [
+                {
+                    "fk": [
+                    ],
+                    "pk": true,
+                    "name": "id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": "gen_random_uuid()",
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                        {
+                            "ref_table": "projects",
+                            "constraint": "journey_items_project_id_fkey",
+                            "ref_column": "id",
+                            "ref_schema": "public"
+                        }
+                    ],
+                    "pk": false,
+                    "name": "project_id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "kind",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "summary",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                        {
+                            "ref_table": "versions",
+                            "constraint": "journey_items_from_version_id_fkey",
+                            "ref_column": "id",
+                            "ref_schema": "public"
+                        }
+                    ],
+                    "pk": false,
+                    "name": "from_version_id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                        {
+                            "ref_table": "versions",
+                            "constraint": "journey_items_to_version_id_fkey",
+                            "ref_column": "id",
+                            "ref_schema": "public"
+                        }
+                    ],
+                    "pk": false,
+                    "name": "to_version_id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                        {
+                            "ref_table": "compares",
+                            "constraint": "journey_items_compare_id_fkey",
+                            "ref_column": "id",
+                            "ref_schema": "public"
+                        }
+                    ],
+                    "pk": false,
+                    "name": "compare_id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "created_by",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "comment": null,
+                    "default": "now()",
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "meta",
+                    "type": "jsonb",
+                    "comment": null,
+                    "default": "'{}'::jsonb",
+                    "nullable": false
+                }
+            ],
+            "comment": null,
+            "force_rls": false,
+            "rls_enabled": true,
+            "table_bytes": 131072,
+            "total_bytes": 253952,
+            "row_estimate": 240,
+            "check_constraints": [
+            ],
+            "unique_constraints": [
+            ]
+        },
+        {
+            "table": "llm_calls",
+            "columns": [
+                {
+                    "fk": [
+                    ],
+                    "pk": true,
+                    "name": "id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": "gen_random_uuid()",
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                        {
+                            "ref_table": "projects",
+                            "constraint": "llm_calls_project_id_fkey",
+                            "ref_column": "id",
+                            "ref_schema": "public"
+                        }
+                    ],
+                    "pk": false,
+                    "name": "project_id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                        {
+                            "ref_table": "chat_threads",
+                            "constraint": "llm_calls_thread_id_fkey",
+                            "ref_column": "id",
+                            "ref_schema": "public"
+                        }
+                    ],
+                    "pk": false,
+                    "name": "thread_id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                        {
+                            "ref_table": "versions",
+                            "constraint": "llm_calls_version_id_fkey",
+                            "ref_column": "id",
+                            "ref_schema": "public"
+                        }
+                    ],
+                    "pk": false,
+                    "name": "version_id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "provider",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "model",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "prompt_tokens",
+                    "type": "integer",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "completion_tokens",
+                    "type": "integer",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "cost_usd",
+                    "type": "numeric(10,4)",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "latency_ms",
+                    "type": "integer",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "status",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "error",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "request",
+                    "type": "jsonb",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "response",
+                    "type": "jsonb",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "comment": null,
+                    "default": "now()",
+                    "nullable": true
+                }
+            ],
+            "comment": null,
+            "force_rls": false,
+            "rls_enabled": false,
+            "table_bytes": 0,
+            "total_bytes": 40960,
+            "row_estimate": -1,
+            "check_constraints": [
+            ],
+            "unique_constraints": [
+            ]
+        },
+        {
+            "table": "poems",
+            "columns": [
+                {
+                    "fk": [
+                    ],
+                    "pk": true,
+                    "name": "id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": "gen_random_uuid()",
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "lang",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "title",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "text",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "is_public",
+                    "type": "boolean",
+                    "comment": null,
+                    "default": "true",
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "created_by",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": "auth.uid()",
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "comment": null,
+                    "default": "now()",
+                    "nullable": false
+                }
+            ],
+            "comment": null,
+            "force_rls": false,
+            "rls_enabled": true,
+            "table_bytes": 0,
+            "total_bytes": 16384,
+            "row_estimate": -1,
+            "check_constraints": [
+            ],
+            "unique_constraints": [
+            ]
+        },
+        {
+            "table": "profiles",
+            "columns": [
+                {
+                    "fk": [
+                    ],
+                    "pk": true,
+                    "name": "id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "display_name",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "username",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "email",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "avatar_url",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "locale",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "comment": null,
+                    "default": "now()",
+                    "nullable": true
+                }
+            ],
+            "comment": null,
+            "force_rls": false,
+            "rls_enabled": true,
+            "table_bytes": 8192,
+            "total_bytes": 65536,
+            "row_estimate": -1,
+            "check_constraints": [
+            ],
+            "unique_constraints": [
+            ]
+        },
+        {
+            "table": "project_members",
+            "columns": [
+                {
+                    "fk": [
+                        {
+                            "ref_table": "projects",
+                            "constraint": "project_members_project_id_fkey",
+                            "ref_column": "id",
+                            "ref_schema": "public"
+                        }
+                    ],
+                    "pk": true,
+                    "name": "project_id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": true,
+                    "name": "user_id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "role",
+                    "type": "text",
+                    "comment": null,
+                    "default": "'viewer'::text",
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "added_at",
+                    "type": "timestamp with time zone",
+                    "comment": null,
+                    "default": "now()",
+                    "nullable": true
+                }
+            ],
+            "comment": null,
+            "force_rls": false,
+            "rls_enabled": false,
+            "table_bytes": 8192,
+            "total_bytes": 65536,
+            "row_estimate": -1,
+            "check_constraints": [
+            ],
+            "unique_constraints": [
+            ]
+        },
+        {
+            "table": "projects",
+            "columns": [
+                {
+                    "fk": [
+                    ],
+                    "pk": true,
+                    "name": "id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": "gen_random_uuid()",
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "owner_id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "title",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "src_lang",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "tgt_langs",
+                    "type": "text[]",
+                    "comment": null,
+                    "default": "'{}'::text[]",
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "visibility",
+                    "type": "text",
+                    "comment": null,
+                    "default": "'private'::text",
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "comment": null,
+                    "default": "now()",
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "updated_at",
+                    "type": "timestamp with time zone",
+                    "comment": null,
+                    "default": "now()",
+                    "nullable": true
+                }
+            ],
+            "comment": null,
+            "force_rls": false,
+            "rls_enabled": true,
+            "table_bytes": 8192,
+            "total_bytes": 65536,
+            "row_estimate": -1,
+            "check_constraints": [
+            ],
+            "unique_constraints": [
+            ]
+        },
+        {
+            "table": "prompt_audits",
+            "columns": [
+                {
+                    "fk": [
+                    ],
+                    "pk": true,
+                    "name": "id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": "gen_random_uuid()",
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "comment": null,
+                    "default": "now()",
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "created_by",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": "auth.uid()",
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                        {
+                            "ref_table": "projects",
+                            "constraint": "prompt_audits_project_id_fkey",
+                            "ref_column": "id",
+                            "ref_schema": "public"
+                        }
+                    ],
+                    "pk": false,
+                    "name": "project_id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                        {
+                            "ref_table": "chat_threads",
+                            "constraint": "prompt_audits_thread_id_fkey",
+                            "ref_column": "id",
+                            "ref_schema": "public"
+                        }
+                    ],
+                    "pk": false,
+                    "name": "thread_id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "stage",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "model",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "params",
+                    "type": "jsonb",
+                    "comment": null,
+                    "default": "'{}'::jsonb",
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "prompt_system",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "prompt_user",
+                    "type": "jsonb",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "response_excerpt",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "redactions",
+                    "type": "text[]",
+                    "comment": null,
+                    "default": "'{}'::text[]",
+                    "nullable": false
+                }
+            ],
+            "comment": null,
+            "force_rls": false,
+            "rls_enabled": true,
+            "table_bytes": 0,
+            "total_bytes": 40960,
+            "row_estimate": -1,
+            "check_constraints": [
+                {
+                    "name": "prompt_audits_stage_check",
+                    "check": "CHECK ((stage = ANY (ARRAY['workshop-options'::text, 'ai-assist'::text, 'prismatic'::text, 'journey-reflection'::text, 'poem-analysis'::text, 'interview'::text])))"
+                }
+            ],
+            "unique_constraints": [
+            ]
+        },
+        {
+            "table": "prompt_packs",
+            "columns": [
+                {
+                    "fk": [
+                    ],
+                    "pk": true,
+                    "name": "lang",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "data",
+                    "type": "jsonb",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "version",
+                    "type": "integer",
+                    "comment": null,
+                    "default": "1",
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "is_active",
+                    "type": "boolean",
+                    "comment": null,
+                    "default": "true",
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "created_by",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": "auth.uid()",
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "comment": null,
+                    "default": "now()",
+                    "nullable": false
+                }
+            ],
+            "comment": null,
+            "force_rls": false,
+            "rls_enabled": true,
+            "table_bytes": 0,
+            "total_bytes": 16384,
+            "row_estimate": -1,
+            "check_constraints": [
+            ],
+            "unique_constraints": [
+            ]
+        },
+        {
+            "table": "source_texts",
+            "columns": [
+                {
+                    "fk": [
+                    ],
+                    "pk": true,
+                    "name": "id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": "gen_random_uuid()",
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                        {
+                            "ref_table": "projects",
+                            "constraint": "source_texts_project_id_fkey",
+                            "ref_column": "id",
+                            "ref_schema": "public"
+                        }
+                    ],
+                    "pk": false,
+                    "name": "project_id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "title",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "language",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "body",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "meta",
+                    "type": "jsonb",
+                    "comment": null,
+                    "default": "'{}'::jsonb",
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "created_by",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "comment": null,
+                    "default": "now()",
+                    "nullable": true
+                }
+            ],
+            "comment": null,
+            "force_rls": false,
+            "rls_enabled": true,
+            "table_bytes": 0,
+            "total_bytes": 24576,
+            "row_estimate": -1,
+            "check_constraints": [
+            ],
+            "unique_constraints": [
+            ]
+        },
+        {
+            "table": "uploads",
+            "columns": [
+                {
+                    "fk": [
+                    ],
+                    "pk": true,
+                    "name": "id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": "gen_random_uuid()",
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "user_id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": "auth.uid()",
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "thread_id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "bucket",
+                    "type": "text",
+                    "comment": null,
+                    "default": "'corpora'::text",
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "storage_path",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "file_name",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "mime_type",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "size_bytes",
+                    "type": "integer",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "comment": null,
+                    "default": "now()",
+                    "nullable": false
+                }
+            ],
+            "comment": null,
+            "force_rls": false,
+            "rls_enabled": true,
+            "table_bytes": 0,
+            "total_bytes": 16384,
+            "row_estimate": -1,
+            "check_constraints": [
+            ],
+            "unique_constraints": [
+            ]
+        },
+        {
+            "table": "versions",
+            "columns": [
+                {
+                    "fk": [
+                    ],
+                    "pk": true,
+                    "name": "id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": "gen_random_uuid()",
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                        {
+                            "ref_table": "projects",
+                            "constraint": "versions_project_id_fkey",
+                            "ref_column": "id",
+                            "ref_schema": "public"
+                        }
+                    ],
+                    "pk": false,
+                    "name": "project_id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                        {
+                            "ref_table": "source_texts",
+                            "constraint": "versions_source_text_id_fkey",
+                            "ref_column": "id",
+                            "ref_schema": "public"
+                        }
+                    ],
+                    "pk": false,
+                    "name": "source_text_id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "author_id",
+                    "type": "uuid",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "title",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "lines",
+                    "type": "text[]",
+                    "comment": null,
+                    "default": null,
+                    "nullable": false
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "tags",
+                    "type": "text[]",
+                    "comment": null,
+                    "default": "'{}'::text[]",
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "recipe",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "model",
+                    "type": "text",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "temperature",
+                    "type": "numeric(3,2)",
+                    "comment": null,
+                    "default": null,
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "prompt",
+                    "type": "jsonb",
+                    "comment": null,
+                    "default": "'{}'::jsonb",
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "constraints",
+                    "type": "jsonb",
+                    "comment": null,
+                    "default": "'{}'::jsonb",
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "created_at",
+                    "type": "timestamp with time zone",
+                    "comment": null,
+                    "default": "now()",
+                    "nullable": true
+                },
+                {
+                    "fk": [
+                    ],
+                    "pk": false,
+                    "name": "meta",
+                    "type": "jsonb",
+                    "comment": null,
+                    "default": "'{}'::jsonb",
+                    "nullable": false
+                }
+            ],
+            "comment": null,
+            "force_rls": false,
+            "rls_enabled": true,
+            "table_bytes": 98304,
+            "total_bytes": 237568,
+            "row_estimate": 78,
+            "check_constraints": [
+            ],
+            "unique_constraints": [
+            ]
+        }
+    ],
+    "indexes": [
+        {
+            "def": "CREATE UNIQUE INDEX chat_messages_pkey ON public.chat_messages USING btree (id)",
+            "index": "chat_messages_pkey",
+            "table": "chat_messages"
+        },
+        {
+            "def": "CREATE INDEX chat_messages_project_idx ON public.chat_messages USING btree (project_id)",
+            "index": "chat_messages_project_idx",
+            "table": "chat_messages"
+        },
+        {
+            "def": "CREATE INDEX chat_messages_role_idx ON public.chat_messages USING btree (role)",
+            "index": "chat_messages_role_idx",
+            "table": "chat_messages"
+        },
+        {
+            "def": "CREATE INDEX chat_messages_thread_idx ON public.chat_messages USING btree (thread_id)",
+            "index": "chat_messages_thread_idx",
+            "table": "chat_messages"
+        },
+        {
+            "def": "CREATE UNIQUE INDEX chat_threads_accepted_version_unique_idx ON public.chat_threads USING btree (accepted_version_id) WHERE (accepted_version_id IS NOT NULL)",
+            "index": "chat_threads_accepted_version_unique_idx",
+            "table": "chat_threads"
+        },
+        {
+            "def": "CREATE UNIQUE INDEX chat_threads_pkey ON public.chat_threads USING btree (id)",
+            "index": "chat_threads_pkey",
+            "table": "chat_threads"
+        },
+        {
+            "def": "CREATE INDEX chat_threads_project_idx ON public.chat_threads USING btree (project_id)",
+            "index": "chat_threads_project_idx",
+            "table": "chat_threads"
+        },
+        {
+            "def": "CREATE INDEX compares_left_idx ON public.compares USING btree (left_version_id)",
+            "index": "compares_left_idx",
+            "table": "compares"
+        },
+        {
+            "def": "CREATE UNIQUE INDEX compares_pkey ON public.compares USING btree (id)",
+            "index": "compares_pkey",
+            "table": "compares"
+        },
+        {
+            "def": "CREATE INDEX compares_project_idx ON public.compares USING btree (project_id)",
+            "index": "compares_project_idx",
+            "table": "compares"
+        },
+        {
+            "def": "CREATE INDEX compares_right_idx ON public.compares USING btree (right_version_id)",
+            "index": "compares_right_idx",
+            "table": "compares"
+        },
+        {
+            "def": "CREATE UNIQUE INDEX corpora_pkey ON public.corpora USING btree (id)",
+            "index": "corpora_pkey",
+            "table": "corpora"
+        },
+        {
+            "def": "CREATE INDEX corpora_project_idx ON public.corpora USING btree (project_id)",
+            "index": "corpora_project_idx",
+            "table": "corpora"
+        },
+        {
+            "def": "CREATE INDEX corpora_scope_idx ON public.corpora USING btree (scope)",
+            "index": "corpora_scope_idx",
+            "table": "corpora"
+        },
+        {
+            "def": "CREATE UNIQUE INDEX corpus_chunks_corpus_id_idx_key ON public.corpus_chunks USING btree (corpus_id, idx)",
+            "index": "corpus_chunks_corpus_id_idx_key",
+            "table": "corpus_chunks"
+        },
+        {
+            "def": "CREATE INDEX corpus_chunks_corpus_idx ON public.corpus_chunks USING btree (corpus_id)",
+            "index": "corpus_chunks_corpus_idx",
+            "table": "corpus_chunks"
+        },
+        {
+            "def": "CREATE UNIQUE INDEX corpus_chunks_pkey ON public.corpus_chunks USING btree (id)",
+            "index": "corpus_chunks_pkey",
+            "table": "corpus_chunks"
+        },
+        {
+            "def": "CREATE INDEX corpus_files_corpus_idx ON public.corpus_files USING btree (corpus_id)",
+            "index": "corpus_files_corpus_idx",
+            "table": "corpus_files"
+        },
+        {
+            "def": "CREATE UNIQUE INDEX corpus_files_pkey ON public.corpus_files USING btree (id)",
+            "index": "corpus_files_pkey",
+            "table": "corpus_files"
+        },
+        {
+            "def": "CREATE UNIQUE INDEX human_evals_pkey ON public.human_evals USING btree (id)",
+            "index": "human_evals_pkey",
+            "table": "human_evals"
+        },
+        {
+            "def": "CREATE UNIQUE INDEX human_evals_project_id_version_id_created_by_key ON public.human_evals USING btree (project_id, version_id, created_by)",
+            "index": "human_evals_project_id_version_id_created_by_key",
+            "table": "human_evals"
+        },
+        {
+            "def": "CREATE INDEX human_evals_project_idx ON public.human_evals USING btree (project_id)",
+            "index": "human_evals_project_idx",
+            "table": "human_evals"
+        },
+        {
+            "def": "CREATE INDEX human_evals_version_idx ON public.human_evals USING btree (version_id)",
+            "index": "human_evals_version_idx",
+            "table": "human_evals"
+        },
+        {
+            "def": "CREATE UNIQUE INDEX journey_items_pkey ON public.journey_items USING btree (id)",
+            "index": "journey_items_pkey",
+            "table": "journey_items"
+        },
+        {
+            "def": "CREATE INDEX journey_items_project_created_idx ON public.journey_items USING btree (project_id, created_at DESC)",
+            "index": "journey_items_project_created_idx",
+            "table": "journey_items"
+        },
+        {
+            "def": "CREATE INDEX journey_kind_idx ON public.journey_items USING btree (kind)",
+            "index": "journey_kind_idx",
+            "table": "journey_items"
+        },
+        {
+            "def": "CREATE INDEX journey_project_idx ON public.journey_items USING btree (project_id)",
+            "index": "journey_project_idx",
+            "table": "journey_items"
+        },
+        {
+            "def": "CREATE INDEX llm_calls_model_idx ON public.llm_calls USING btree (model)",
+            "index": "llm_calls_model_idx",
+            "table": "llm_calls"
+        },
+        {
+            "def": "CREATE UNIQUE INDEX llm_calls_pkey ON public.llm_calls USING btree (id)",
+            "index": "llm_calls_pkey",
+            "table": "llm_calls"
+        },
+        {
+            "def": "CREATE INDEX llm_calls_project_idx ON public.llm_calls USING btree (project_id)",
+            "index": "llm_calls_project_idx",
+            "table": "llm_calls"
+        },
+        {
+            "def": "CREATE INDEX llm_calls_status_idx ON public.llm_calls USING btree (status)",
+            "index": "llm_calls_status_idx",
+            "table": "llm_calls"
+        },
+        {
+            "def": "CREATE UNIQUE INDEX poems_pkey ON public.poems USING btree (id)",
+            "index": "poems_pkey",
+            "table": "poems"
+        },
+        {
+            "def": "CREATE UNIQUE INDEX profiles_email_key ON public.profiles USING btree (email)",
+            "index": "profiles_email_key",
+            "table": "profiles"
+        },
+        {
+            "def": "CREATE UNIQUE INDEX profiles_pkey ON public.profiles USING btree (id)",
+            "index": "profiles_pkey",
+            "table": "profiles"
+        },
+        {
+            "def": "CREATE UNIQUE INDEX profiles_username_key ON public.profiles USING btree (username)",
+            "index": "profiles_username_key",
+            "table": "profiles"
+        },
+        {
+            "def": "CREATE UNIQUE INDEX project_members_pkey ON public.project_members USING btree (project_id, user_id)",
+            "index": "project_members_pkey",
+            "table": "project_members"
+        },
+        {
+            "def": "CREATE INDEX project_members_role_idx ON public.project_members USING btree (role)",
+            "index": "project_members_role_idx",
+            "table": "project_members"
+        },
+        {
+            "def": "CREATE INDEX project_members_user_idx ON public.project_members USING btree (user_id)",
+            "index": "project_members_user_idx",
+            "table": "project_members"
+        },
+        {
+            "def": "CREATE INDEX projects_owner_idx ON public.projects USING btree (owner_id)",
+            "index": "projects_owner_idx",
+            "table": "projects"
+        },
+        {
+            "def": "CREATE UNIQUE INDEX projects_pkey ON public.projects USING btree (id)",
+            "index": "projects_pkey",
+            "table": "projects"
+        },
+        {
+            "def": "CREATE INDEX projects_visibility_idx ON public.projects USING btree (visibility)",
+            "index": "projects_visibility_idx",
+            "table": "projects"
+        },
+        {
+            "def": "CREATE INDEX idx_prompt_audits_created_at ON public.prompt_audits USING btree (created_at DESC)",
+            "index": "idx_prompt_audits_created_at",
+            "table": "prompt_audits"
+        },
+        {
+            "def": "CREATE INDEX idx_prompt_audits_created_by ON public.prompt_audits USING btree (created_by)",
+            "index": "idx_prompt_audits_created_by",
+            "table": "prompt_audits"
+        },
+        {
+            "def": "CREATE INDEX idx_prompt_audits_thread ON public.prompt_audits USING btree (thread_id)",
+            "index": "idx_prompt_audits_thread",
+            "table": "prompt_audits"
+        },
+        {
+            "def": "CREATE UNIQUE INDEX prompt_audits_pkey ON public.prompt_audits USING btree (id)",
+            "index": "prompt_audits_pkey",
+            "table": "prompt_audits"
+        },
+        {
+            "def": "CREATE UNIQUE INDEX prompt_packs_pkey ON public.prompt_packs USING btree (lang)",
+            "index": "prompt_packs_pkey",
+            "table": "prompt_packs"
+        },
+        {
+            "def": "CREATE UNIQUE INDEX source_texts_pkey ON public.source_texts USING btree (id)",
+            "index": "source_texts_pkey",
+            "table": "source_texts"
+        },
+        {
+            "def": "CREATE INDEX source_texts_project_idx ON public.source_texts USING btree (project_id)",
+            "index": "source_texts_project_idx",
+            "table": "source_texts"
+        },
+        {
+            "def": "CREATE UNIQUE INDEX uploads_pkey ON public.uploads USING btree (id)",
+            "index": "uploads_pkey",
+            "table": "uploads"
+        },
+        {
+            "def": "CREATE INDEX versions_author_idx ON public.versions USING btree (author_id)",
+            "index": "versions_author_idx",
+            "table": "versions"
+        },
+        {
+            "def": "CREATE INDEX versions_meta_thread_idx ON public.versions USING btree (((meta ->> 'thread_id'::text)))",
+            "index": "versions_meta_thread_idx",
+            "table": "versions"
+        },
+        {
+            "def": "CREATE UNIQUE INDEX versions_one_accepted_per_thread_idx ON public.versions USING btree ((\nCASE\n    WHEN ((meta ? 'thread_id'::text) AND ((meta ->> 'thread_id'::text) ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'::text)) THEN ((meta ->> 'thread_id'::text))::uuid\n    ELSE NULL::uuid\nEND)) WHERE (tags @> ARRAY['accepted'::text])",
+            "index": "versions_one_accepted_per_thread_idx",
+            "table": "versions"
+        },
+        {
+            "def": "CREATE UNIQUE INDEX versions_pkey ON public.versions USING btree (id)",
+            "index": "versions_pkey",
+            "table": "versions"
+        },
+        {
+            "def": "CREATE INDEX versions_project_idx ON public.versions USING btree (project_id)",
+            "index": "versions_project_idx",
+            "table": "versions"
+        },
+        {
+            "def": "CREATE INDEX versions_source_idx ON public.versions USING btree (source_text_id)",
+            "index": "versions_source_idx",
+            "table": "versions"
+        }
+    ],
+    "policies": [
+        {
+            "qual": "is_project_editor(project_id)",
+            "roles": [
+                "public"
+            ],
+            "table": "chat_messages",
+            "policy": "cm_delete_editor",
+            "command": "DELETE",
+            "with_check": null
+        },
+        {
+            "qual": null,
+            "roles": [
+                "public"
+            ],
+            "table": "chat_messages",
+            "policy": "cm_insert_member",
+            "command": "INSERT",
+            "with_check": "is_project_member(project_id)"
+        },
+        {
+            "qual": "is_project_member(project_id)",
+            "roles": [
+                "public"
+            ],
+            "table": "chat_messages",
+            "policy": "cm_read_member",
+            "command": "SELECT",
+            "with_check": null
+        },
+        {
+            "qual": "is_project_editor(project_id)",
+            "roles": [
+                "public"
+            ],
+            "table": "chat_messages",
+            "policy": "cm_update_editor",
+            "command": "UPDATE",
+            "with_check": "is_project_editor(project_id)"
+        },
+        {
+            "qual": "(EXISTS ( SELECT 1\n   FROM projects p\n  WHERE ((p.id = chat_messages.project_id) AND (p.owner_id = auth.uid()))))",
+            "roles": [
+                "public"
+            ],
+            "table": "chat_messages",
+            "policy": "msgs_cud",
+            "command": "ALL",
+            "with_check": "(EXISTS ( SELECT 1\n   FROM projects p\n  WHERE ((p.id = chat_messages.project_id) AND (p.owner_id = auth.uid()))))"
+        },
+        {
+            "qual": "(EXISTS ( SELECT 1\n   FROM projects p\n  WHERE ((p.id = chat_messages.project_id) AND (p.owner_id = auth.uid()))))",
+            "roles": [
+                "public"
+            ],
+            "table": "chat_messages",
+            "policy": "msgs_select",
+            "command": "SELECT",
+            "with_check": null
+        },
+        {
+            "qual": "(EXISTS ( SELECT 1\n   FROM projects p\n  WHERE ((p.id = chat_threads.project_id) AND (p.owner_id = auth.uid()))))",
+            "roles": [
+                "public"
+            ],
+            "table": "chat_threads",
+            "policy": "threads_cud",
+            "command": "ALL",
+            "with_check": "(EXISTS ( SELECT 1\n   FROM projects p\n  WHERE ((p.id = chat_threads.project_id) AND (p.owner_id = auth.uid()))))"
+        },
+        {
+            "qual": "(EXISTS ( SELECT 1\n   FROM projects p\n  WHERE ((p.id = chat_threads.project_id) AND (p.owner_id = auth.uid()))))",
+            "roles": [
+                "public"
+            ],
+            "table": "chat_threads",
+            "policy": "threads_select",
+            "command": "SELECT",
+            "with_check": null
+        },
+        {
+            "qual": "is_project_editor(project_id)",
+            "roles": [
+                "public"
+            ],
+            "table": "compares",
+            "policy": "cmp_delete_editor",
+            "command": "DELETE",
+            "with_check": null
+        },
+        {
+            "qual": "is_project_member(project_id)",
+            "roles": [
+                "public"
+            ],
+            "table": "compares",
+            "policy": "cmp_read_member",
+            "command": "SELECT",
+            "with_check": null
+        },
+        {
+            "qual": "is_project_editor(project_id)",
+            "roles": [
+                "public"
+            ],
+            "table": "compares",
+            "policy": "cmp_update_editor",
+            "command": "UPDATE",
+            "with_check": "is_project_editor(project_id)"
+        },
+        {
+            "qual": null,
+            "roles": [
+                "public"
+            ],
+            "table": "compares",
+            "policy": "cmp_write_editor",
+            "command": "INSERT",
+            "with_check": "is_project_editor(project_id)"
+        },
+        {
+            "qual": "((project_id IS NULL) OR is_project_editor(project_id))",
+            "roles": [
+                "public"
+            ],
+            "table": "corpora",
+            "policy": "corp_delete_editor",
+            "command": "DELETE",
+            "with_check": null
+        },
+        {
+            "qual": null,
+            "roles": [
+                "public"
+            ],
+            "table": "corpora",
+            "policy": "corp_insert_editor",
+            "command": "INSERT",
+            "with_check": "((project_id IS NULL) OR is_project_editor(project_id))"
+        },
+        {
+            "qual": "((project_id IS NULL) OR is_project_member(project_id))",
+            "roles": [
+                "public"
+            ],
+            "table": "corpora",
+            "policy": "corp_read_member",
+            "command": "SELECT",
+            "with_check": null
+        },
+        {
+            "qual": "((project_id IS NULL) OR is_project_editor(project_id))",
+            "roles": [
+                "public"
+            ],
+            "table": "corpora",
+            "policy": "corp_update_editor",
+            "command": "UPDATE",
+            "with_check": "((project_id IS NULL) OR is_project_editor(project_id))"
+        },
+        {
+            "qual": "(EXISTS ( SELECT 1\n   FROM corpora c\n  WHERE ((c.id = corpus_chunks.corpus_id) AND ((c.project_id IS NULL) OR is_project_editor(c.project_id)))))",
+            "roles": [
+                "public"
+            ],
+            "table": "corpus_chunks",
+            "policy": "cc_delete_editor",
+            "command": "DELETE",
+            "with_check": null
+        },
+        {
+            "qual": "(EXISTS ( SELECT 1\n   FROM corpora c\n  WHERE ((c.id = corpus_chunks.corpus_id) AND ((c.project_id IS NULL) OR is_project_member(c.project_id)))))",
+            "roles": [
+                "public"
+            ],
+            "table": "corpus_chunks",
+            "policy": "cc_read_member",
+            "command": "SELECT",
+            "with_check": null
+        },
+        {
+            "qual": "(EXISTS ( SELECT 1\n   FROM corpora c\n  WHERE ((c.id = corpus_chunks.corpus_id) AND ((c.project_id IS NULL) OR is_project_editor(c.project_id)))))",
+            "roles": [
+                "public"
+            ],
+            "table": "corpus_chunks",
+            "policy": "cc_update_editor",
+            "command": "UPDATE",
+            "with_check": "(EXISTS ( SELECT 1\n   FROM corpora c\n  WHERE ((c.id = corpus_chunks.corpus_id) AND ((c.project_id IS NULL) OR is_project_editor(c.project_id)))))"
+        },
+        {
+            "qual": null,
+            "roles": [
+                "public"
+            ],
+            "table": "corpus_chunks",
+            "policy": "cc_write_editor",
+            "command": "INSERT",
+            "with_check": "(EXISTS ( SELECT 1\n   FROM corpora c\n  WHERE ((c.id = corpus_chunks.corpus_id) AND ((c.project_id IS NULL) OR is_project_editor(c.project_id)))))"
+        },
+        {
+            "qual": "(EXISTS ( SELECT 1\n   FROM corpora c\n  WHERE ((c.id = corpus_files.corpus_id) AND ((c.project_id IS NULL) OR is_project_editor(c.project_id)))))",
+            "roles": [
+                "public"
+            ],
+            "table": "corpus_files",
+            "policy": "cf_delete_editor",
+            "command": "DELETE",
+            "with_check": null
+        },
+        {
+            "qual": "(EXISTS ( SELECT 1\n   FROM corpora c\n  WHERE ((c.id = corpus_files.corpus_id) AND ((c.project_id IS NULL) OR is_project_member(c.project_id)))))",
+            "roles": [
+                "public"
+            ],
+            "table": "corpus_files",
+            "policy": "cf_read_member",
+            "command": "SELECT",
+            "with_check": null
+        },
+        {
+            "qual": "(EXISTS ( SELECT 1\n   FROM corpora c\n  WHERE ((c.id = corpus_files.corpus_id) AND ((c.project_id IS NULL) OR is_project_editor(c.project_id)))))",
+            "roles": [
+                "public"
+            ],
+            "table": "corpus_files",
+            "policy": "cf_update_editor",
+            "command": "UPDATE",
+            "with_check": "(EXISTS ( SELECT 1\n   FROM corpora c\n  WHERE ((c.id = corpus_files.corpus_id) AND ((c.project_id IS NULL) OR is_project_editor(c.project_id)))))"
+        },
+        {
+            "qual": null,
+            "roles": [
+                "public"
+            ],
+            "table": "corpus_files",
+            "policy": "cf_write_editor",
+            "command": "INSERT",
+            "with_check": "(EXISTS ( SELECT 1\n   FROM corpora c\n  WHERE ((c.id = corpus_files.corpus_id) AND ((c.project_id IS NULL) OR is_project_editor(c.project_id)))))"
+        },
+        {
+            "qual": "((created_by = auth.uid()) OR is_project_editor(project_id))",
+            "roles": [
+                "public"
+            ],
+            "table": "human_evals",
+            "policy": "he_delete_author_or_editor",
+            "command": "DELETE",
+            "with_check": null
+        },
+        {
+            "qual": null,
+            "roles": [
+                "public"
+            ],
+            "table": "human_evals",
+            "policy": "he_insert_member",
+            "command": "INSERT",
+            "with_check": "is_project_member(project_id)"
+        },
+        {
+            "qual": "is_project_member(project_id)",
+            "roles": [
+                "public"
+            ],
+            "table": "human_evals",
+            "policy": "he_read_member",
+            "command": "SELECT",
+            "with_check": null
+        },
+        {
+            "qual": "((created_by = auth.uid()) OR is_project_editor(project_id))",
+            "roles": [
+                "public"
+            ],
+            "table": "human_evals",
+            "policy": "he_update_author_or_editor",
+            "command": "UPDATE",
+            "with_check": "((created_by = auth.uid()) OR is_project_editor(project_id))"
+        },
+        {
+            "qual": "(EXISTS ( SELECT 1\n   FROM projects p\n  WHERE ((p.id = journey_items.project_id) AND ((p.owner_id = auth.uid()) OR (EXISTS ( SELECT 1\n           FROM project_members m\n          WHERE ((m.project_id = p.id) AND (m.user_id = auth.uid()))))))))",
+            "roles": [
+                "public"
+            ],
+            "table": "journey_items",
+            "policy": "ji_delete",
+            "command": "DELETE",
+            "with_check": null
+        },
+        {
+            "qual": null,
+            "roles": [
+                "public"
+            ],
+            "table": "journey_items",
+            "policy": "ji_insert",
+            "command": "INSERT",
+            "with_check": "(EXISTS ( SELECT 1\n   FROM projects p\n  WHERE ((p.id = journey_items.project_id) AND ((p.owner_id = auth.uid()) OR (EXISTS ( SELECT 1\n           FROM project_members m\n          WHERE ((m.project_id = p.id) AND (m.user_id = auth.uid()))))))))"
+        },
+        {
+            "qual": "(EXISTS ( SELECT 1\n   FROM projects p\n  WHERE ((p.id = journey_items.project_id) AND ((p.owner_id = auth.uid()) OR (EXISTS ( SELECT 1\n           FROM project_members m\n          WHERE ((m.project_id = p.id) AND (m.user_id = auth.uid()))))))))",
+            "roles": [
+                "public"
+            ],
+            "table": "journey_items",
+            "policy": "ji_select",
+            "command": "SELECT",
+            "with_check": null
+        },
+        {
+            "qual": "(EXISTS ( SELECT 1\n   FROM projects p\n  WHERE ((p.id = journey_items.project_id) AND ((p.owner_id = auth.uid()) OR (EXISTS ( SELECT 1\n           FROM project_members m\n          WHERE ((m.project_id = p.id) AND (m.user_id = auth.uid()))))))))",
+            "roles": [
+                "public"
+            ],
+            "table": "journey_items",
+            "policy": "ji_update",
+            "command": "UPDATE",
+            "with_check": "(EXISTS ( SELECT 1\n   FROM projects p\n  WHERE ((p.id = journey_items.project_id) AND ((p.owner_id = auth.uid()) OR (EXISTS ( SELECT 1\n           FROM project_members m\n          WHERE ((m.project_id = p.id) AND (m.user_id = auth.uid()))))))))"
+        },
+        {
+            "qual": null,
+            "roles": [
+                "public"
+            ],
+            "table": "journey_items",
+            "policy": "journey_insert",
+            "command": "INSERT",
+            "with_check": "(EXISTS ( SELECT 1\n   FROM projects p\n  WHERE ((p.id = journey_items.project_id) AND (p.owner_id = auth.uid()))))"
+        },
+        {
+            "qual": "(EXISTS ( SELECT 1\n   FROM projects p\n  WHERE ((p.id = journey_items.project_id) AND (p.owner_id = auth.uid()))))",
+            "roles": [
+                "public"
+            ],
+            "table": "journey_items",
+            "policy": "journey_select",
+            "command": "SELECT",
+            "with_check": null
+        },
+        {
+            "qual": null,
+            "roles": [
+                "authenticated"
+            ],
+            "table": "poems",
+            "policy": "poems_insert_own",
+            "command": "INSERT",
+            "with_check": "(created_by = auth.uid())"
+        },
+        {
+            "qual": "(created_by = auth.uid())",
+            "roles": [
+                "authenticated"
+            ],
+            "table": "poems",
+            "policy": "poems_owner_read_private",
+            "command": "SELECT",
+            "with_check": null
+        },
+        {
+            "qual": "(created_by = auth.uid())",
+            "roles": [
+                "public"
+            ],
+            "table": "poems",
+            "policy": "poems_owner_write",
+            "command": "UPDATE",
+            "with_check": "(created_by = auth.uid())"
+        },
+        {
+            "qual": "(is_public = true)",
+            "roles": [
+                "public"
+            ],
+            "table": "poems",
+            "policy": "poems_public_read",
+            "command": "SELECT",
+            "with_check": null
+        },
+        {
+            "qual": null,
+            "roles": [
+                "public"
+            ],
+            "table": "profiles",
+            "policy": "profiles_self_insert",
+            "command": "INSERT",
+            "with_check": "(auth.uid() = id)"
+        },
+        {
+            "qual": "(auth.uid() = id)",
+            "roles": [
+                "public"
+            ],
+            "table": "profiles",
+            "policy": "profiles_self_read",
+            "command": "SELECT",
+            "with_check": null
+        },
+        {
+            "qual": "(auth.uid() = id)",
+            "roles": [
+                "public"
+            ],
+            "table": "profiles",
+            "policy": "profiles_self_write",
+            "command": "UPDATE",
+            "with_check": "(auth.uid() = id)"
+        },
+        {
+            "qual": "is_project_owner(project_id)",
+            "roles": [
+                "public"
+            ],
+            "table": "project_members",
+            "policy": "pm_manage_owner",
+            "command": "ALL",
+            "with_check": "is_project_owner(project_id)"
+        },
+        {
+            "qual": "is_project_member(project_id)",
+            "roles": [
+                "public"
+            ],
+            "table": "project_members",
+            "policy": "pm_read_member",
+            "command": "SELECT",
+            "with_check": null
+        },
+        {
+            "qual": null,
+            "roles": [
+                "public"
+            ],
+            "table": "projects",
+            "policy": "insert own projects",
+            "command": "INSERT",
+            "with_check": "(auth.uid() = owner_id)"
+        },
+        {
+            "qual": "(owner_id = auth.uid())",
+            "roles": [
+                "public"
+            ],
+            "table": "projects",
+            "policy": "proj_owner_cud",
+            "command": "ALL",
+            "with_check": "(owner_id = auth.uid())"
+        },
+        {
+            "qual": "(owner_id = auth.uid())",
+            "roles": [
+                "public"
+            ],
+            "table": "projects",
+            "policy": "proj_owner_select",
+            "command": "SELECT",
+            "with_check": null
+        },
+        {
+            "qual": null,
+            "roles": [
+                "public"
+            ],
+            "table": "projects",
+            "policy": "projects_create_own",
+            "command": "INSERT",
+            "with_check": "(owner_id = auth.uid())"
+        },
+        {
+            "qual": "(owner_id = auth.uid())",
+            "roles": [
+                "public"
+            ],
+            "table": "projects",
+            "policy": "projects_owner_delete",
+            "command": "DELETE",
+            "with_check": null
+        },
+        {
+            "qual": "(owner_id = auth.uid())",
+            "roles": [
+                "public"
+            ],
+            "table": "projects",
+            "policy": "projects_owner_update",
+            "command": "UPDATE",
+            "with_check": "(owner_id = auth.uid())"
+        },
+        {
+            "qual": "(is_project_member(id) OR (owner_id = auth.uid()))",
+            "roles": [
+                "public"
+            ],
+            "table": "projects",
+            "policy": "projects_read_member",
+            "command": "SELECT",
+            "with_check": null
+        },
+        {
+            "qual": "(auth.uid() = owner_id)",
+            "roles": [
+                "public"
+            ],
+            "table": "projects",
+            "policy": "select own projects",
+            "command": "SELECT",
+            "with_check": null
+        },
+        {
+            "qual": null,
+            "roles": [
+                "public"
+            ],
+            "table": "prompt_audits",
+            "policy": "prompt_audits_insert_owner",
+            "command": "INSERT",
+            "with_check": "(created_by = auth.uid())"
+        },
+        {
+            "qual": "(created_by = auth.uid())",
+            "roles": [
+                "public"
+            ],
+            "table": "prompt_audits",
+            "policy": "prompt_audits_owner",
+            "command": "SELECT",
+            "with_check": null
+        },
+        {
+            "qual": "(created_by = auth.uid())",
+            "roles": [
+                "authenticated"
+            ],
+            "table": "prompt_packs",
+            "policy": "prompt_packs_delete_owner",
+            "command": "DELETE",
+            "with_check": null
+        },
+        {
+            "qual": "true",
+            "roles": [
+                "public"
+            ],
+            "table": "prompt_packs",
+            "policy": "prompt_packs_read_all",
+            "command": "SELECT",
+            "with_check": null
+        },
+        {
+            "qual": "(created_by = auth.uid())",
+            "roles": [
+                "authenticated"
+            ],
+            "table": "prompt_packs",
+            "policy": "prompt_packs_update_owner",
+            "command": "UPDATE",
+            "with_check": "(created_by = auth.uid())"
+        },
+        {
+            "qual": null,
+            "roles": [
+                "authenticated"
+            ],
+            "table": "prompt_packs",
+            "policy": "prompt_packs_write_owner",
+            "command": "INSERT",
+            "with_check": "(created_by = auth.uid())"
+        },
+        {
+            "qual": "is_project_editor(project_id)",
+            "roles": [
+                "public"
+            ],
+            "table": "source_texts",
+            "policy": "st_delete_editor",
+            "command": "DELETE",
+            "with_check": null
+        },
+        {
+            "qual": "is_project_member(project_id)",
+            "roles": [
+                "public"
+            ],
+            "table": "source_texts",
+            "policy": "st_read_member",
+            "command": "SELECT",
+            "with_check": null
+        },
+        {
+            "qual": "is_project_editor(project_id)",
+            "roles": [
+                "public"
+            ],
+            "table": "source_texts",
+            "policy": "st_update_editor",
+            "command": "UPDATE",
+            "with_check": "is_project_editor(project_id)"
+        },
+        {
+            "qual": null,
+            "roles": [
+                "public"
+            ],
+            "table": "source_texts",
+            "policy": "st_write_editor",
+            "command": "INSERT",
+            "with_check": "is_project_editor(project_id)"
+        },
+        {
+            "qual": "(user_id = auth.uid())",
+            "roles": [
+                "authenticated"
+            ],
+            "table": "uploads",
+            "policy": "uploads_owner_delete",
+            "command": "DELETE",
+            "with_check": null
+        },
+        {
+            "qual": null,
+            "roles": [
+                "authenticated"
+            ],
+            "table": "uploads",
+            "policy": "uploads_owner_insert",
+            "command": "INSERT",
+            "with_check": "(user_id = auth.uid())"
+        },
+        {
+            "qual": "(user_id = auth.uid())",
+            "roles": [
+                "authenticated"
+            ],
+            "table": "uploads",
+            "policy": "uploads_owner_select",
+            "command": "SELECT",
+            "with_check": null
+        },
+        {
+            "qual": "(user_id = auth.uid())",
+            "roles": [
+                "authenticated"
+            ],
+            "table": "uploads",
+            "policy": "uploads_owner_update",
+            "command": "UPDATE",
+            "with_check": "(user_id = auth.uid())"
+        },
+        {
+            "qual": "is_project_editor(project_id)",
+            "roles": [
+                "public"
+            ],
+            "table": "versions",
+            "policy": "v_delete_editor",
+            "command": "DELETE",
+            "with_check": null
+        },
+        {
+            "qual": null,
+            "roles": [
+                "public"
+            ],
+            "table": "versions",
+            "policy": "v_insert_member",
+            "command": "INSERT",
+            "with_check": "(EXISTS ( SELECT 1\n   FROM projects p\n  WHERE ((p.id = versions.project_id) AND ((p.owner_id = auth.uid()) OR (EXISTS ( SELECT 1\n           FROM project_members m\n          WHERE ((m.project_id = p.id) AND (m.user_id = auth.uid()))))))))"
+        },
+        {
+            "qual": "is_project_member(project_id)",
+            "roles": [
+                "public"
+            ],
+            "table": "versions",
+            "policy": "v_read_member",
+            "command": "SELECT",
+            "with_check": null
+        },
+        {
+            "qual": "is_project_editor(project_id)",
+            "roles": [
+                "public"
+            ],
+            "table": "versions",
+            "policy": "v_update_editor",
+            "command": "UPDATE",
+            "with_check": "is_project_editor(project_id)"
+        },
+        {
+            "qual": "(EXISTS ( SELECT 1\n   FROM projects p\n  WHERE ((p.id = versions.project_id) AND ((p.owner_id = auth.uid()) OR (EXISTS ( SELECT 1\n           FROM project_members m\n          WHERE ((m.project_id = p.id) AND (m.user_id = auth.uid()))))))))",
+            "roles": [
+                "public"
+            ],
+            "table": "versions",
+            "policy": "v_update_member",
+            "command": "UPDATE",
+            "with_check": "(EXISTS ( SELECT 1\n   FROM projects p\n  WHERE ((p.id = versions.project_id) AND ((p.owner_id = auth.uid()) OR (EXISTS ( SELECT 1\n           FROM project_members m\n          WHERE ((m.project_id = p.id) AND (m.user_id = auth.uid()))))))))"
+        },
+        {
+            "qual": null,
+            "roles": [
+                "public"
+            ],
+            "table": "versions",
+            "policy": "v_write_editor",
+            "command": "INSERT",
+            "with_check": "is_project_editor(project_id)"
+        },
+        {
+            "qual": "(EXISTS ( SELECT 1\n   FROM projects p\n  WHERE ((p.id = versions.project_id) AND (p.owner_id = auth.uid()))))",
+            "roles": [
+                "public"
+            ],
+            "table": "versions",
+            "policy": "versions_cud",
+            "command": "ALL",
+            "with_check": "(EXISTS ( SELECT 1\n   FROM projects p\n  WHERE ((p.id = versions.project_id) AND (p.owner_id = auth.uid()))))"
+        },
+        {
+            "qual": "(EXISTS ( SELECT 1\n   FROM projects p\n  WHERE ((p.id = versions.project_id) AND (p.owner_id = auth.uid()))))",
+            "roles": [
+                "public"
+            ],
+            "table": "versions",
+            "policy": "versions_select",
+            "command": "SELECT",
+            "with_check": null
+        }
+    ],
+    "stats_note": "Row estimates from last ANALYZE, may be stale",
+    "generated_at": "2025-11-04T13:17:15.345796+00:00"
+} 
+

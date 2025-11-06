@@ -32,7 +32,7 @@ interface ThreadPageClientProps {
 }
 
 export default function ThreadPageClient({
-  projectId: _projectId,
+  projectId,
   threadId,
 }: ThreadPageClientProps) {
   useEffect(() => {
@@ -157,7 +157,7 @@ export default function ThreadPageClient({
             collapsible={true}
             className="border-l"
           >
-            <NotebookPhase6 />
+            <NotebookPhase6 projectId={projectId} />
           </Panel>
         </PanelGroup>
       </div>

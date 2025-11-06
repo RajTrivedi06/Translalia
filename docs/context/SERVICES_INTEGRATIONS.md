@@ -1,5 +1,5 @@
 Purpose: External services used (Supabase, OpenAI, Upstash), usage points, and env names.
-Updated: 2025-11-04
+wUpdated: 2025-11-04
 
 ### [Last Updated: 2025-11-04]
 

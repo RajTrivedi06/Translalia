@@ -297,3 +297,120 @@ Example valid response:
   "alternatives": ["love, life, beauty bright", "bright love and life and beauty"]
 }`;
 }
+
+/**
+ * Builds a prompt for generating brief, warm feedback on student's translation journey.
+ * Returns 1-2 short paragraphs (~100-150 words) focusing on the student's creative choices
+ * and thinking process, NOT on translation quality assessment.
+ *
+ * For ages 12-16. Tone should be warm, encouraging, peer-like.
+ * Target: students who may be intimidated by assessment-style feedback.
+ */
+export interface JourneyFeedbackContext {
+  studentReflection: string;
+  completedLines: Record<string, string>; // index => translation
+  poemLines: string[];
+  completedCount: number;
+  totalCount: number;
+}
+
+export function buildJourneyFeedbackPrompt({
+  studentReflection,
+  completedLines,
+  poemLines,
+  completedCount,
+  totalCount,
+}: JourneyFeedbackContext): string {
+  // Format the completed translations with their source lines
+  const completedTranslations = Object.entries(completedLines)
+    .map(([idx, translation]) => {
+      const lineNum = parseInt(idx);
+      const sourceLine = poemLines[lineNum] || "";
+      return `Line ${lineNum + 1}: "${sourceLine}" → "${translation}"`;
+    })
+    .join("\n");
+
+  const progressPercent = Math.round((completedCount / totalCount) * 100);
+
+  return `You are a warm, encouraging translation companion providing brief, conversational feedback to a young translator (ages 12-16).
+
+STUDENT'S REFLECTION ABOUT THEIR JOURNEY:
+"${studentReflection}"
+
+THEIR TRANSLATION PROGRESS:
+${completedCount}/${totalCount} lines (${progressPercent}%)
+
+THEIR COMPLETED LINES:
+${completedTranslations}
+
+YOUR TASK:
+Write 1-2 short paragraphs (~100-150 words total) responding to their reflection and journey.
+
+TONE & APPROACH:
+- Warm, friendly, like a peer or mentor
+- Celebrate their thinking process and creative choices
+- Acknowledge specific lines they translated (cite actual lines, not line numbers)
+- Ask implicit questions that encourage reflection
+- Focus on growth and learning, not judgment
+- Use conversational phrases: "I noticed...", "That's cool because...", "You're thinking like..."
+- End on encouragement
+
+CRITICAL - DO NOT:
+- Use words: "assessment", "strengths", "weaknesses", "evaluation", "score", "grade"
+- Write like a teacher grading
+- Focus on "correctness" vs source language
+- Be condescending or overly formal
+- Make it about performance - make it about thinking and creativity
+
+CRITICAL - DO:
+- Mention specific lines/translations they created
+- Celebrate their creative decision-making
+- Show genuine interest in their process
+- Encourage continued exploration
+- Use 1-2 friendly emojis max (🌟 ✨ 🎉)
+
+Example good response:
+"I loved how you kept the rhythm in 'Luna danza sola' - that's actually one of the hardest parts of poetry translation! You're not just swapping words, you're thinking about how they sound together. The way you explored different options for that line tells me you understand what real translation is about. Keep that curiosity going! 🌟"
+
+Return the feedback as plain text (no JSON, no markdown, just the paragraphs).`;
+}
+
+/**
+ * System prompt for journey feedback generation.
+ */
+export function buildJourneyFeedbackSystemPrompt(): string {
+  return `You are a warm, encouraging translation companion for young translators (ages 12-16).
+
+Your job is to provide brief, conversational feedback on their translation journey.
+
+TONE:
+- Warm and genuine
+- Conversational ("I noticed...", "That's cool because...")
+- Like a peer or supportive mentor
+- Never condescending or overly formal
+
+LENGTH:
+- Exactly 1-2 short paragraphs
+- Target: 100-150 words
+- Concise, digestible, engaging
+
+FOCUS:
+- Their creative thinking process
+- Specific lines they translated (mention actual lines)
+- Why their approach matters
+- Growth and learning
+- Encouragement for future translation
+
+AVOID:
+- Assessment language (no "strengths", "weaknesses", "evaluation")
+- Teacher-like grading tone
+- Focusing on "correctness"
+- Generic comments
+- Overexplaining
+
+EMOJI USE:
+- Max 1-2 friendly emojis (🌟 ✨ 🎉)
+- Use sparingly, only if natural
+
+Return ONLY the feedback text - no JSON, no markdown, no explanations.`;
+}

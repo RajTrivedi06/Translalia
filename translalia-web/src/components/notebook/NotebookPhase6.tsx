@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useNotebookStore } from "@/store/notebookSlice";
 import { useWorkshopStore } from "@/store/workshopSlice";
+import { useWorkspace } from "@/store/workspace";
 import {
   useKeyboardShortcuts,
   KeyboardShortcutsHint,
@@ -15,6 +16,7 @@ import { FinalizeLineDialog } from "./FinalizeLineDialog";
 import { PoemAssembly } from "./PoemAssembly";
 import { ComparisonView } from "./ComparisonView";
 import { JourneySummary } from "./JourneySummary";
+import { JourneyReflection } from "./JourneyReflection";
 import { CompletionCelebration } from "./CompletionCelebration";
 import { NotebookDropZone } from "./NotebookDropZone";
 import { ModeSwitcher } from "./ModeSwitcher";
@@ -29,8 +31,12 @@ import {
   AlertCircle,
   CheckCircle,
   ArrowLeftRight,
-  BookOpen,
+  Sparkles,
 } from "lucide-react";
+
+interface NotebookPhase6Props {
+  projectId?: string;
+}
 
 /**
  * NotebookPhase6 - Full-featured notebook with Phase 6 enhancements
@@ -43,7 +49,7 @@ import {
  * - Draft management
  * - Navigation between lines
  */
-export default function NotebookPhase6() {
+export default function NotebookPhase6({ projectId: propProjectId }: NotebookPhase6Props = {}) {
   // Notebook state
   const droppedCells = useNotebookStore((s) => s.droppedCells);
   const currentLineIndex = useNotebookStore((s) => s.currentLineIndex);
@@ -77,11 +83,16 @@ export default function NotebookPhase6() {
   const completedLines = useWorkshopStore((s) => s.completedLines);
   const setCompletedLine = useWorkshopStore((s) => s.setCompletedLine);
 
+  // Workspace state - use prop if provided, otherwise fall back to store
+  const storeProjectId = useWorkspace((s) => s.projectId);
+  const projectId = propProjectId || storeProjectId;
+
   // Dialog state
   const [showFinalizeDialog, setShowFinalizeDialog] = React.useState(false);
   const [showShortcutsHelp, setShowShortcutsHelp] = React.useState(false);
   const [showComparisonView, setShowComparisonView] = React.useState(false);
   const [showJourneySummary, setShowJourneySummary] = React.useState(false);
+  const [showJourneyReflection, setShowJourneyReflection] = React.useState(false);
   const [showCelebration, setShowCelebration] = React.useState(false);
   const [hasShownCelebration, setHasShownCelebration] = React.useState(false);
   const [isDragActive, setIsDragActive] = React.useState(false);
@@ -334,15 +345,8 @@ export default function NotebookPhase6() {
     <div className="h-full flex flex-col">
       {/* Header with Progress */}
       <div className="border-b border-gray-200 px-6 py-4 bg-white flex-shrink-0">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-3">
-            <h2 className="text-lg font-medium font-serif">Notebook</h2>
-            {currentLineIndex !== null && (
-              <Badge variant="secondary" className="text-xs">
-                Line {currentLineIndex + 1} of {poemLines.length}
-              </Badge>
-            )}
-          </div>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-lg font-medium font-serif">Notebook</h2>
 
           <div className="flex items-center gap-2">
             {/* Auto-save indicator */}
@@ -395,15 +399,15 @@ export default function NotebookPhase6() {
               Compare
             </Button>
 
-            {/* View Journey */}
+            {/* View Journey - Reflection Feature */}
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setShowJourneySummary(true)}
-              title="View translation journey"
+              onClick={() => setShowJourneyReflection(true)}
+              title="Reflect on your translation journey"
               disabled={Object.keys(completedLines).length === 0}
             >
-              <BookOpen className="w-4 h-4 mr-2" />
+              <Sparkles className="w-4 h-4 mr-2" />
               Journey
             </Button>
 
@@ -419,6 +423,15 @@ export default function NotebookPhase6() {
             </Button>
           </div>
         </div>
+
+        {/* Line Badge */}
+        {currentLineIndex !== null && (
+          <div className="mb-3">
+            <Badge variant="secondary" className="text-xs">
+              Line {currentLineIndex + 1} of {poemLines.length}
+            </Badge>
+          </div>
+        )}
 
         {/* Line Progress Indicator */}
         <LineProgressIndicator />
@@ -632,13 +645,20 @@ export default function NotebookPhase6() {
         open={showComparisonView}
         onOpenChange={setShowComparisonView}
         highlightDiffs={true}
-        showLineNumbers={true}
+        showLineNumbers={false}
       />
 
       {/* Journey Summary */}
       <JourneySummary
         open={showJourneySummary}
         onOpenChange={setShowJourneySummary}
+      />
+
+      {/* Journey Reflection */}
+      <JourneyReflection
+        open={showJourneyReflection}
+        onOpenChange={setShowJourneyReflection}
+        projectId={projectId || ""}
       />
 
       {/* Completion Celebration */}
