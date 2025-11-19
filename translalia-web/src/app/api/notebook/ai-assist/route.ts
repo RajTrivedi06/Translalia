@@ -12,6 +12,8 @@ import {
 import { GuideAnswers } from "@/store/guideSlice";
 import { DragData } from "@/types/drag";
 import { z } from "zod";
+import { maskPrompts } from "@/server/audit/mask";
+import { insertPromptAudit } from "@/server/audit/insertPromptAudit";
 
 const RequestSchema = z.object({
   threadId: z.string().uuid(),
@@ -35,7 +37,7 @@ const RequestSchema = z.object({
       ]),
       sourceLineNumber: z.number(),
       position: z.number(),
-      dragType: z.enum(["option", "sourceWord"]).optional(),
+      dragType: z.enum(["option", "sourceWord", "variantWord"]).optional(),
     })
   ),
   sourceLineText: z.string(),
@@ -110,7 +112,7 @@ export async function POST(req: Request) {
     const supabase = await supabaseServer();
     const { data: thread, error: threadError } = await supabase
       .from("chat_threads")
-      .select("id, state")
+      .select("id, state, project_id")
       .eq("id", threadId)
       .eq("created_by", user.id)
       .single();
@@ -136,7 +138,7 @@ export async function POST(req: Request) {
 
     const systemPrompt = buildAIAssistSystemPrompt();
 
-    // Use TRANSLATOR_MODEL (defaults to gpt-5) with fallback
+    // Use TRANSLATOR_MODEL (defaults to gpt-4o) with fallback
     let modelToUse = TRANSLATOR_MODEL;
     let completion;
 
@@ -167,7 +169,7 @@ export async function POST(req: Request) {
         });
       }
     } catch (modelError: any) {
-      // If model not found or unsupported, fallback to gpt-4o
+      // If model not found or unsupported, fallback to gpt-4o-mini
       const shouldFallback =
         modelError?.error?.code === "model_not_found" ||
         modelError?.status === 404 ||
@@ -175,12 +177,12 @@ export async function POST(req: Request) {
 
       if (shouldFallback) {
         console.warn(
-          `[ai-assist] Model ${modelToUse} fallback to gpt-4o:`,
+          `[ai-assist] Model ${modelToUse} fallback to gpt-4o-mini:`,
           modelError?.error?.code ||
             modelError?.error?.message ||
             "error"
         );
-        modelToUse = "gpt-4o";
+        modelToUse = "gpt-4o-mini";
         completion = await openai.chat.completions.create({
           model: modelToUse,
           temperature: 0.7,
@@ -197,6 +199,26 @@ export async function POST(req: Request) {
 
     // Extract response text
     const text = completion.choices[0]?.message?.content ?? "{}";
+
+    // Log audit asynchronously (fire and forget)
+    insertPromptAudit({
+      createdBy: user.id,
+      projectId: thread.project_id ?? null,
+      threadId: threadId,
+      stage: "ai-assist",
+      provider: "openai",
+      model: modelToUse,
+      params: {
+        cellId,
+        selectedWordsCount: selectedWords.length,
+        instruction: instruction || "refine",
+      },
+      promptSystemMasked: maskPrompts(systemPrompt, prompt).promptSystemMasked,
+      promptUserMasked: maskPrompts(systemPrompt, prompt).promptUserMasked,
+      responseExcerpt: text.slice(0, 400),
+    }).catch(() => {
+      // Swallow audit errors
+    });
 
     // Parse response
     let parsed;

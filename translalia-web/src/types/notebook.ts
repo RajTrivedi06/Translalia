@@ -1,5 +1,7 @@
 export type CellStatus = 'untranslated' | 'draft' | 'reviewed' | 'locked';
 
+import type { DragData } from "@/types/drag";
+
 export interface NotebookCell {
   id: string;
   lineIndex: number;
@@ -25,6 +27,10 @@ export interface NotebookCell {
     createdAt: string;
     updatedAt: string;
     wordCount: number;
+    sourceDragType?: DragData["dragType"];
+    sourceVariantId?: number;
+    sourceOriginal?: string;
+    sourceStanzaIndex?: number;
   };
 }
 

@@ -2,6 +2,8 @@
 
 import { supabaseServer } from "@/lib/supabaseServer";
 import { GuideAnswers } from "@/store/guideSlice";
+import type { SimplePoemStanzas } from "@/lib/utils/stanzaUtils";
+import type { StanzaDetectionResult } from "@/lib/poem/stanzaDetection";
 import { z } from "zod";
 
 // Validation schemas for each answer type
@@ -58,6 +60,32 @@ const GuideAnswersSchema = z.object({
 export type UpdateGuideStateResult =
   | { success: true }
   | { success: false; error: string };
+
+interface SavePoemStateParams {
+  threadId: string;
+  rawPoem: string;
+  stanzas: SimplePoemStanzas;
+}
+
+/**
+ * Converts SimplePoemStanzas (client-side format) to StanzaDetectionResult (backend format)
+ */
+function convertToStanzaDetectionResult(
+  simple: SimplePoemStanzas
+): StanzaDetectionResult {
+  return {
+    stanzas: simple.stanzas.map((stanza) => ({
+      number: stanza.number,
+      text: stanza.text,
+      lines: stanza.lines,
+      lineCount: stanza.lines.length,
+      startLineIndex: 0, // Will be calculated if needed by backend
+    })),
+    totalStanzas: simple.totalStanzas,
+    detectionMethod: "local",
+    reasoning: "Client-side 4-line stanza detection",
+  };
+}
 
 /**
  * Updates the guide answers in the chat_threads.state column.
@@ -173,6 +201,82 @@ export async function getGuideState(
     return { success: true, answers };
   } catch (error) {
     console.error("[getGuideState] Unexpected error:", error);
+    return { success: false, error: "Internal server error" };
+  }
+}
+
+/**
+ * Saves the raw poem and detected stanzas to thread state.
+ * This is called before initializing the translation job to ensure
+ * the backend can access the stanzas.
+ */
+export async function savePoemState({
+  threadId,
+  rawPoem,
+  stanzas,
+}: SavePoemStateParams): Promise<UpdateGuideStateResult> {
+  try {
+    if (!threadId || typeof threadId !== "string") {
+      return { success: false, error: "Invalid threadId" };
+    }
+
+    if (!rawPoem || typeof rawPoem !== "string") {
+      return { success: false, error: "Invalid poem text" };
+    }
+
+    if (!stanzas || !Array.isArray(stanzas.stanzas)) {
+      return { success: false, error: "Invalid stanzas data" };
+    }
+
+    const supabase = await supabaseServer();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return { success: false, error: "Unauthenticated" };
+    }
+
+    // Fetch current thread state
+    const { data: thread, error: fetchError } = await supabase
+      .from("chat_threads")
+      .select("id, state")
+      .eq("id", threadId)
+      .eq("created_by", user.id)
+      .single();
+
+    if (fetchError || !thread) {
+      return { success: false, error: "Thread not found or unauthorized" };
+    }
+
+    // Convert SimplePoemStanzas to StanzaDetectionResult format
+    const stanzaDetectionResult = convertToStanzaDetectionResult(stanzas);
+
+    // Merge poem state with existing state
+    const currentState = (thread.state as any) || {};
+    const updatedState = {
+      ...currentState,
+      raw_poem: rawPoem,
+      poem_stanzas: stanzaDetectionResult,
+    };
+
+    // Update the state
+    const { error: updateError } = await supabase
+      .from("chat_threads")
+      .update({
+        state: updatedState,
+      })
+      .eq("id", threadId);
+
+    if (updateError) {
+      console.error("[savePoemState] Update error:", updateError);
+      return { success: false, error: "Failed to update poem state" };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error("[savePoemState] Unexpected error:", error);
     return { success: false, error: "Internal server error" };
   }
 }

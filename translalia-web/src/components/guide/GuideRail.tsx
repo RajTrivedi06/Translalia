@@ -8,17 +8,23 @@ import {
   useRef,
   useState,
 } from "react";
-import { FileText, UploadCloud, X, Info } from "lucide-react";
+import { FileText, UploadCloud, X, Info, ChevronLeft } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import { useGuideStore } from "@/store/guideSlice";
 import { useWorkshopStore } from "@/store/workshopSlice";
 import { useThreadId } from "@/hooks/useThreadId";
 import { cn } from "@/lib/utils";
-import { useSaveAnswer } from "@/lib/hooks/useGuideFlow";
+import { useSaveAnswer, useSavePoemState } from "@/lib/hooks/useGuideFlow";
 import { t, getLangFromCookie } from "@/lib/i18n/minimal";
+import { ConfirmationDialog } from "@/components/guide/ConfirmationDialog";
 
 interface GuideRailProps {
   className?: string;
+  onCollapseToggle?: () => void;
+  onAutoCollapse?: () => void;
+  isCollapsed?: boolean;
+  showHeading?: boolean;
 }
 
 type UploadChip = {
@@ -63,11 +69,17 @@ function hasBlankLines(text: string): boolean {
   return text.split("\n").some((line) => line.trim() === "");
 }
 
-export function GuideRail({ className = "" }: GuideRailProps) {
+export function GuideRail({
+  className = "",
+  onCollapseToggle,
+  onAutoCollapse,
+  isCollapsed,
+  showHeading = true,
+}: GuideRailProps) {
   const lang = getLangFromCookie();
+  const router = useRouter();
 
   const {
-    currentStep,
     poem,
     setPoem,
     submitPoem,
@@ -77,6 +89,8 @@ export function GuideRail({ className = "" }: GuideRailProps) {
     submitTranslationIntent,
     reset,
     hydrated,
+    checkGuideComplete,
+    unlockWorkshop,
   } = useGuideStore();
 
   const translationZone = useGuideStore((s) => s.translationZone);
@@ -93,6 +107,7 @@ export function GuideRail({ className = "" }: GuideRailProps) {
   const threadId = useThreadId();
   const previousThreadId = useRef<string | null>(null);
   const saveTranslationIntent = useSaveAnswer();
+  const savePoemState = useSavePoemState();
 
   const [poemMode, setPoemMode] = useState<"paste" | "upload">("paste");
   const [poemFiles, setPoemFiles] = useState<UploadChip[]>([]);
@@ -106,6 +121,9 @@ export function GuideRail({ className = "" }: GuideRailProps) {
   const [isSavingIntent, setIsSavingIntent] = useState(false);
   const [userHasManuallySetFormatting, setUserHasManuallySetFormatting] =
     useState(false);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [showGuideHints, setShowGuideHints] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const poemTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const poemFileInputRef = useRef<HTMLInputElement | null>(null);
   const corpusFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -144,6 +162,8 @@ export function GuideRail({ className = "" }: GuideRailProps) {
 
   // Safety check for formatting toggle
   const hasStartedWork = Object.keys(completedLines).length > 0;
+  const hasBlankLinesDetected =
+    hasBlankLines(poem.text ?? "") && !hasStartedWork;
 
   // Auto-detect blank lines and set preserveFormatting accordingly
   // Only auto-set if user hasn't manually changed it
@@ -179,7 +199,6 @@ export function GuideRail({ className = "" }: GuideRailProps) {
     return null;
   }
 
-  const formattedStep = currentStep === "ready" ? "Ready" : "Setup";
   const ariaAnnouncement = readyForWorkshop
     ? "Guide setup complete"
     : "Guide setup in progress";
@@ -201,6 +220,7 @@ export function GuideRail({ className = "" }: GuideRailProps) {
     if (!poem.text?.trim()) {
       return;
     }
+    // Just mark as submitted (stanzas already computed in setPoem)
     submitPoem();
   };
 
@@ -224,7 +244,7 @@ export function GuideRail({ className = "" }: GuideRailProps) {
       });
       submitTranslationZone();
       setEditingZone(false);
-    } catch (_error) {
+    } catch {
       setZoneError("Failed to save. Please try again.");
     } finally {
       setIsSavingZone(false);
@@ -251,7 +271,7 @@ export function GuideRail({ className = "" }: GuideRailProps) {
       });
       submitTranslationIntent();
       setEditingIntent(false);
-    } catch (_error) {
+    } catch {
       setIntentError("Failed to save. Please try again.");
     } finally {
       setIsSavingIntent(false);
@@ -294,6 +314,93 @@ export function GuideRail({ className = "" }: GuideRailProps) {
     setShowCorpus(false);
     setIntentError(null);
     setUserHasManuallySetFormatting(false);
+  };
+
+  const handleStartWorkshop = () => {
+    // Validate all fields are complete
+    const isComplete = checkGuideComplete();
+
+    if (!isComplete) {
+      // Show validation error message
+      setValidationError(
+        "Please fill in all required fields: Poem, Translation Zone, and Translation Intent"
+      );
+      return;
+    }
+
+    // All fields are valid, show confirmation dialog
+    setValidationError(null);
+    setShowConfirmDialog(true);
+  };
+
+  const handleConfirmWorkshop = async () => {
+    // Validation
+    if (!threadId) {
+      setValidationError("No thread ID found. Please refresh and try again.");
+      return;
+    }
+    if (!poem.text || !poem.stanzas) {
+      setValidationError(
+        "Poem and stanzas are missing. Please go back and enter your poem."
+      );
+      return;
+    }
+
+    // ✅ IMMEDIATE UI UPDATE: Close dialog, unlock workshop, and navigate
+    // Don't wait for API calls - let them happen in background
+    setShowConfirmDialog(false);
+    setValidationError(null);
+    unlockWorkshop();
+    onAutoCollapse?.();
+
+    // Navigate immediately so user sees stanza selector right away
+    router.push(`/workspaces/${threadId}/threads/${threadId}`);
+
+    // ✅ BACKGROUND: Fire off API calls asynchronously (don't block UI)
+    // These will start translation processing in the background
+    // User can already interact with stanzas while this happens
+    (async () => {
+      try {
+        // Step 1: Save poem and stanzas to thread state
+        // We already validated that poem.stanzas is not null above
+        if (!poem.stanzas) {
+          console.error("Poem stanzas missing - this should not happen");
+          return;
+        }
+        await savePoemState.mutateAsync({
+          threadId,
+          rawPoem: poem.text,
+          stanzas: poem.stanzas,
+        });
+
+        // Step 2: Initialize translation job in background
+        const response = await fetch("/api/workshop/initialize-translations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            threadId,
+            runInitialTick: true, // Start processing immediately
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.error(
+            "Failed to initialize translations:",
+            errorData.error || "Unknown error"
+          );
+          // Note: We don't show error to user here since they're already in workshop
+          // Translation processing will just be delayed/retried
+        }
+      } catch (error) {
+        console.error(
+          "Error starting background translation processing:",
+          error
+        );
+        // Background error - don't block user from using workshop
+        // Translation processing can be retried later
+      }
+    })();
   };
 
   const renderFileChips = (
@@ -426,33 +533,52 @@ export function GuideRail({ className = "" }: GuideRailProps) {
             <p id="poem-helper" className="text-xs text-gray-500">
               Paste the original poem (source language).
             </p>
-            <p
-              id="poem-error"
-              className="hidden text-sm text-red-600"
-              aria-live="polite"
-            />
-
-            {/* Auto-detected Formatting Indicator - Only shown when blank lines detected */}
-            {hasBlankLines(poemText) && !hasStartedWork && (
-              <div className="flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 mb-3">
-                <div className="flex items-center gap-2">
-                  <Info className="w-4 h-4 text-blue-600" aria-hidden="true" />
-                  <span className="text-xs text-blue-700">
-                    Blank lines detected — formatting will be preserved
-                  </span>
-                </div>
+            {(poem.stanzas?.totalStanzas ?? 0) > 0 || hasBlankLinesDetected ? (
+              <div className="mb-3">
                 <button
                   type="button"
-                  onClick={() => {
-                    setUserHasManuallySetFormatting(true);
-                    setPreserveFormatting(!poem.preserveFormatting);
-                  }}
-                  className="text-xs font-medium text-blue-600 hover:text-blue-700 underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 rounded"
+                  onClick={() => setShowGuideHints((prev) => !prev)}
+                  className="inline-flex items-center gap-2 text-xs font-semibold text-blue-600 transition hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 rounded"
                 >
-                  {poem.preserveFormatting ? "Collapse blanks" : "Preserve"}
+                  <Info className="h-4 w-4" aria-hidden="true" />
+                  {showGuideHints
+                    ? "Hide detection notes"
+                    : "Show detection notes"}
                 </button>
+                {showGuideHints && (
+                  <div className="mt-2 space-y-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-3 text-xs text-blue-700">
+                    {poem.stanzas && poem.stanzas.totalStanzas > 0 && (
+                      <p>
+                        {poem.stanzas.totalStanzas} chunks detected (~4 lines
+                        each, split at semantic boundaries). These are
+                        functional divisions for LLM processing, not literary
+                        divisions.
+                      </p>
+                    )}
+                    {hasBlankLinesDetected && (
+                      <div className="flex items-center justify-between gap-3">
+                        <span>
+                          Blank lines detected — formatting will be preserved so
+                          chunk boundaries stay intact.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setUserHasManuallySetFormatting(true);
+                            setPreserveFormatting(!poem.preserveFormatting);
+                          }}
+                          className="text-xs font-medium text-blue-600 underline transition hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 rounded"
+                        >
+                          {poem.preserveFormatting
+                            ? "Collapse blanks"
+                            : "Preserve"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            )}
+            ) : null}
           </div>
 
           <div
@@ -747,38 +873,52 @@ export function GuideRail({ className = "" }: GuideRailProps) {
         id="panel-guide"
         data-panel="guide"
         className={cn(
-          "flex h-full flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm",
+          "flex h-full flex-col overflow-hidden rounded-2xl bg-white shadow-sm",
           className
         )}
       >
         <div id="context-panel" className="flex h-full flex-col">
-          <div className="border-b border-gray-100 px-4 py-3">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h2 className="text-sm font-semibold text-gray-900">
-                  {t("guide.title", lang)}
+          {showHeading && (
+            <div className="flex flex-row items-start justify-between gap-2 px-4 py-3">
+              <div className="min-w-0 flex-1">
+                <h2 className="truncate text-base font-semibold text-gray-900 lg:text-lg">
+                  Let’s get started
                 </h2>
-                <p className="mt-0.5 text-xs text-gray-600">{headerSubtitle}</p>
+                <p className="mt-1 text-xs text-slate-500 lg:text-sm">
+                  Upload your poem and capture the brief before translating.
+                </p>
               </div>
-              <span className="inline-flex h-6 items-center rounded-full bg-gray-100 px-2 text-xs font-medium text-gray-600">
-                {formattedStep}
-              </span>
+              <button
+                type="button"
+                onClick={onCollapseToggle}
+                className="flex-shrink-0 rounded-lg p-1 text-gray-400 hover:bg-gray-50 hover:text-gray-600"
+                title="Collapse guide panel"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
             </div>
-          </div>
+          )}
 
           <div
             id="guide-scroll-region"
-            className="flex-1 space-y-4 overflow-y-auto px-4 pb-4 pt-3"
+            className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 md:p-4"
           >
             {renderSetup()}
           </div>
 
-          <div className="border-t border-gray-100 bg-white px-4 py-3">
+          <div className="bg-white px-4 py-3">
+            {/* Validation error message */}
+            {validationError && (
+              <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                {validationError}
+              </div>
+            )}
+
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <button
                 id="start-workshop-btn"
                 type="button"
-                disabled={!readyForWorkshop}
+                onClick={handleStartWorkshop}
                 className="inline-flex w-full items-center justify-center rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
               >
                 Start Workshop
@@ -796,6 +936,18 @@ export function GuideRail({ className = "" }: GuideRailProps) {
               {ariaAnnouncement}
             </div>
           </div>
+
+          {/* Confirmation Dialog */}
+          <ConfirmationDialog
+            open={showConfirmDialog}
+            onOpenChange={setShowConfirmDialog}
+            onConfirm={handleConfirmWorkshop}
+            isLoading={false}
+            title="Ready to start the workshop?"
+            description="Your poem, translation zone, and translation intent are set. You can make changes anytime. Click 'Start Workshop' to begin translating."
+            confirmText="Start Workshop"
+            cancelText="Cancel"
+          />
         </div>
       </aside>
     );

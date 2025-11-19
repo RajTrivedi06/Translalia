@@ -163,15 +163,20 @@ export function WorkspaceShell({
 
       <DragOverlay>
         {activeDrag ? (
-          <div
-            className={cn(
-              "rounded-lg border-2 px-4 py-2 shadow-2xl text-sm font-semibold",
-              activeDrag.dragType === "sourceWord"
-                ? "bg-blue-50 border-blue-400 text-blue-900"
-                : "bg-white border-gray-300 text-gray-900"
+          <div className="rounded-lg border-2 border-blue-300 bg-white px-4 py-3 shadow-2xl min-w-[180px]">
+            <div className="text-[10px] uppercase tracking-wide text-gray-500">
+              {activeDrag.dragType === "sourceWord"
+                ? "Original word"
+                : "Translation token"}
+            </div>
+            <div className="text-sm font-semibold text-gray-900">
+              {activeDrag.text}
+            </div>
+            {activeDrag.originalWord && (
+              <div className="text-xs text-gray-500 mt-1">
+                from "{activeDrag.originalWord}"
+              </div>
             )}
-          >
-            {activeDrag.text}
           </div>
         ) : null}
       </DragOverlay>

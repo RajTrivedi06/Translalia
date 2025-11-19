@@ -147,7 +147,7 @@ if (!rateCheck.allowed) {
 ```200:238:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/notebook/prismatic/route.ts
 } catch (modelError: any) {
   const shouldFallback = modelError?.error?.code === "model_not_found" || modelError?.status === 404 || modelError?.status === 400;
-  if (shouldFallback) { /* fallback to gpt-4o */ } else { return err(502, "OPENAI_FAIL", "Upstream prismatic generation failed.", { upstream: String(modelError?.message ?? modelError) }); }
+  if (shouldFallback) { /* fallback to gpt-4o-mini */ } else { return err(502, "OPENAI_FAIL", "Upstream prismatic generation failed.", { upstream: String(modelError?.message ?? modelError) }); }
 }
 ```
 
@@ -223,7 +223,7 @@ try {
 - Defaults via env in `src/lib/models.ts` (translator/enhancer/router/embeddings)
 
 ```1:8:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/models.ts
-export const TRANSLATOR_MODEL = process.env.TRANSLATOR_MODEL?.trim() || "gpt-5";
+export const TRANSLATOR_MODEL = process.env.TRANSLATOR_MODEL?.trim() || "gpt-4o";
 export const ENHANCER_MODEL = process.env.ENHANCER_MODEL?.trim() || "gpt-5-mini";
 export const ROUTER_MODEL = process.env.ROUTER_MODEL?.trim() || "gpt-5-nano-2025-08-07";
 export const EMBEDDINGS_MODEL = process.env.EMBEDDINGS_MODEL?.trim() || "text-embedding-3-large";

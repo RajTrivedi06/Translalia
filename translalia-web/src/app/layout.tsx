@@ -3,7 +3,6 @@ import { cookies } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
-import MainNav from "@/components/nav/MainNav";
 import { AuthNav } from "@/components/auth/AuthNav";
 import { SUPPORTED_LANGUAGES } from "@/lib/i18n/minimal";
 
@@ -31,8 +30,9 @@ export default async function RootLayout({
 }>) {
   // Read language from cookie on server
   const cookieStore = await cookies();
-  const lang = cookieStore.get('ui-lang')?.value || 'en';
-  const langConfig = SUPPORTED_LANGUAGES.find(l => l.code === lang) || SUPPORTED_LANGUAGES[0];
+  const lang = cookieStore.get("ui-lang")?.value || "en";
+  const langConfig =
+    SUPPORTED_LANGUAGES.find((l) => l.code === lang) || SUPPORTED_LANGUAGES[0];
 
   return (
     <html lang={lang} dir={langConfig.dir}>
@@ -40,13 +40,14 @@ export default async function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <Providers>
-          <header className="sticky top-0 z-40 h-[var(--header-h)] border-b bg-white/70 backdrop-blur">
-            <div className="mx-auto flex h-full max-w-screen-2xl items-center justify-between px-4">
-              <div className="text-sm font-semibold">Translalia</div>
+          <header className="sticky top-0 z-40 h-[var(--header-h)] border-b bg-white/80 backdrop-blur">
+            <div className="mx-auto flex h-full max-w-screen-2xl items-center justify-between px-4 py-2">
+              <div className="text-base font-semibold tracking-tight text-slate-800">
+                Translalia
+              </div>
               <AuthNav />
             </div>
           </header>
-          <MainNav />
           {/* Default: allow pages to size naturally; workspace routes add their own wrapper */}
           <main className="min-h-[calc(100vh-var(--header-h))]">
             {children}

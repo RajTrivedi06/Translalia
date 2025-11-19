@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { getActiveThreadId, threadStorage } from "@/lib/threadStorage";
+import type { LineTranslationResponse } from "@/types/lineTranslation";
 
 export interface WordOption {
   original: string;
@@ -30,11 +31,17 @@ export interface WorkshopState {
   // Active line
   selectedLineIndex: number | null;
 
-  // Generated options for current line
+  // Generated options for current line (old per-word workflow)
   wordOptions: WordOption[] | null;
 
-  // User selections for current line (position -> selected word)
+  // User selections for current line (position -> selected word) (old workflow)
   selections: Record<number, string>;
+
+  // Line-level translations (new workflow) - lineIndex -> LineTranslationResponse
+  lineTranslations: Record<number, LineTranslationResponse | null>;
+
+  // Selected variant for each line (lineIndex -> variant 1|2|3)
+  selectedVariant: Record<number, 1 | 2 | 3 | null>;
 
   // UI state
   isGenerating: boolean;
@@ -61,6 +68,13 @@ export interface WorkshopState {
   setPoemLines: (lines: string[]) => void;
   setCompletedLine: (index: number, translation: string) => void;
   setCompletedLines: (lines: Record<number, string>) => void;
+  // New line translation actions
+  setLineTranslation: (
+    lineIndex: number,
+    translation: LineTranslationResponse | null
+  ) => void;
+  selectVariant: (lineIndex: number, variant: 1 | 2 | 3 | null) => void;
+  clearLineTranslation: (lineIndex: number) => void;
   reset: () => void;
 }
 
@@ -73,6 +87,8 @@ const initialState = {
   poemLines: [],
   completedLines: {},
   modelUsed: null,
+  lineTranslations: {},
+  selectedVariant: {},
 };
 
 export const useWorkshopStore = create<WorkshopState>()(
@@ -87,6 +103,7 @@ export const useWorkshopStore = create<WorkshopState>()(
           selectedLineIndex: index,
           wordOptions: null,
           selections: {},
+          // Don't clear line translations - they persist
         }),
 
       deselectLine: () =>
@@ -94,6 +111,7 @@ export const useWorkshopStore = create<WorkshopState>()(
           selectedLineIndex: null,
           wordOptions: null,
           selections: {},
+          // Don't clear line translations - they persist
         }),
 
       setWordOptions: (options: WordOption[] | null) =>
@@ -144,6 +162,36 @@ export const useWorkshopStore = create<WorkshopState>()(
           completedLines: lines,
         }),
 
+      setLineTranslation: (
+        lineIndex: number,
+        translation: LineTranslationResponse | null
+      ) =>
+        set((state) => ({
+          lineTranslations: {
+            ...state.lineTranslations,
+            [lineIndex]: translation,
+          },
+        })),
+
+      selectVariant: (lineIndex: number, variant: 1 | 2 | 3 | null) =>
+        set((state) => ({
+          selectedVariant: {
+            ...state.selectedVariant,
+            [lineIndex]: variant,
+          },
+        })),
+
+      clearLineTranslation: (lineIndex: number) =>
+        set((state) => {
+          const { [lineIndex]: _, ...restTranslations } =
+            state.lineTranslations;
+          const { [lineIndex]: __, ...restVariants } = state.selectedVariant;
+          return {
+            lineTranslations: restTranslations,
+            selectedVariant: restVariants,
+          };
+        }),
+
       reset: () =>
         set({ ...initialState, meta: { threadId: getActiveThreadId() } }),
     }),
@@ -178,6 +226,8 @@ export const useWorkshopStore = create<WorkshopState>()(
         completedLines: state.completedLines,
         modelUsed: state.modelUsed,
         selectedLineIndex: state.selectedLineIndex,
+        lineTranslations: state.lineTranslations,
+        selectedVariant: state.selectedVariant,
       }),
     }
   )

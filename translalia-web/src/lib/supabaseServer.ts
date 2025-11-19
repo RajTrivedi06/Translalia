@@ -2,9 +2,10 @@ import { cookies } from "next/headers";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { env, assertEnv } from "./env";
 
-assertEnv();
-
 export async function getServerClient() {
+  // Lazy validation - only check when function is called, not at module load
+  assertEnv();
+
   const cookieStore = await cookies();
 
   return createServerClient(

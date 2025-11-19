@@ -13,3 +13,10 @@ export function inProd() {
 export function inDev() {
   return process.env.NODE_ENV !== "production";
 }
+
+// Two-track verification system (Phase 1)
+export const FEATURE_VERIFICATION_INTERNAL =
+  process.env.NEXT_PUBLIC_FEATURE_VERIFICATION_INTERNAL === "true";
+
+export const FEATURE_VERIFICATION_CONTEXT =
+  process.env.NEXT_PUBLIC_FEATURE_VERIFICATION_CONTEXT === "true";

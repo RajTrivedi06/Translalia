@@ -7,7 +7,6 @@ import { useWorkshopStore } from "@/store/workshopSlice";
 import { useThreadId } from "@/hooks/useThreadId";
 import { NotebookDropZone } from "./NotebookDropZone";
 import { TranslationCellData } from "./TranslationCell";
-import { ModeSwitcher } from "./ModeSwitcher";
 import { AIAssistantPanel } from "./AIAssistantPanel";
 import { Button } from "@/components/ui/button";
 import { Undo2, Redo2, Sparkles } from "lucide-react";
@@ -35,7 +34,6 @@ export default function NotebookPanelWithDnD() {
 
   // Mode management
   const mode = useNotebookStore((s) => s.mode);
-  const setMode = useNotebookStore((s) => s.setMode);
   const toggleMode = useNotebookStore((s) => s.toggleMode);
   const modifiedCells = useNotebookStore((s) => s.modifiedCells);
   const markCellModified = useNotebookStore((s) => s.markCellModified);
@@ -165,10 +163,7 @@ export default function NotebookPanelWithDnD() {
   return (
     <div className="h-full flex flex-col">
       {/* Toolbar */}
-      <div className="border-b bg-white px-4 py-3 flex items-center justify-between">
-        <ModeSwitcher mode={mode} onModeChange={setMode} />
-
-        {/* Toolbar Actions */}
+      <div className="border-b bg-white px-4 py-3 flex items-center justify-end">
         <div className="flex items-center gap-2">
           {/* AI Assist Button - only show if there are cells */}
           {cells.length > 0 && (

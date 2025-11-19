@@ -11,13 +11,25 @@ interface GenerateOptionsParams {
   lineText: string;
 }
 
+import type { LineTranslationResponse } from "@/types/lineTranslation";
+
 interface SaveLineParams {
   threadId: string;
   lineIndex: number;
   originalLine?: string;
-  selections: Array<{
+  // New format: line translation with variant
+  variant?: 1 | 2 | 3;
+  lineTranslation?: LineTranslationResponse;
+  // Old format: word selections (for backward compatibility)
+  selections?: Array<{
     position: number;
     selectedWord: string;
+  }>;
+  wordOptions?: Array<{
+    original: string;
+    position: number;
+    options: string[];
+    partOfSpeech?: string;
   }>;
 }
 
@@ -46,7 +58,9 @@ export function useGenerateOptions() {
       });
 
       if (!res.ok) {
-        const error = await res.json().catch(() => ({ error: "Unknown error" }));
+        const error = await res
+          .json()
+          .catch(() => ({ error: "Unknown error" }));
         throw new Error(error.error || `HTTP ${res.status}`);
       }
 
@@ -72,16 +86,41 @@ export function useSaveLine() {
       threadId,
       lineIndex,
       originalLine,
+      variant,
+      lineTranslation,
       selections,
+      wordOptions,
     }: SaveLineParams) => {
+      const body: Record<string, unknown> = {
+        threadId,
+        lineIndex,
+        originalLine,
+      };
+
+      // Include new format if provided
+      if (variant !== undefined && lineTranslation !== undefined) {
+        body.variant = variant;
+        body.lineTranslation = lineTranslation;
+      }
+
+      // Include old format if provided
+      if (selections !== undefined) {
+        body.selections = selections;
+      }
+      if (wordOptions !== undefined) {
+        body.wordOptions = wordOptions;
+      }
+
       const res = await fetch("/api/workshop/save-line", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ threadId, lineIndex, originalLine, selections }),
+        body: JSON.stringify(body),
       });
 
       if (!res.ok) {
-        const error = await res.json().catch(() => ({ error: "Unknown error" }));
+        const error = await res
+          .json()
+          .catch(() => ({ error: "Unknown error" }));
         throw new Error(error.error || `HTTP ${res.status}`);
       }
 
@@ -119,11 +158,9 @@ export function useWorkshopState(threadId: string | undefined) {
         throw new Error(error.message);
       }
 
-      const state = (data?.state as any) || {};
-      const workshopLines = (state.workshop_lines as Record<
-        number,
-        WorkshopLine
-      >) || {};
+      const state = (data?.state as Record<string, unknown>) || {};
+      const workshopLines =
+        (state.workshop_lines as Record<number, WorkshopLine>) || {};
 
       return workshopLines;
     },
@@ -135,7 +172,10 @@ export function useWorkshopState(threadId: string | undefined) {
 /**
  * Hook to get a specific line's saved state
  */
-export function useWorkshopLine(threadId: string | undefined, lineIndex: number) {
+export function useWorkshopLine(
+  threadId: string | undefined,
+  lineIndex: number
+) {
   const { data: workshopState } = useWorkshopState(threadId);
 
   if (!workshopState || workshopState[lineIndex] === undefined) {
@@ -148,7 +188,10 @@ export function useWorkshopLine(threadId: string | undefined, lineIndex: number)
 /**
  * Hook to check if a line is already completed
  */
-export function useIsLineCompleted(threadId: string | undefined, lineIndex: number) {
+export function useIsLineCompleted(
+  threadId: string | undefined,
+  lineIndex: number
+) {
   const { data: workshopState, isLoading } = useWorkshopState(threadId);
 
   return {

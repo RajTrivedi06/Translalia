@@ -4,8 +4,15 @@ import * as React from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useWorkshopStore } from "@/store/workshopSlice";
+import type { TranslationStanzaStatus } from "@/types/translationJob";
+import { getStatusMeta } from "./stanzaStatusMeta";
 
-export function LineSelector({ poemLines }: { poemLines: string[] }) {
+interface LineSelectorProps {
+  poemLines: string[];
+  lineStatuses?: Record<number, TranslationStanzaStatus>;
+}
+
+export function LineSelector({ poemLines, lineStatuses }: LineSelectorProps) {
   const selectLine = useWorkshopStore((s) => s.selectLine);
   const completedLines = useWorkshopStore((s) => s.completedLines);
 
@@ -14,6 +21,8 @@ export function LineSelector({ poemLines }: { poemLines: string[] }) {
       {poemLines.map((line, idx) => {
         const completed = completedLines[idx] !== undefined;
         const isBlankLine = line.trim() === "";
+        const stanzaStatus = lineStatuses?.[idx];
+        const statusMeta = stanzaStatus ? getStatusMeta(stanzaStatus) : null;
 
         return (
           <button
@@ -40,9 +49,18 @@ export function LineSelector({ poemLines }: { poemLines: string[] }) {
                     <div className="truncate text-sm">{line}</div>
                   )}
                 </div>
-                <Badge variant={completed ? "default" : "secondary"}>
-                  {completed ? "Complete" : "Untranslated"}
-                </Badge>
+                <div className="flex flex-col items-end gap-1">
+                  {statusMeta && (
+                    <span
+                      className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${statusMeta.badgeClass}`}
+                    >
+                      {statusMeta.label}
+                    </span>
+                  )}
+                  <Badge variant={completed ? "default" : "secondary"}>
+                    {completed ? "Applied" : "Untranslated"}
+                  </Badge>
+                </div>
               </div>
             </Card>
           </button>

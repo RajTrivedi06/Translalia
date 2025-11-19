@@ -4,6 +4,7 @@ import * as React from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { useWorkshopStore } from "@/store/workshopSlice";
 import { useGenerateOptions } from "@/lib/hooks/useWorkshopFlow";
+import { useTranslateLine } from "@/lib/hooks/useTranslateLine";
 import { useThreadId } from "@/hooks/useThreadId";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +12,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { CheckCircle2, Loader2, Edit3, GripVertical } from "lucide-react";
 import { DragData } from "@/types/drag";
 import { cn } from "@/lib/utils";
+import { ContextNotes } from "./ContextNotes";
+import { usePrefetchContext } from "@/lib/hooks/usePrefetchContext";
+import type { LineTranslationVariant } from "@/types/lineTranslation";
 
 // Part of speech type and color mapping
 const POS_COLORS = {
@@ -130,6 +134,14 @@ function detectPartOfSpeech(
   return index % 3 === 0 ? "noun" : "neutral";
 }
 
+function normalizePartOfSpeechTag(
+  tag?: string | null
+): keyof typeof POS_COLORS {
+  if (!tag) return "neutral";
+  const normalized = tag.toLowerCase() as keyof typeof POS_COLORS;
+  return normalized in POS_COLORS ? normalized : "neutral";
+}
+
 function DraggableSourceWord({
   word,
   index,
@@ -179,7 +191,17 @@ function DraggableSourceWord({
   );
 }
 
-export function WordGrid({ threadId: pThreadId }: { threadId?: string }) {
+interface WordGridProps {
+  threadId?: string;
+  lineContext?: {
+    prevLine?: string;
+    nextLine?: string;
+    stanzaIndex?: number;
+    fullPoem?: string;
+  } | null;
+}
+
+export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
   const threadHook = useThreadId();
   const thread = pThreadId || threadHook || undefined;
   const selectedLineIndex = useWorkshopStore((s) => s.selectedLineIndex);
@@ -192,7 +214,24 @@ export function WordGrid({ threadId: pThreadId }: { threadId?: string }) {
   const setIsGenerating = useWorkshopStore((s) => s.setIsGenerating);
   const modelUsed = useWorkshopStore((s) => s.modelUsed);
 
-  const { mutate: generateOptions, isPending, error } = useGenerateOptions();
+  const {
+    mutate: generateOptions,
+    isPending: isGeneratingOptions,
+    error: generateError,
+  } = useGenerateOptions();
+  const {
+    mutate: translateLine,
+    isPending: isTranslatingLine,
+    error: translateError,
+  } = useTranslateLine();
+
+  const lineTranslations = useWorkshopStore((s) => s.lineTranslations);
+  const selectedVariant = useWorkshopStore((s) => s.selectedVariant);
+  const setLineTranslation = useWorkshopStore((s) => s.setLineTranslation);
+  const selectVariant = useWorkshopStore((s) => s.selectVariant);
+
+  const isPending = isGeneratingOptions || isTranslatingLine;
+  const error = generateError || translateError;
 
   // Derive source words from the raw line (instant, no LLM wait)
   const sourceWords = React.useMemo(() => {
@@ -201,33 +240,124 @@ export function WordGrid({ threadId: pThreadId }: { threadId?: string }) {
     return line.split(/\s+/).filter(Boolean);
   }, [selectedLineIndex, poemLines]);
 
+  // Prefetch context notes when word options are loaded (include options for unsaved lines)
+  usePrefetchContext(
+    thread,
+    selectedLineIndex,
+    wordOptions?.length || 0,
+    wordOptions || undefined
+  );
+
+  // Check if we should use new line translation or old word-by-word workflow
+  const hasLineTranslation =
+    selectedLineIndex !== null &&
+    lineTranslations[selectedLineIndex] !== undefined;
+
   React.useEffect(() => {
-    if (selectedLineIndex !== null && thread && poemLines[selectedLineIndex]) {
+    if (
+      selectedLineIndex === null ||
+      !thread ||
+      !poemLines[selectedLineIndex]
+    ) {
+      return;
+    }
+
+    const lineText = poemLines[selectedLineIndex];
+
+    // If line translation already exists, don't fetch again
+    if (hasLineTranslation) {
+      return;
+    }
+
+    // Try new line translation workflow first (if context is available)
+    // Fall back to old word-by-word if context is missing or translation fails
+    if (lineContext) {
+      setIsGenerating(true);
+      translateLine(
+        {
+          threadId: thread,
+          lineIndex: selectedLineIndex,
+          lineText,
+          fullPoem: lineContext.fullPoem,
+          stanzaIndex: lineContext.stanzaIndex,
+          prevLine: lineContext.prevLine,
+          nextLine: lineContext.nextLine,
+        },
+        {
+          onSuccess: (data) => {
+            setLineTranslation(selectedLineIndex, data);
+            useWorkshopStore.setState({ modelUsed: data.modelUsed || null });
+            setIsGenerating(false);
+          },
+          onError: () => {
+            // Fall back to old workflow on error
+            console.warn(
+              "[WordGrid] Line translation failed, falling back to word-by-word"
+            );
+            setIsGenerating(true);
+            generateOptions(
+              {
+                threadId: thread,
+                lineIndex: selectedLineIndex,
+                lineText,
+              },
+              {
+                onSuccess: (data) => {
+                  setWordOptions(data.words);
+                  useWorkshopStore.setState({
+                    modelUsed: data.modelUsed || null,
+                  });
+                  setIsGenerating(false);
+                },
+                onError: () => {
+                  setWordOptions(null);
+                  setIsGenerating(false);
+                },
+              }
+            );
+          },
+        }
+      );
+    } else {
+      // No context available, use old workflow
       setIsGenerating(true);
       generateOptions(
         {
           threadId: thread,
           lineIndex: selectedLineIndex,
-          lineText: poemLines[selectedLineIndex],
+          lineText,
         },
         {
           onSuccess: (data) => {
             setWordOptions(data.words);
-            // Store the model used
             useWorkshopStore.setState({ modelUsed: data.modelUsed || null });
+            setIsGenerating(false);
           },
-          onError: () => setWordOptions(null),
+          onError: () => {
+            setWordOptions(null);
+            setIsGenerating(false);
+          },
         }
       );
     }
   }, [
     selectedLineIndex,
     thread,
-    generateOptions,
     poemLines,
-    setIsGenerating,
+    lineContext,
+    hasLineTranslation,
+    translateLine,
+    generateOptions,
+    setLineTranslation,
     setWordOptions,
+    setIsGenerating,
   ]);
+
+  // Get current line translation if available
+  const currentLineTranslation =
+    selectedLineIndex !== null ? lineTranslations[selectedLineIndex] : null;
+  const currentSelectedVariant =
+    selectedLineIndex !== null ? selectedVariant[selectedLineIndex] : null;
 
   if (error) {
     return (
@@ -247,11 +377,23 @@ export function WordGrid({ threadId: pThreadId }: { threadId?: string }) {
                   thread &&
                   poemLines[selectedLineIndex]
                 ) {
-                  generateOptions({
-                    threadId: thread,
-                    lineIndex: selectedLineIndex,
-                    lineText: poemLines[selectedLineIndex],
-                  });
+                  if (lineContext) {
+                    translateLine({
+                      threadId: thread,
+                      lineIndex: selectedLineIndex,
+                      lineText: poemLines[selectedLineIndex],
+                      fullPoem: lineContext.fullPoem,
+                      stanzaIndex: lineContext.stanzaIndex,
+                      prevLine: lineContext.prevLine,
+                      nextLine: lineContext.nextLine,
+                    });
+                  } else {
+                    generateOptions({
+                      threadId: thread,
+                      lineIndex: selectedLineIndex,
+                      lineText: poemLines[selectedLineIndex],
+                    });
+                  }
                 }
               }}
             >
@@ -263,6 +405,57 @@ export function WordGrid({ threadId: pThreadId }: { threadId?: string }) {
     );
   }
 
+  // Show line translation UI if available, otherwise show old word-by-word UI
+  if (currentLineTranslation && !isPending) {
+    return (
+      <div className="space-y-6 p-4">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <div className="text-sm font-semibold text-gray-700">
+              Select a translation variant
+            </div>
+            <p className="text-xs text-gray-500">
+              Drag any token from the variants or the original line into your
+              notebook.
+            </p>
+          </div>
+          {modelUsed && (
+            <Badge variant="secondary" className="bg-blue-50 text-blue-700">
+              {modelUsed}
+            </Badge>
+          )}
+        </div>
+
+        <SourceWordsPalette
+          sourceWords={sourceWords}
+          lineNumber={selectedLineIndex}
+        />
+
+        <div className="space-y-4">
+          {currentLineTranslation.translations.map((variant) => (
+            <TranslationVariantCard
+              key={variant.variant}
+              variant={variant}
+              isSelected={currentSelectedVariant === variant.variant}
+              onSelect={() => {
+                if (selectedLineIndex !== null) {
+                  const next =
+                    currentSelectedVariant === variant.variant
+                      ? null
+                      : variant.variant;
+                  selectVariant(selectedLineIndex, next);
+                }
+              }}
+              lineNumber={selectedLineIndex ?? 0}
+              stanzaIndex={lineContext?.stanzaIndex}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Fall back to old word-by-word UI
   if (!wordOptions || isPending) {
     return (
       <div className="p-6 flex items-center justify-center h-full">
@@ -314,41 +507,10 @@ export function WordGrid({ threadId: pThreadId }: { threadId?: string }) {
 
   return (
     <div className="space-y-6 p-4">
-      {/* Source words section - available IMMEDIATELY */}
-      {sourceWords.length > 0 && (
-        <div className="rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 p-4 border border-blue-100">
-          <div className="flex items-center gap-2 mb-3">
-            <svg
-              className="w-4 h-4 text-blue-600"
-              fill="currentColor"
-              viewBox="0 0 20 20"
-            >
-              <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
-              <path
-                fillRule="evenodd"
-                d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z"
-                clipRule="evenodd"
-              />
-            </svg>
-            <p className="text-sm font-semibold text-blue-900">
-              Source text words
-            </p>
-          </div>
-          <p className="text-xs text-blue-700 mb-3">
-            Drag these to keep the original words in your translation
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {sourceWords.map((word, idx) => (
-              <DraggableSourceWord
-                key={`source-${selectedLineIndex}-${idx}`}
-                word={word}
-                index={idx}
-                lineNumber={selectedLineIndex ?? 0}
-              />
-            ))}
-          </div>
-        </div>
-      )}
+      <SourceWordsPalette
+        sourceWords={sourceWords}
+        lineNumber={selectedLineIndex}
+      />
 
       {/* Existing translation options grid */}
       <div className="h-full bg-gradient-to-b from-gray-50 to-white flex flex-col">
@@ -376,21 +538,31 @@ export function WordGrid({ threadId: pThreadId }: { threadId?: string }) {
               const selectedValue = selections[w.position];
 
               return (
-                <WordColumn
-                  key={colIdx}
-                  word={w}
-                  pos={pos}
-                  isSelected={isSelected}
-                  selectedValue={selectedValue}
-                  onSelectOption={(opt) => {
-                    // Toggle: if clicking the same option, deselect it
-                    if (selectedValue === opt) {
-                      deselectWord(w.position);
-                    } else {
-                      selectWord(w.position, opt);
-                    }
-                  }}
-                />
+                <div key={colIdx} className="flex flex-col">
+                  <WordColumn
+                    word={w}
+                    pos={pos}
+                    isSelected={isSelected}
+                    selectedValue={selectedValue}
+                    onSelectOption={(opt) => {
+                      // Toggle: if clicking the same option, deselect it
+                      if (selectedValue === opt) {
+                        deselectWord(w.position);
+                      } else {
+                        selectWord(w.position, opt);
+                      }
+                    }}
+                  />
+                  {/* Context Notes for this token */}
+                  {thread && selectedLineIndex !== null && (
+                    <ContextNotes
+                      threadId={thread}
+                      lineIndex={selectedLineIndex}
+                      tokenIndex={colIdx}
+                      wordOptionsForLine={wordOptions}
+                    />
+                  )}
+                </div>
               );
             })}
           </div>
@@ -488,6 +660,223 @@ interface WordColumnProps {
   isSelected: boolean;
   selectedValue?: string;
   onSelectOption: (option: string) => void;
+}
+
+function SourceWordsPalette({
+  sourceWords,
+  lineNumber,
+}: {
+  sourceWords: string[];
+  lineNumber: number | null;
+}) {
+  if (sourceWords.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 p-4 border border-blue-100">
+      <div className="flex items-center gap-2 mb-3">
+        <svg className="w-4 h-4 text-blue-600" viewBox="0 0 20 20">
+          <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
+          <path
+            fillRule="evenodd"
+            d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z"
+            clipRule="evenodd"
+          />
+        </svg>
+        <p className="text-sm font-semibold text-blue-900">Source text words</p>
+      </div>
+      <p className="text-xs text-blue-700 mb-3">
+        Drag these to keep the original words in your translation
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {sourceWords.map((word, idx) => (
+          <DraggableSourceWord
+            key={`source-${lineNumber ?? 0}-${idx}`}
+            word={word}
+            index={idx}
+            lineNumber={lineNumber ?? 0}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+interface TranslationVariantCardProps {
+  variant: LineTranslationVariant;
+  isSelected: boolean;
+  onSelect: () => void;
+  lineNumber: number;
+  stanzaIndex?: number;
+}
+
+function TranslationVariantCard({
+  variant,
+  isSelected,
+  onSelect,
+  lineNumber,
+  stanzaIndex,
+}: TranslationVariantCardProps) {
+  const tokens = React.useMemo(() => {
+    if (variant.words.length > 0) {
+      return variant.words;
+    }
+    return variant.fullText
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((word, idx) => ({
+        original: word,
+        translation: word,
+        partOfSpeech: "neutral",
+        position: idx,
+      }));
+  }, [variant]);
+
+  return (
+    <Card
+      onClick={(e) => {
+        // Only select card if clicking on the card itself, not on draggable tokens
+        const target = e.target as HTMLElement;
+        if (!target.closest('[data-draggable="true"]')) {
+          onSelect();
+        }
+      }}
+      className={cn(
+        "transition-all border-2",
+        isSelected
+          ? "border-green-500 bg-green-50 shadow-md"
+          : "border-gray-200 hover:border-blue-400 hover:shadow-sm"
+      )}
+    >
+      <CardContent className="p-4 space-y-3">
+        <div
+          className="flex items-start justify-between cursor-pointer"
+          onClick={onSelect}
+        >
+          <div className="flex items-center gap-2">
+            <Badge
+              variant={isSelected ? "default" : "secondary"}
+              className={isSelected ? "bg-green-600" : ""}
+            >
+              Variant {variant.variant}
+            </Badge>
+            {isSelected && <CheckCircle2 className="w-4 h-4 text-green-600" />}
+          </div>
+          <div className="text-xs text-gray-500">
+            Literalness: {(variant.metadata.literalness * 100).toFixed(0)}%
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {tokens.map((token, idx) => (
+            <DraggableVariantToken
+              key={`${variant.variant}-${token.position}-${idx}`}
+              token={token}
+              variantId={variant.variant}
+              lineNumber={lineNumber}
+              stanzaIndex={stanzaIndex}
+              disabled={!token.translation}
+            />
+          ))}
+        </div>
+
+        <div className="flex flex-wrap gap-2 mt-2">
+          {variant.metadata.preservesRhyme && (
+            <Badge variant="outline" className="text-xs">
+              Rhyme
+            </Badge>
+          )}
+          {variant.metadata.preservesMeter && (
+            <Badge variant="outline" className="text-xs">
+              Meter
+            </Badge>
+          )}
+          <Badge variant="outline" className="text-xs">
+            {variant.metadata.characterCount} chars
+          </Badge>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+interface DraggableVariantTokenProps {
+  token: LineTranslationVariant["words"][number];
+  variantId: number;
+  lineNumber: number;
+  stanzaIndex?: number;
+  disabled?: boolean;
+}
+
+function DraggableVariantToken({
+  token,
+  variantId,
+  lineNumber,
+  stanzaIndex,
+  disabled,
+}: DraggableVariantTokenProps) {
+  const pos = normalizePartOfSpeechTag(token.partOfSpeech);
+  const dragData: DragData = {
+    id: `variant-${variantId}-line-${lineNumber}-${token.position}-${token.translation}`,
+    text: token.translation,
+    originalWord: token.original || token.translation || "",
+    partOfSpeech: pos,
+    sourceLineNumber: lineNumber,
+    position: token.position ?? 0,
+    dragType: "variantWord",
+    variantId,
+    stanzaIndex,
+  };
+
+  const { attributes, listeners, setNodeRef, transform, isDragging } =
+    useDraggable({
+      id: dragData.id,
+      data: dragData,
+      disabled: disabled || !token.translation,
+    });
+
+  const style: React.CSSProperties | undefined = transform
+    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
+    : undefined;
+
+  return (
+    <div
+      ref={setNodeRef}
+      data-draggable="true"
+      {...attributes}
+      {...listeners}
+      style={style}
+      className={cn(
+        "px-3 py-2 rounded-lg border text-sm font-medium transition-all bg-white shadow-sm flex flex-col",
+        "select-none touch-none",
+        !disabled && "cursor-move hover:-translate-y-0.5 hover:shadow",
+        isDragging && "opacity-60 scale-95 cursor-grabbing",
+        disabled && "opacity-40 cursor-not-allowed",
+        POS_COLORS[pos]
+      )}
+      title={
+        token.original
+          ? `Original: ${token.original}\nTranslation: ${token.translation}`
+          : token.translation
+      }
+      onClick={(e) => {
+        // Stop propagation to prevent card selection when clicking (not dragging)
+        e.stopPropagation();
+      }}
+      role="button"
+      tabIndex={disabled ? -1 : 0}
+    >
+      <span className="text-gray-900 pointer-events-none">
+        {token.translation || "…"}
+      </span>
+      {token.original && (
+        <span className="text-[11px] text-gray-600 pointer-events-none">
+          {token.original}
+        </span>
+      )}
+    </div>
+  );
 }
 
 function WordColumn({

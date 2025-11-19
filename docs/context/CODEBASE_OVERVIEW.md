@@ -624,7 +624,7 @@ Translalia/
 - NEXT_PUBLIC_SUPABASE_URL: Supabase project URL
 - NEXT_PUBLIC_SUPABASE_ANON_KEY: Supabase public anon key
 - OPENAI_API_KEY: OpenAI key for moderation and translator
-- TRANSLATOR_MODEL: optional, default `gpt-5`
+- TRANSLATOR_MODEL: optional, default `gpt-4o`
 - ENHANCER_MODEL: optional, default `gpt-5-mini`
 - EMBEDDINGS_MODEL: optional, default `text-embedding-3-large`
 - NEXT_PUBLIC_FEATURE_TRANSLATOR: "1" to enable translator UI/endpoint

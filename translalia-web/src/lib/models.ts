@@ -1,5 +1,5 @@
-// NOTE(cursor): Centralized GPT-5 defaults; envs override without code changes
-export const TRANSLATOR_MODEL = process.env.TRANSLATOR_MODEL?.trim() || "gpt-5";
+// NOTE(cursor): Centralized translation defaults; envs override without code changes
+export const TRANSLATOR_MODEL = process.env.TRANSLATOR_MODEL?.trim() || "gpt-4o";
 
 export const ENHANCER_MODEL =
   process.env.ENHANCER_MODEL?.trim() || "gpt-5-mini";
@@ -12,3 +12,8 @@ export const EMBEDDINGS_MODEL =
   process.env.EMBEDDINGS_MODEL?.trim() || "text-embedding-3-large";
 
 // Moderation model constant removed (unused)
+
+// Verification models (Phase 1)
+export const VERIFICATION_MODEL =
+  process.env.VERIFICATION_MODEL?.trim() || "gpt-5";
+export const CONTEXT_MODEL = process.env.CONTEXT_MODEL?.trim() || "gpt-5-mini";

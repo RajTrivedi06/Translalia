@@ -22,7 +22,7 @@ function collectPreferenceLines(
   // NEW: Support both translationZone and translationIntent
   // translationZone = broader context/zone for translation
   // translationIntent = specific translation strategy/approach
-  const translationZone = (guideAnswers as any)?.translationZone?.trim();
+  const translationZone = guideAnswers.translationZone?.trim();
   const translationIntent = guideAnswers.translationIntent?.trim();
 
   // Add zone first (broader context)
@@ -123,6 +123,17 @@ export interface AIAssistContext {
   sourceLineText: string;
   guideAnswers: GuideAnswers;
   instruction?: "refine" | "rephrase" | "expand" | "simplify";
+}
+
+export interface LineTranslationContext {
+  lineText: string;
+  lineIndex: number; // 0-indexed line number in the poem
+  fullPoem?: string;
+  stanzaIndex?: number;
+  prevLine?: string;
+  nextLine?: string;
+  guideAnswers: GuideAnswers;
+  sourceLanguage?: string;
 }
 
 /**
@@ -413,4 +424,294 @@ EMOJI USE:
 - Use sparingly, only if natural
 
 Return ONLY the feedback text - no JSON, no markdown, no explanations.`;
+}
+
+/**
+ * Builds a GPT prompt for generating line-level translations with alignment.
+ * Generates exactly 3 translation variants with sub-token alignment.
+ *
+ * Structure follows the requirement:
+ * - STATIC SECTION: Full poem + guide preferences (same for whole session)
+ * - DYNAMIC SECTION: Line-specific context (changes per line)
+ */
+export function buildLineTranslationPrompt({
+  lineText,
+  lineIndex,
+  fullPoem,
+  stanzaIndex,
+  prevLine,
+  nextLine,
+  guideAnswers,
+  sourceLanguage = "the source language",
+}: LineTranslationContext): string {
+  const closenessKey = guideAnswers.stance?.closeness || "in_between";
+  const closenessSummary = LINE_CLOSENESS_DESCRIPTIONS[closenessKey];
+  const preferenceSection = formatPreferenceSection(guideAnswers, "line");
+
+  // ============================================
+  // STATIC SECTION – same for whole session
+  // ============================================
+  const staticSections: string[] = [];
+
+  // Full poem context (always include if available)
+  // Include source language context for clarity
+  if (fullPoem) {
+    staticSections.push(`You are translating a poem from ${sourceLanguage}. Here is the FULL POEM for context:
+
+"""
+${fullPoem}
+"""`);
+  } else {
+    // Fallback if full poem is not available (should be rare)
+    staticSections.push(`You are translating a poem from ${sourceLanguage}.`);
+  }
+
+  // Translation preferences
+  staticSections.push(`
+Translation preferences:
+${preferenceSection}`);
+
+  // ============================================
+  // DYNAMIC SECTION – changes per line
+  // ============================================
+  const dynamicSections: string[] = [];
+
+  // Build line identifier with chunk and line numbers
+  const lineNumber = lineIndex + 1; // Convert to 1-indexed for display
+  const chunkNumber = stanzaIndex !== undefined ? stanzaIndex + 1 : undefined;
+
+  if (chunkNumber !== undefined) {
+    dynamicSections.push(`Focus on this specific line:
+- Chunk ${chunkNumber}, Line ${lineNumber}: "${lineText}"`);
+  } else {
+    dynamicSections.push(`Focus on this specific line:
+- Line ${lineNumber}: "${lineText}"`);
+  }
+
+  // Previous and next line context
+  if (prevLine) {
+    dynamicSections.push(`- Previous line: "${prevLine}"`);
+  }
+  if (nextLine) {
+    dynamicSections.push(`- Next line: "${nextLine}"`);
+  }
+
+  // ============================================
+  // Combine sections
+  // ============================================
+  const staticSection = staticSections.join("\n");
+  const dynamicSection = dynamicSections.join("\n");
+
+  return `${staticSection}
+
+${dynamicSection}
+
+TASK:
+Generate exactly 3 translation variants for this line. Each variant should:
+1. Honor the translator instructions above
+2. Fit naturally within the poetic context${
+    prevLine || nextLine ? " (consider adjacent lines)" : ""
+  }
+3. Span from literal to more creative interpretations (${closenessSummary})
+4. Maintain poetic quality and flow
+
+ALIGNMENT REQUIREMENTS:
+- For each variant, provide sub-token alignment mapping original words/phrases to translations
+- Handle multi-word chunks correctly (e.g., "sat on" → "se sentó en")
+- Every word in the original line must be accounted for in the alignment
+- Position numbers should reflect the order in the original line (0-indexed)
+
+METADATA REQUIREMENTS:
+- literalness: Score 0-1 (1 = very literal, 0 = very creative)
+- characterCount: Count characters in the translated line
+- preservesRhyme: true if rhyme scheme is maintained (if applicable)
+- preservesMeter: true if meter/rhythm is maintained (if applicable)
+
+Return ONLY a JSON object with this exact structure:
+{
+  "translations": [
+    {
+      "variant": 1,
+      "fullText": "complete translated line",
+      "words": [
+        {
+          "original": "word or phrase",
+          "translation": "translated word or phrase",
+          "partOfSpeech": "noun|verb|adjective|adverb|pronoun|preposition|conjunction|article|interjection",
+          "position": 0
+        }
+      ],
+      "metadata": {
+        "literalness": 0.8,
+        "characterCount": 31,
+        "preservesRhyme": true,
+        "preservesMeter": true
+      }
+    },
+    {
+      "variant": 2,
+      "fullText": "...",
+      "words": [...],
+      "metadata": {...}
+    },
+    {
+      "variant": 3,
+      "fullText": "...",
+      "words": [...],
+      "metadata": {...}
+    }
+  ]
+}`;
+}
+
+/**
+ * Builds a system prompt for line-level translation with alignment.
+ */
+export function buildLineTranslationSystemPrompt(): string {
+  return `You are a poetry translation assistant specializing in line-level translations with accurate alignment.
+
+IMPORTANT RULES:
+- Return ONLY a valid JSON object with the exact structure specified
+- Generate exactly 3 translation variants
+- Each variant must include complete alignment mapping
+- Handle multi-word chunks correctly (e.g., "sat on" → "se sentó en")
+- Every original word/phrase must be mapped in the alignment
+- Position numbers are 0-indexed and reflect order in original line
+- Metadata must be accurate (literalness 0-1, characterCount, preservesRhyme, preservesMeter)
+
+ALIGNMENT ACCURACY:
+- Sub-token alignment is critical: map original words/phrases to their translations
+- Multi-word chunks: "sat on" can map to "se sentó en" (many-to-many is allowed)
+- Single words can map to phrases: "cat" → "el gato"
+- Phrases can map to single words: "the cat" → "gato" (if appropriate)
+- Ensure all original words are accounted for in the alignment
+
+VARIANT DIVERSITY:
+- Variant 1: More literal (higher literalness score)
+- Variant 2: Balanced (medium literalness)
+- Variant 3: More creative (lower literalness, more idiomatic)
+
+METADATA CALCULATION:
+- literalness: 1.0 = word-for-word literal, 0.0 = highly creative/idiomatic
+- characterCount: Exact character count of fullText
+- preservesRhyme: true if end rhyme matches adjacent lines (if applicable)
+- preservesMeter: true if syllable count/stress pattern matches (if applicable)
+
+Example valid response structure:
+{
+  "translations": [
+    {
+      "variant": 1,
+      "fullText": "El gato se sentó en la alfombra",
+      "words": [
+        { "original": "The", "translation": "El", "partOfSpeech": "article", "position": 0 },
+        { "original": "cat", "translation": "gato", "partOfSpeech": "noun", "position": 1 },
+        { "original": "sat on", "translation": "se sentó en", "partOfSpeech": "verb", "position": 2 },
+        { "original": "the", "translation": "la", "partOfSpeech": "article", "position": 3 },
+        { "original": "mat", "translation": "alfombra", "partOfSpeech": "noun", "position": 4 }
+      ],
+      "metadata": {
+        "literalness": 0.85,
+        "characterCount": 31,
+        "preservesRhyme": false,
+        "preservesMeter": true
+      }
+    }
+  ]
+}`;
+}
+
+/**
+ * Feature 9 (R): Fallback prompt for simpler word-by-word translation
+ * Used when alignment fails after retries
+ * Returns basic translations without word-level alignment
+ */
+export function buildLineTranslationFallbackPrompt({
+  lineText,
+  lineIndex,
+  fullPoem,
+  stanzaIndex,
+  guideAnswers,
+  sourceLanguage = "the source language",
+}: LineTranslationContext): string {
+  const closenessKey = guideAnswers.stance?.closeness || "in_between";
+  const closenessSummary = LINE_CLOSENESS_DESCRIPTIONS[closenessKey];
+  const preferenceSection = formatPreferenceSection(guideAnswers, "line");
+
+  const lineNumber = lineIndex + 1;
+  const stanzaNumber = stanzaIndex !== undefined ? stanzaIndex + 1 : undefined;
+
+  return `You are translating a poem from \${sourceLanguage}.
+
+Translation preferences:
+\${preferenceSection}
+
+Focus on this specific line:
+\${stanzaNumber ? \`- Stanza \${stanzaNumber}, Line \${lineNumber}\` : \`- Line \${lineNumber}\`}: "\${lineText}"
+
+TASK:
+Generate exactly 3 simple translation variants for this line. This is a SIMPLIFIED translation request:
+1. Honor the translator instructions above
+2. Fit naturally within the poetic context
+3. Span from literal to more creative interpretations (\${closenessSummary})
+
+NOTE: This is a simplified translation without detailed alignment.
+Just provide the full translated text for each variant.
+
+Return ONLY a JSON object with this exact structure:
+{
+  "translations": [
+    {
+      "variant": 1,
+      "fullText": "complete translated line - literal version",
+      "words": [],
+      "metadata": {
+        "literalness": 0.9,
+        "characterCount": 35,
+        "preservesRhyme": false,
+        "preservesMeter": false
+      }
+    },
+    {
+      "variant": 2,
+      "fullText": "complete translated line - balanced version",
+      "words": [],
+      "metadata": {
+        "literalness": 0.5,
+        "characterCount": 30,
+        "preservesRhyme": false,
+        "preservesMeter": false
+      }
+    },
+    {
+      "variant": 3,
+      "fullText": "complete translated line - creative version",
+      "words": [],
+      "metadata": {
+        "literalness": 0.2,
+        "characterCount": 28,
+        "preservesRhyme": false,
+        "preservesMeter": false
+      }
+    }
+  ]
+}`;
+}
+
+/**
+ * Feature 9 (R): System prompt for fallback translation
+ */
+export function buildLineTranslationFallbackSystemPrompt(): string {
+  return `You are a poetry translation assistant providing SIMPLIFIED translations.
+
+IMPORTANT RULES:
+- Return ONLY a valid JSON object with the translations array
+- Generate exactly 3 translation variants
+- Each variant should be a complete translated line
+- Words array should be EMPTY (this is simplified translation)
+- Metadata can be estimated (no word-level accuracy required)
+- Focus on providing natural, readable translations
+
+This is a fallback mode used when alignment-based translation fails.
+Priority is on providing usable translations quickly, not perfect alignment.`;
 }

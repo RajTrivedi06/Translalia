@@ -2,21 +2,22 @@
 "use client";
 import * as React from "react";
 
-export const Card = React.forwardRef<
-  HTMLDivElement,
-  React.PropsWithChildren<{ className?: string; style?: React.CSSProperties }>
->(({ className = "", children, style, ...props }, ref) => {
-  return (
-    <div
-      ref={ref}
-      className={`rounded-2xl border shadow-sm bg-white ${className}`}
-      style={style}
-      {...props}
-    >
-      {children}
-    </div>
-  );
-});
+type CardProps = React.HTMLAttributes<HTMLDivElement>;
+
+export const Card = React.forwardRef<HTMLDivElement, CardProps>(
+  ({ className = "", children, style, ...props }, ref) => {
+    return (
+      <div
+        ref={ref}
+        className={`rounded-2xl border shadow-sm bg-white ${className}`}
+        style={style}
+        {...props}
+      >
+        {children}
+      </div>
+    );
+  }
+);
 
 Card.displayName = "Card";
 

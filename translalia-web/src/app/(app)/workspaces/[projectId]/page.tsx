@@ -93,65 +93,85 @@ export default function WorkspaceChatsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl p-0">
-      <Breadcrumbs
-        workspaceId={projectId}
-        showNewChat
-        NewChatButton={
-          <button
-            onClick={onNewChat}
-            className="rounded-md bg-black text-white px-3 py-1.5 text-sm disabled:opacity-70"
-            disabled={isFetching}
-          >
-            New Chat
-          </button>
-        }
-      />
-      <div className="p-6 space-y-6">
-        <header className="flex items-center justify-between">
-          <div>
+    <div className="flex min-h-screen w-full bg-slate-50 text-slate-900">
+      <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-4 py-10">
+        <Breadcrumbs
+          workspaceId={projectId}
+          showNewChat
+          NewChatButton={
             <button
-              className="mr-3 text-sm underline"
-              onClick={() => router.push(routes.workspaces())}
+              onClick={onNewChat}
+              className="rounded-full bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-500 disabled:opacity-60"
+              disabled={isFetching}
             >
-              ← All Workspaces
+              New chat
             </button>
-            <h1 className="inline text-2xl font-semibold">Chats</h1>
-          </div>
-        </header>
+          }
+        />
 
-        <div className="rounded-lg border">
-          <div className="p-3 border-b text-sm text-neutral-500">
-            {isFetching ? "Loading…" : "Chats in this workspace"}
+        <section className="rounded-3xl bg-white/85 px-6 py-8 shadow-[0_18px_50px_rgba(15,23,42,0.08)] sm:px-10">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-3">
+              <button
+                className="text-sm font-semibold text-slate-500 transition hover:text-slate-700"
+                onClick={() => router.push(routes.workspaces())}
+              >
+                ← Back to workspaces
+              </button>
+              <h1 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+                Chats
+              </h1>
+              <p className="text-base text-slate-600">
+                Every conversation inside this workspace appears here. Keep your
+                drafts, reviews, and reflections neatly organized.
+              </p>
+            </div>
           </div>
-          <ul className="divide-y">
+        </section>
+
+        <section className="flex-1 rounded-3xl bg-white/90 p-6 shadow-sm ring-1 ring-slate-200 sm:p-8">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
+                Threads
+              </p>
+              <h2 className="text-2xl font-semibold text-slate-900">
+                {isFetching ? "Loading…" : "Chats in this workspace"}
+              </h2>
+            </div>
+          </div>
+
+          <ul className="mt-8 flex flex-1 flex-col gap-4">
             {(data ?? []).length === 0 ? (
-              <li className="p-4 text-sm text-neutral-500">No chats yet.</li>
+              <li className="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 px-5 py-10 text-center text-sm text-slate-500">
+                No chats yet. Start one to collect new translations or reviews
+                with your class.
+              </li>
             ) : (
               data!.map((t) => (
                 <li
                   key={t.id}
-                  className="flex items-center justify-between p-4"
+                  className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-5 transition hover:border-sky-200 hover:shadow-lg sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div>
-                    <div className="font-medium">
-                      {t.title || "Untitled chat"}
-                    </div>
-                    <div className="text-xs text-neutral-500">
+                    <p className="text-lg font-semibold text-slate-900">
+                      {t.title?.trim() || "Untitled chat"}
+                    </p>
+                    <p className="text-sm text-slate-500">
                       {new Date(t.created_at).toLocaleString()}
-                    </div>
+                    </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col gap-3 sm:flex-row">
                     <button
-                      className="rounded-md border px-3 py-1.5 text-sm hover:bg-neutral-100"
+                      className="inline-flex items-center justify-center rounded-full border border-slate-300 px-5 py-2 text-sm font-semibold text-slate-900 transition hover:border-sky-200 hover:bg-sky-50"
                       onClick={() =>
                         router.push(routes.projectWithThread(projectId, t.id))
                       }
                     >
-                      Open
+                      Open chat
                     </button>
                     <button
-                      className="rounded-md border px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
+                      className="inline-flex items-center justify-center rounded-full border border-red-200 px-5 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50"
                       onClick={async () => {
                         if (
                           !confirm("Delete this chat? This cannot be undone.")
@@ -185,7 +205,7 @@ export default function WorkspaceChatsPage() {
               ))
             )}
           </ul>
-        </div>
+        </section>
       </div>
     </div>
   );

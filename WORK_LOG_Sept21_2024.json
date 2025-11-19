@@ -1,0 +1,254 @@
+[
+  {
+    "date": "2025-11-06",
+    "message": "Made improvements in the jouney mode",
+    "hash": "0aacfb3",
+    "author": "rstrivedi2"
+  },
+  {
+    "date": "2025-11-04",
+    "message": "updated docs",
+    "hash": "29fb49e",
+    "author": "rstrivedi2"
+  },
+  {
+    "date": "2025-11-02",
+    "message": "Deleted some unwanted doc files",
+    "hash": "68dadeb",
+    "author": "rstrivedi2"
+  },
+  {
+    "date": "2025-11-02",
+    "message": "Rebrand from Metamorphs to Translalia",
+    "hash": "0cfe9eb",
+    "author": "rstrivedi2"
+  },
+  {
+    "date": "2025-11-02",
+    "message": "Clean up documentation: consolidate to unified docs structure",
+    "hash": "a9f5062",
+    "author": "rstrivedi2"
+  },
+  {
+    "date": "2025-11-02",
+    "message": "Add auto-detect formatting feature and source word drag verification",
+    "hash": "1a2d9f4",
+    "author": "rstrivedi2"
+  },
+  {
+    "date": "2025-09-28",
+    "message": "docs(coverage): fill remaining gaps so every file is represented",
+    "hash": "930a93b",
+    "author": "rstrivedi2"
+  },
+  {
+    "date": "2025-09-28",
+    "message": "Claude Code: Remove unused imports and dead code",
+    "hash": "ec916d0",
+    "author": "rstrivedi2"
+  },
+  {
+    "date": "2025-09-28",
+    "message": "chat-ui: add UI-only chat components for main workspace",
+    "hash": "4df1b4e",
+    "author": "rstrivedi2"
+  },
+  {
+    "date": "2025-09-28",
+    "message": "chat-ui: add UI-only flag to gate chat view in main area",
+    "hash": "0e8c13b",
+    "author": "rstrivedi2"
+  },
+  {
+    "date": "2025-09-27",
+    "message": "phase2(2.10): QA checklist + README data-flow; document decolonial guardrails",
+    "hash": "7810db9",
+    "author": "rstrivedi2"
+  },
+  {
+    "date": "2025-09-27",
+    "message": "phase2(2.9): perf hygiene (memoize, narrow selectors, simple windowing, optional prefetch)",
+    "hash": "374aad6",
+    "author": "rstrivedi2"
+  },
+  {
+    "date": "2025-09-27",
+    "message": "phase2(2.8): local autosave/restore for selections and notebook draft (per thread)",
+    "hash": "ade39cc",
+    "author": "rstrivedi2"
+  },
+  {
+    "date": "2025-09-27",
+    "message": "phase2(2.7): a11y improvements for TokenCard chips & WorkshopView (SR labels, focus rings)",
+    "hash": "ebfb32d",
+    "author": "rstrivedi2"
+  },
+  {
+    "date": "2025-09-27",
+    "message": "phase2(2.6): NotebookView wrapper with back/clear/copy; pass draft to NotebookPanel",
+    "hash": "72ee4ec",
+    "author": "rstrivedi2"
+  },
+  {
+    "date": "2025-09-27",
+    "message": "phase2(2.5): compile current line → notebook draft; add clearNotebookDraft()",
+    "hash": "8e63fc4",
+    "author": "rstrivedi2"
+  },
+  {
+    "date": "2025-09-27",
+    "message": "phase2(2.4): phrase grouping utilities + TokenCard overflow actions",
+    "hash": "df67e5c",
+    "author": "rstrivedi2"
+  },
+  {
+    "date": "2025-09-27",
+    "message": "phase2(2.3): WorkshopView + TokenCard (equal-weight chips, add-your-own, compile)",
+    "hash": "e2d2156",
+    "author": "rstrivedi2"
+  },
+  {
+    "date": "2025-09-27",
+    "message": "phase2(2.2): tokenization scaffold + explode data hook",
+    "hash": "5b36147",
+    "author": "rstrivedi2"
+  },
+  {
+    "date": "2025-09-27",
+    "message": "phase2(2.1): LineSelectionView + selection utils (multi-select + keyboard)",
+    "hash": "711e788",
+    "author": "rstrivedi2"
+  },
+  {
+    "date": "2025-09-27",
+    "message": "phase2(2.0): add workshop types + V2 UI slice (selections, draft)",
+    "hash": "93cccb8",
+    "author": "rstrivedi2"
+  },
+  {
+    "date": "2025-09-27",
+    "message": "Merge pull request #2 from OxfordCompetencyCenters/feat/v2-phase1-sidebar-polish",
+    "hash": "df9735f",
+    "author": "RajTrivedi06"
+  },
+  {
+    "date": "2025-09-27",
+    "message": "feat(v2): Phase 1 sidebar polish - responsive layout, fallbacks, a11y, performance",
+    "hash": "9694a0d",
+    "author": "rstrivedi2"
+  },
+  {
+    "date": "2025-09-27",
+    "message": "feat(v2/phase0): overlay a11y via shadcn Sheet; visibility-gated polling; V2 a11y headings; guarded debug log; docs updates",
+    "hash": "6bd25b3",
+    "author": "rstrivedi2"
+  },
+  {
+    "date": "2025-09-27",
+    "message": "feat(workspace): Phase 0 — add V2 shell flag, docs, UI slice reset; gate thread route; add env example",
+    "hash": "ed5d5c3",
+    "author": "rstrivedi2"
+  },
+  {
+    "date": "2025-09-16",
+    "message": "docs: sync models map and journey-aware prompts with anchors",
+    "hash": "6f91829",
+    "author": "rstrivedi2"
+  },
+  {
+    "date": "2025-09-01",
+    "message": "auth: SSR cookie adapter, middleware SSR client, auth sync route, client listener; add whoami + debug-cookies; persist session in browser",
+    "hash": "6087a76",
+    "author": "My name"
+  },
+  {
+    "date": "2025-08-26",
+    "message": "Merge pull request #1 from OxfordCompetencyCenters/chore/sync-latest-updates",
+    "hash": "4dcd3be",
+    "author": "RajTrivedi06"
+  },
+  {
+    "date": "2025-08-26",
+    "message": "feat(nodes): thread-scoped versions in WorkspaceShell; auth + Bearer fallback for nodes API; middleware for sb-* cookies; VersionCanvas/VersionCardNode render from API overview.lines; useNodes no-store + Authorization; fix JourneyList typing",
+    "hash": "cedd54c",
+    "author": "My name"
+  },
+  {
+    "date": "2025-08-25",
+    "message": "Preview/Instruct nodes; thread-scoped nodes API; optimistic Overview; VersionCanvas nodes overlay; auth hardening; docs updated",
+    "hash": "b9971e3",
+    "author": "My name"
+  },
+  {
+    "date": "2025-08-24",
+    "message": "docs: add journey activity API section; clarify no caching for Activity",
+    "hash": "ccc21c4",
+    "author": "My name"
+  },
+  {
+    "date": "2025-08-24",
+    "message": "feat(activity): group accept_line events in Activity with collapsible details; canvas: ensure single accepted draft node for active thread",
+    "hash": "8c8d5ba",
+    "author": "My name"
+  },
+  {
+    "date": "2025-08-24",
+    "message": "feat(journey): make list API bearer-aware; send Authorization from useJourney; keep cookie fallback",
+    "hash": "365158c",
+    "author": "My name"
+  },
+  {
+    "date": "2025-08-24",
+    "message": "docs: update flow, LLM, moderation, spend/cache, flags; add journey list API docs and consistent error shapes",
+    "hash": "7bae132",
+    "author": "My name"
+  },
+  {
+    "date": "2025-08-24",
+    "message": "feat(activity): add journey activity API, hook, and UI overlay; invalidate on accept; improve /api/flow/peek error handling and document schema for chat_threads.state",
+    "hash": "3c43224",
+    "author": "My name"
+  },
+  {
+    "date": "2025-08-23",
+    "message": "phase(5): LLM wiring (OpenAI) for enhancer + translator, flags/safety/cache, UI glue",
+    "hash": "af9bff2",
+    "author": "My name"
+  },
+  {
+    "date": "2025-08-20",
+    "message": "phase(4): UI glue for interview flow + plan preview (no LLM)",
+    "hash": "e8c53c1",
+    "author": "My name"
+  },
+  {
+    "date": "2025-08-20",
+    "message": "phase(3): orchestration APIs (start, answer, sequencer, plan gate; no LLM)",
+    "hash": "17ecbad",
+    "author": "My name"
+  },
+  {
+    "date": "2025-08-20",
+    "message": "phase(2): session state types + thread state helpers and dev smoke route",
+    "hash": "a3f372a",
+    "author": "My name"
+  },
+  {
+    "date": "2025-08-20",
+    "message": "phase(0): flags, model map, and policy docs (no LLM yet)",
+    "hash": "28960fc",
+    "author": "My name"
+  },
+  {
+    "date": "2025-08-20",
+    "message": "feat: initial commit (without node_modules)",
+    "hash": "391088d",
+    "author": "My name"
+  },
+  {
+    "date": "2025-07-24",
+    "message": "First Commit",
+    "hash": "d353cb1",
+    "author": "My name"
+  }
+]

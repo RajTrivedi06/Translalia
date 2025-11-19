@@ -45,7 +45,7 @@ export const BUCKET = process.env.STORAGE_BUCKETS_CORPORA ?? "corpora";
 ```
 
 ```2:12:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/models.ts
-export const TRANSLATOR_MODEL = process.env.TRANSLATOR_MODEL?.trim() || "gpt-5";
+export const TRANSLATOR_MODEL = process.env.TRANSLATOR_MODEL?.trim() || "gpt-4o";
 export const ENHANCER_MODEL =
   process.env.ENHANCER_MODEL?.trim() || "gpt-5-mini";
 export const ROUTER_MODEL =
@@ -99,7 +99,7 @@ Rollout: All flags are reversible; no database migrations required.
 
 | Surface                                 | ENV/Const             | Default                  | Fallbacks                    | Anchor                                                                          |
 | --------------------------------------- | --------------------- | ------------------------ | ---------------------------- | ------------------------------------------------------------------------------- |
-| Translator (general text)               | `TRANSLATOR_MODEL`    | "gpt-5"                  | —                            | /Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/models.ts#L2-L2      |
+| Translator (general text)               | `TRANSLATOR_MODEL`    | "gpt-4o"                 | —                            | /Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/models.ts#L2-L2      |
 | Enhancer (planner JSON)                 | `ENHANCER_MODEL`      | "gpt-5-mini"             | —                            | /Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/models.ts#L4-L5      |
 | Router / Classifier                     | `ROUTER_MODEL`        | "gpt-5-nano-2025-08-07"  | —                            | /Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/models.ts#L7-L8      |
 | Embeddings                              | `EMBEDDINGS_MODEL`    | "text-embedding-3-large" | —                            | /Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/models.ts#L11-L12    |
@@ -107,7 +107,7 @@ Rollout: All flags are reversible; no database migrations required.
 Evidence:
 
 ```2:12:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/models.ts
-export const TRANSLATOR_MODEL = process.env.TRANSLATOR_MODEL?.trim() || "gpt-5";
+export const TRANSLATOR_MODEL = process.env.TRANSLATOR_MODEL?.trim() || "gpt-4o";
 
 export const ENHANCER_MODEL =
   process.env.ENHANCER_MODEL?.trim() || "gpt-5-mini";
@@ -275,7 +275,7 @@ const eslintConfig = [
 
 - Feature flags default to OFF (`0`); enable by setting to `"1"`.
 - Models default as:
-  - `TRANSLATOR_MODEL="gpt-5"`
+  - `TRANSLATOR_MODEL="gpt-4o"`
   - `ENHANCER_MODEL="gpt-5-mini"`
   - `ROUTER_MODEL="gpt-5-nano-2025-08-07"`
   - `EMBEDDINGS_MODEL="text-embedding-3-large"`
@@ -295,7 +295,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 NEXT_PUBLIC_FEATURE_SIDEBAR_LAYOUT=1
 
 # Optional model overrides
-TRANSLATOR_MODEL=gpt-5
+TRANSLATOR_MODEL=gpt-4o
 ENHANCER_MODEL=gpt-5-mini
 ROUTER_MODEL=gpt-5-nano-2025-08-07
 EMBEDDINGS_MODEL=text-embedding-3-large
@@ -339,7 +339,7 @@ Updated: 2025-09-16
 - Centralized defaults with env overrides:
 
 ```2:15:/Users/raaj/Documents/CS/Translalia/Translalia-web/src/lib/models.ts
-export const TRANSLATOR_MODEL = process.env.TRANSLATOR_MODEL?.trim() || "gpt-5";
+export const TRANSLATOR_MODEL = process.env.TRANSLATOR_MODEL?.trim() || "gpt-4o";
 
 export const ENHANCER_MODEL =
   process.env.ENHANCER_MODEL?.trim() || "gpt-5-mini";
@@ -357,7 +357,7 @@ export const MODERATION_MODEL = "omni-moderation-latest";
 
 | Surface                                 | Constant / ENV (name only)                          | Default                  | Where set                      | Where used                                                                                                                                            | Notes                                                                                         |
 | --------------------------------------- | --------------------------------------------------- | ------------------------ | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Translator (Preview/Translate/Instruct) | TRANSLATOR_MODEL                                    | "gpt-5"                  | `src/lib/models.ts:L2-L15`     | `src/app/api/translate/route.ts:L112-L118`; `src/app/api/translator/preview/route.ts:L268-L273`; `src/app/api/translator/instruct/route.ts:L222-L227` | Guard forbids moderation/embedding models `src/app/api/translator/preview/route.ts:L250-L258` |
+| Translator (Preview/Translate/Instruct) | TRANSLATOR_MODEL                                    | "gpt-4o"                 | `src/lib/models.ts:L2-L15`     | `src/app/api/translate/route.ts:L112-L118`; `src/app/api/translator/preview/route.ts:L268-L273`; `src/app/api/translator/instruct/route.ts:L222-L227` | Guard forbids moderation/embedding models `src/app/api/translator/preview/route.ts:L250-L258` |
 | Enhancer (planner/JSON)                 | ENHANCER_MODEL                                      | "gpt-5-mini"             | `src/lib/models.ts:L2-L15`     | `src/lib/ai/enhance.ts:L37-L49`                                                                                                                       | JSON `response_format`                                                                        |
 | Router / Classifier                     | ROUTER_MODEL                                        | "gpt-5-nano-2025-08-07"  | `src/lib/models.ts:L2-L15`     | `src/server/flow/intentLLM.ts:L26-L33`; `src/lib/ai/routeIntent.ts:L29-L37`; `src/app/api/interview/next/route.ts:L23-L31`                            | JSON output                                                                                   |
 | Verifier                                | VERIFIER_MODEL (env) → fallback ROUTER_MODEL        | —                        | `src/lib/ai/verify.ts:L12-L15` | `src/lib/ai/verify.ts:L40-L48`                                                                                                                        | JSON scores                                                                                   |

@@ -10,6 +10,9 @@ import { NotebookCell } from "@/types/notebook";
  */
 export function createCellFromDragData(dragData: DragData): NotebookCell {
   const now = new Date().toISOString();
+  const wordCount = dragData.text.trim().length
+    ? dragData.text.trim().split(/\s+/).length
+    : 0;
 
   return {
     id: crypto.randomUUID(),
@@ -29,7 +32,11 @@ export function createCellFromDragData(dragData: DragData): NotebookCell {
     metadata: {
       createdAt: now,
       updatedAt: now,
-      wordCount: dragData.text.split(/\s+/).length,
+      wordCount,
+      sourceDragType: dragData.dragType,
+      sourceVariantId: dragData.variantId,
+      sourceOriginal: dragData.originalWord,
+      sourceStanzaIndex: dragData.stanzaIndex,
     },
   };
 }
@@ -42,6 +49,10 @@ export function createCellFromMultipleDragData(
 ): NotebookCell {
   const now = new Date().toISOString();
   const firstItem = dragDataItems[0];
+  const wordCount = dragDataItems.reduce(
+    (acc, item) => acc + (item.text.trim().length ? item.text.trim().split(/\s+/).length : 0),
+    0
+  );
 
   return {
     id: crypto.randomUUID(),
@@ -61,7 +72,11 @@ export function createCellFromMultipleDragData(
     metadata: {
       createdAt: now,
       updatedAt: now,
-      wordCount: dragDataItems.length,
+      wordCount,
+      sourceDragType: firstItem.dragType,
+      sourceVariantId: firstItem.variantId,
+      sourceOriginal: dragDataItems.map((d) => d.originalWord).join(" "),
+      sourceStanzaIndex: firstItem.stanzaIndex,
     },
   };
 }

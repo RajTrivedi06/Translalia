@@ -35,7 +35,16 @@ export interface DragData {
   position: number;
 
   /** Type of drag item to distinguish between source words and translation options */
-  dragType: "sourceWord" | "option";
+  dragType: "sourceWord" | "option" | "variantWord";
+
+  /** Optional reference to the variant this token belongs to */
+  variantId?: number;
+
+  /** Optional stanza index for analytics */
+  stanzaIndex?: number;
+
+  /** Additional metadata for future features */
+  metadata?: Record<string, unknown>;
 }
 
 export type DragSource = "workshop" | "notebook";

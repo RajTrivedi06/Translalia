@@ -3,6 +3,10 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { getActiveThreadId, threadStorage } from "@/lib/threadStorage";
+import {
+  splitPoemIntoStanzas,
+  type SimplePoemStanzas,
+} from "@/lib/utils/stanzaUtils";
 
 export interface GuideAnswers {
   /**
@@ -42,6 +46,7 @@ export interface GuideState {
     text: string;
     isSubmitted: boolean;
     preserveFormatting: boolean;
+    stanzas: SimplePoemStanzas | null;
   };
 
   // Translation intent (free-form instructions)
@@ -61,10 +66,12 @@ export interface GuideState {
   // UI state
   isCollapsed: boolean;
   width: number;
+  isWorkshopUnlocked: boolean;
 
   // Actions
   setPoem: (text: string) => void;
   submitPoem: () => void;
+  getPoemStanzas: () => SimplePoemStanzas | null;
   setPreserveFormatting: (preserve: boolean) => void;
   setTranslationZone: (zone: string) => void;
   submitTranslationZone: () => void;
@@ -74,6 +81,8 @@ export interface GuideState {
   toggleCollapse: () => void;
   setWidth: (width: number) => void;
   reset: () => void;
+  checkGuideComplete: () => boolean;
+  unlockWorkshop: () => void;
 }
 
 const initialState: Pick<
@@ -85,12 +94,14 @@ const initialState: Pick<
   | "answers"
   | "isCollapsed"
   | "width"
+  | "isWorkshopUnlocked"
 > = {
   currentStep: "setup",
   poem: {
     text: "",
     isSubmitted: false,
     preserveFormatting: true,
+    stanzas: null,
   },
   translationIntent: {
     text: null,
@@ -103,8 +114,10 @@ const initialState: Pick<
   answers: {},
   isCollapsed: false,
   width: 320,
+  isWorkshopUnlocked: false,
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function normalizeLegacyStep(step: any): GuideStep {
   if (step === "complete") return "ready";
   if (step === "ready") return "ready";
@@ -113,21 +126,33 @@ function normalizeLegacyStep(step: any): GuideStep {
 
 export const useGuideStore = create<GuideState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       hydrated: false,
       meta: { threadId: getActiveThreadId() },
       ...initialState,
 
-      setPoem: (text: string) =>
+      setPoem: (text: string) => {
+        // Compute stanzas immediately (client-side, no API)
+        const stanzas = splitPoemIntoStanzas(text);
+
         set((state) => ({
-          poem: { ...state.poem, text },
+          poem: {
+            ...state.poem,
+            text,
+            stanzas,
+          },
           meta: { threadId: getActiveThreadId() },
-        })),
+        }));
+      },
 
       submitPoem: () =>
         set((state) => ({
           poem: { ...state.poem, isSubmitted: true },
         })),
+
+      getPoemStanzas: () => {
+        return get().poem.stanzas;
+      },
 
       setPreserveFormatting: (preserve: boolean) =>
         set((state) => ({
@@ -223,6 +248,22 @@ export const useGuideStore = create<GuideState>()(
           ...initialState,
           meta: { threadId: getActiveThreadId() },
         }),
+
+      checkGuideComplete: () => {
+        const state = get();
+
+        const hasPoem = state.poem.text.trim().length > 0;
+        const hasTranslationZone = state.translationZone.text.trim().length > 0;
+        const hasTranslationIntent =
+          (state.translationIntent.text?.trim().length ?? 0) > 0;
+
+        return hasPoem && hasTranslationZone && hasTranslationIntent;
+      },
+
+      unlockWorkshop: () =>
+        set({
+          isWorkshopUnlocked: true,
+        }),
     }),
     {
       name: "guide-storage",
@@ -230,6 +271,7 @@ export const useGuideStore = create<GuideState>()(
       storage: createJSONStorage(() => threadStorage),
       merge: (persisted, current) => {
         const tid = getActiveThreadId();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const p = persisted as any;
 
         if (!p || !tid) {
@@ -261,11 +303,17 @@ export const useGuideStore = create<GuideState>()(
             text: p.poem?.text ?? current.poem.text ?? "",
             isSubmitted: p.poem?.isSubmitted ?? current.poem.isSubmitted,
             preserveFormatting: p.poem?.preserveFormatting ?? false,
+            stanzas: p.poem?.stanzas
+              ? p.poem.stanzas
+              : p.poem?.text
+              ? splitPoemIntoStanzas(p.poem.text)
+              : null,
           },
           translationZone: {
             text: p.translationZone?.text ?? current.translationZone.text ?? "",
             isSubmitted:
-              p.translationZone?.isSubmitted ?? current.translationZone.isSubmitted,
+              p.translationZone?.isSubmitted ??
+              current.translationZone.isSubmitted,
           },
           translationIntent: {
             text: legacyIntent,

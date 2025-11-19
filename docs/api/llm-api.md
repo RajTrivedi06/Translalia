@@ -22,7 +22,7 @@ Common request keys: `model`, `temperature?`, `response_format?`, `messages` (sy
 #### Models and parameters
 
 ```2:12:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/models.ts
-export const TRANSLATOR_MODEL = process.env.TRANSLATOR_MODEL?.trim() || "gpt-5";
+export const TRANSLATOR_MODEL = process.env.TRANSLATOR_MODEL?.trim() || "gpt-4o";
 export const ENHANCER_MODEL =
   process.env.ENHANCER_MODEL?.trim() || "gpt-5-mini";
 export const ROUTER_MODEL =

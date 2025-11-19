@@ -131,8 +131,8 @@ const BodySchema = z.object({
 - Top‑file notes are used sparingly to mark important conventions.
 
 ```1:6:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/models.ts
-// NOTE(cursor): Centralized GPT-5 defaults; envs override without code changes
-export const TRANSLATOR_MODEL = process.env.TRANSLATOR_MODEL?.trim() || "gpt-5";
+// NOTE(cursor): Centralized translation defaults; envs override without code changes
+export const TRANSLATOR_MODEL = process.env.TRANSLATOR_MODEL?.trim() || "gpt-4o";
 
 export const ENHANCER_MODEL =
   process.env.ENHANCER_MODEL?.trim() || "gpt-5-mini";

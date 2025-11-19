@@ -2,9 +2,11 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { GuideAnswers } from "@/store/guideSlice";
+import type { SimplePoemStanzas } from "@/lib/utils/stanzaUtils";
 import {
   updateGuideState,
   getGuideState,
+  savePoemState,
 } from "@/server/guide/updateGuideState";
 
 // Poem analysis interfaces removed
@@ -104,5 +106,15 @@ export function useSaveMultipleAnswers() {
         queryKey: ["guide-state", variables.threadId],
       });
     },
+  });
+}
+
+/**
+ * Hook to save poem and stanzas to thread state
+ * Called before initializing translations to ensure backend has required data
+ */
+export function useSavePoemState() {
+  return useMutation({
+    mutationFn: savePoemState,
   });
 }

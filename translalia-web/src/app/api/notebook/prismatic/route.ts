@@ -201,7 +201,7 @@ export async function POST(req: NextRequest) {
         });
       }
     } catch (modelError: any) {
-      // If model not found or unsupported, fallback to gpt-4o
+      // If model not found or unsupported, fallback to gpt-4o-mini
       const shouldFallback =
         modelError?.error?.code === "model_not_found" ||
         modelError?.status === 404 ||
@@ -210,11 +210,11 @@ export async function POST(req: NextRequest) {
       if (shouldFallback) {
         log("fallback_to_gpt4", {
           from: modelToUse,
-          to: "gpt-4o",
+          to: "gpt-4o-mini",
           reason:
             modelError?.error?.code || modelError?.error?.message || "error",
         });
-        modelToUse = "gpt-4o";
+        modelToUse = "gpt-4o-mini";
         completion = await openai.chat.completions.create({
           model: modelToUse,
           temperature: 0.7,

@@ -4,6 +4,9 @@ import * as React from "react";
 import { useNotebookStore } from "@/store/notebookSlice";
 import { useWorkshopStore } from "@/store/workshopSlice";
 import { useWorkspace } from "@/store/workspace";
+import { useGuideStore } from "@/store/guideSlice";
+import { useThreadId } from "@/hooks/useThreadId";
+import type { DragData } from "@/types/drag";
 import {
   useKeyboardShortcuts,
   KeyboardShortcutsHint,
@@ -11,7 +14,6 @@ import {
 import { useAutoSave, useAutoSaveIndicator } from "@/lib/hooks/useAutoSave";
 import { useDndMonitor } from "@dnd-kit/core";
 import { LineProgressIndicator } from "./LineProgressIndicator";
-import { LineNavigation } from "./LineNavigation";
 import { FinalizeLineDialog } from "./FinalizeLineDialog";
 import { PoemAssembly } from "./PoemAssembly";
 import { ComparisonView } from "./ComparisonView";
@@ -19,10 +21,16 @@ import { JourneySummary } from "./JourneySummary";
 import { JourneyReflection } from "./JourneyReflection";
 import { CompletionCelebration } from "./CompletionCelebration";
 import { NotebookDropZone } from "./NotebookDropZone";
-import { ModeSwitcher } from "./ModeSwitcher";
+import { AIAssistantPanel } from "./AIAssistantPanel";
+import { PoemSuggestionsPanel } from "./PoemSuggestionsPanel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import Sheet, {
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import {
   FileText,
   Save,
@@ -30,12 +38,15 @@ import {
   Redo2,
   AlertCircle,
   CheckCircle,
-  ArrowLeftRight,
+  ArrowRightLeft, // Correct import name
   Sparkles,
+  Menu,
+  X,
 } from "lucide-react";
 
 interface NotebookPhase6Props {
   projectId?: string;
+  showTitle?: boolean;
 }
 
 /**
@@ -49,7 +60,10 @@ interface NotebookPhase6Props {
  * - Draft management
  * - Navigation between lines
  */
-export default function NotebookPhase6({ projectId: propProjectId }: NotebookPhase6Props = {}) {
+export default function NotebookPhase6({
+  projectId: propProjectId,
+  showTitle = true,
+}: NotebookPhase6Props = {}) {
   // Notebook state
   const droppedCells = useNotebookStore((s) => s.droppedCells);
   const currentLineIndex = useNotebookStore((s) => s.currentLineIndex);
@@ -66,7 +80,6 @@ export default function NotebookPhase6({ projectId: propProjectId }: NotebookPha
   const resetLine = useNotebookStore((s) => s.resetLine);
   const togglePoemAssembly = useNotebookStore((s) => s.togglePoemAssembly);
   const startSession = useNotebookStore((s) => s.startSession);
-  const setMode = useNotebookStore((s) => s.setMode);
   const updateCellText = useNotebookStore((s) => s.updateCellText);
   const removeCell = useNotebookStore((s) => s.removeCell);
   const setCellEditMode = useNotebookStore((s) => s.setCellEditMode);
@@ -91,12 +104,22 @@ export default function NotebookPhase6({ projectId: propProjectId }: NotebookPha
   const [showFinalizeDialog, setShowFinalizeDialog] = React.useState(false);
   const [showShortcutsHelp, setShowShortcutsHelp] = React.useState(false);
   const [showComparisonView, setShowComparisonView] = React.useState(false);
+  const [showComparison, setShowComparison] = React.useState(false);
   const [showJourneySummary, setShowJourneySummary] = React.useState(false);
-  const [showJourneyReflection, setShowJourneyReflection] = React.useState(false);
+  const [showJourneyReflection, setShowJourneyReflection] =
+    React.useState(false);
   const [showCelebration, setShowCelebration] = React.useState(false);
   const [hasShownCelebration, setHasShownCelebration] = React.useState(false);
   const [isDragActive, setIsDragActive] = React.useState(false);
   const [composerValue, setComposerValue] = React.useState("");
+  const [actionMenuOpen, setActionMenuOpen] = React.useState(false);
+
+  // AI Assistant state
+  const [showAIPanel, setShowAIPanel] = React.useState(false);
+  const [showPoemSuggestions, setShowPoemSuggestions] = React.useState(false);
+  const threadId = useThreadId();
+  const guideAnswers = useGuideStore((s) => s.answers);
+  const poem = useGuideStore((s) => s.poem);
 
   useDndMonitor({
     onDragStart: () => setIsDragActive(true),
@@ -184,9 +207,8 @@ export default function NotebookPhase6({ projectId: propProjectId }: NotebookPha
       return;
     }
 
-    const draft = draftForCurrentLine;
-
-    // Get text from dropped cells, prioritizing customText over translation.text
+    // Always recompile from droppedCells when cells change
+    // This ensures the compiled section updates immediately when words are dropped
     const joined = droppedCells
       .map((cell) => {
         return cell.translation.text;
@@ -194,34 +216,25 @@ export default function NotebookPhase6({ projectId: propProjectId }: NotebookPha
       .filter(Boolean)
       .join(" ");
 
-    // If there's a draft, use it; otherwise use the compiled text from cells
-    if (typeof draft === "string" && draft.trim()) {
-      setComposerValue(draft);
-    } else if (joined.trim()) {
+    if (joined.trim()) {
       setComposerValue(joined);
-    } else {
-      setComposerValue("");
-    }
-  }, [currentLineIndex, draftForCurrentLine, droppedCells]);
-
-  React.useEffect(() => {
-    if (currentLineIndex === null) return;
-
-    // Get text from dropped cells, prioritizing customText over translation.text
-    const joined = droppedCells
-      .map((cell) => {
-        return cell.translation.text;
-      })
-      .filter(Boolean)
-      .join(" ");
-
-    const draft = draftTranslations.get(currentLineIndex);
-
-    // Only auto-save if there's no existing draft and we have compiled text
-    if (draft === undefined && joined.trim()) {
+      // Update the draft to match the compiled text from cells
       saveDraftTranslation(currentLineIndex, joined);
+    } else {
+      // If no cells, check if there's a draft (from manual editing)
+      const draft = draftForCurrentLine;
+      if (typeof draft === "string" && draft.trim()) {
+        setComposerValue(draft);
+      } else {
+        setComposerValue("");
+      }
     }
-  }, [droppedCells, currentLineIndex, draftTranslations, saveDraftTranslation]);
+  }, [
+    currentLineIndex,
+    droppedCells,
+    draftForCurrentLine,
+    saveDraftTranslation,
+  ]);
 
   const handleComposerChange = React.useCallback(
     (value: string) => {
@@ -283,6 +296,44 @@ export default function NotebookPhase6({ projectId: propProjectId }: NotebookPha
     navigateToLine,
   ]);
 
+  // AI Assistant handlers
+  const handleOpenAIAssist = React.useCallback(() => {
+    if (currentLineIndex === null || !composerValue.trim()) {
+      return;
+    }
+    setShowAIPanel(true);
+  }, [currentLineIndex, composerValue]);
+
+  const handleApplyAISuggestion = React.useCallback(
+    (cellId: string, suggestion: string) => {
+      if (currentLineIndex === null) return;
+      handleComposerChange(suggestion);
+      setShowAIPanel(false);
+    },
+    [currentLineIndex, handleComposerChange]
+  );
+
+  const handleCloseAIPanel = React.useCallback(() => {
+    setShowAIPanel(false);
+  }, []);
+
+  // Convert current translation to DragData format for AI Assistant
+  const selectedWordsForAI: DragData[] = React.useMemo(() => {
+    if (!composerValue.trim()) return [];
+    return composerValue
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((word, idx) => ({
+        id: `ai-assist-${idx}`,
+        text: word,
+        originalWord: word, // In notebook, we don't track original separately
+        partOfSpeech: "neutral" as const,
+        sourceLineNumber: currentLineIndex !== null ? currentLineIndex + 1 : 0,
+        position: idx,
+        dragType: "option" as const,
+      }));
+  }, [composerValue, currentLineIndex]);
+
   // Keyboard shortcuts
   useKeyboardShortcuts({
     onFinalizeCurrentLine: () => {
@@ -307,7 +358,9 @@ export default function NotebookPhase6({ projectId: propProjectId }: NotebookPha
       await saveNow();
     },
     onCancel: () => {
-      if (showFinalizeDialog) {
+      if (showAIPanel) {
+        setShowAIPanel(false);
+      } else if (showFinalizeDialog) {
         setShowFinalizeDialog(false);
       } else if (currentLineIndex !== null) {
         resetLine(currentLineIndex);
@@ -315,6 +368,34 @@ export default function NotebookPhase6({ projectId: propProjectId }: NotebookPha
     },
     isEnabled: !showPoemAssembly,
   });
+
+  // Keyboard shortcut for AI Assist: Cmd/Ctrl+Shift+A
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+      const modifier = isMac ? e.metaKey : e.ctrlKey;
+
+      if (modifier && e.shiftKey && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        if (currentLineIndex !== null && composerValue.trim() && !showAIPanel) {
+          handleOpenAIAssist();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [currentLineIndex, composerValue, showAIPanel, handleOpenAIAssist]);
+
+  const createMenuActionHandler = React.useCallback(
+    (fn: () => void | Promise<void>) => {
+      return async () => {
+        await fn();
+        setActionMenuOpen(false);
+      };
+    },
+    [setActionMenuOpen]
+  );
 
   // Show poem assembly view
   if (showPoemAssembly) {
@@ -342,85 +423,154 @@ export default function NotebookPhase6({ projectId: propProjectId }: NotebookPha
 
   // Main notebook view
   return (
-    <div className="h-full flex flex-col">
-      {/* Header with Progress */}
-      <div className="border-b border-gray-200 px-6 py-4 bg-white flex-shrink-0">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-lg font-medium font-serif">Notebook</h2>
-
-          <div className="flex items-center gap-2">
-            {/* Auto-save indicator */}
-            {lastSaved && (
-              <div className="flex items-center gap-1 text-xs text-gray-600">
-                <CheckCircle className="w-3 h-3 text-green-600" />
-                <span>{timeSinceSave}</span>
-              </div>
+    <div className="h-full flex flex-col relative">
+      {/* Header */}
+      <div className="border-b border-gray-200 bg-white px-4 py-3 flex-shrink-0">
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            {showTitle ? (
+              <h2 className="text-base font-semibold tracking-tight text-slate-900 lg:text-lg">
+                Notebook
+              </h2>
+            ) : (
+              <div />
             )}
+            <div className="flex items-center gap-2">
+              {lastSaved && (
+                <div className="flex items-center gap-1 text-xs text-gray-600">
+                  <CheckCircle className="w-3 h-3 text-green-600" />
+                  <span>{timeSinceSave}</span>
+                </div>
+              )}
+              <Sheet open={actionMenuOpen} onOpenChange={setActionMenuOpen}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="inline-flex items-center gap-2 px-3"
+                  onClick={() => setActionMenuOpen(true)}
+                >
+                  <Menu className="h-4 w-4" />
+                </Button>
+                <SheetContent
+                  side="right"
+                  className="max-w-[400px]"
+                  ariaLabelledby="notebook-actions-title"
+                >
+                  <SheetHeader className="bg-slate-50">
+                    <SheetTitle
+                      id="notebook-actions-title"
+                      className="text-base text-slate-900"
+                    >
+                      Notebook actions
+                    </SheetTitle>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-slate-500 hover:text-slate-900"
+                      onClick={() => setActionMenuOpen(false)}
+                    >
+                      <X className="h-4 w-4" />
+                      <span className="sr-only">Close actions</span>
+                    </Button>
+                  </SheetHeader>
+                  <div className="space-y-4 overflow-y-auto p-4">
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase text-slate-500">
+                        Session
+                      </p>
+                      <NotebookActionButton
+                        icon={Save}
+                        label="Save now"
+                        description="Cmd/Ctrl + S"
+                        onClick={createMenuActionHandler(saveNow)}
+                        disabled={!isDirty}
+                      />
+                      <NotebookActionButton
+                        icon={Undo2}
+                        label="Undo"
+                        description="Cmd/Ctrl + Z"
+                        onClick={createMenuActionHandler(undo)}
+                        disabled={!canUndoAction}
+                      />
+                      <NotebookActionButton
+                        icon={Redo2}
+                        label="Redo"
+                        description="Cmd/Ctrl + Shift + Z"
+                        onClick={createMenuActionHandler(redo)}
+                        disabled={!canRedoAction}
+                      />
+                    </div>
 
-            {/* Manual save button */}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={saveNow}
-              disabled={!isDirty}
-              title="Save now (Cmd/Ctrl + S)"
-            >
-              <Save className="w-4 h-4" />
-            </Button>
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase text-slate-500">
+                        Line tools
+                      </p>
+                      <NotebookActionButton
+                        icon={ArrowRightLeft}
+                        label={
+                          showComparison
+                            ? "Hide inline compare"
+                            : "Inline compare"
+                        }
+                        description="Peek at the source beside your draft"
+                        onClick={createMenuActionHandler(() =>
+                          setShowComparison((prev) => !prev)
+                        )}
+                      />
+                      {currentLineIndex !== null && composerValue.trim() && (
+                        <NotebookActionButton
+                          icon={Sparkles}
+                          label="AI Assist"
+                          description="Let AI refine this line (Cmd/Ctrl+Shift+A)"
+                          onClick={createMenuActionHandler(handleOpenAIAssist)}
+                        />
+                      )}
+                      <NotebookActionButton
+                        icon={ArrowRightLeft}
+                        label="Compare in modal"
+                        description="Open a detailed comparison view"
+                        onClick={createMenuActionHandler(() =>
+                          setShowComparisonView(true)
+                        )}
+                      />
+                      {Object.keys(completedLines).length > 0 && threadId && (
+                        <NotebookActionButton
+                          icon={Sparkles}
+                          label="Poem suggestions"
+                          description="Ideas for tone, flow, style"
+                          onClick={createMenuActionHandler(() =>
+                            setShowPoemSuggestions(true)
+                          )}
+                        />
+                      )}
+                    </div>
 
-            {/* Undo/Redo */}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={undo}
-              disabled={!canUndoAction}
-              title="Undo"
-            >
-              <Undo2 className="w-4 h-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={redo}
-              disabled={!canRedoAction}
-              title="Redo"
-            >
-              <Redo2 className="w-4 h-4" />
-            </Button>
-
-            {/* View Comparison */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowComparisonView(true)}
-              title="Compare source and translation"
-            >
-              <ArrowLeftRight className="w-4 h-4 mr-2" />
-              Compare
-            </Button>
-
-            {/* View Journey - Reflection Feature */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowJourneyReflection(true)}
-              title="Reflect on your translation journey"
-              disabled={Object.keys(completedLines).length === 0}
-            >
-              <Sparkles className="w-4 h-4 mr-2" />
-              Journey
-            </Button>
-
-            {/* View Assembly */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={togglePoemAssembly}
-              title="View complete poem"
-            >
-              <FileText className="w-4 h-4 mr-2" />
-              Poem
-            </Button>
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase text-slate-500">
+                        Workflow
+                      </p>
+                      <NotebookActionButton
+                        icon={Sparkles}
+                        label="Journey reflection"
+                        description="Capture what you’ve learned"
+                        onClick={createMenuActionHandler(() =>
+                          setShowJourneyReflection(true)
+                        )}
+                        disabled={Object.keys(completedLines).length === 0}
+                      />
+                      <NotebookActionButton
+                        icon={FileText}
+                        label="View assembled poem"
+                        description="Open the poem assembly canvas"
+                        onClick={createMenuActionHandler(() =>
+                          togglePoemAssembly()
+                        )}
+                      />
+                    </div>
+                  </div>
+                </SheetContent>
+              </Sheet>
+            </div>
           </div>
         </div>
 
@@ -439,12 +589,10 @@ export default function NotebookPhase6({ projectId: propProjectId }: NotebookPha
 
       {/* Content Area */}
       <div className="flex-1 overflow-hidden flex flex-col">
-        {/* Line Navigation */}
+        {/* Line Navigation
         {poemLines.length > 0 && (
-          <div className="px-6 py-3 bg-gray-50 border-b border-gray-200 flex-shrink-0">
-            <LineNavigation />
-          </div>
-        )}
+          <div className="px-6 py-3 bg-gray-50 border-b border-gray-800 flex-shrink-0"></div>
+        )} */}
 
         {/* Current Line Display */}
         {currentLineIndex !== null && poemLines[currentLineIndex] && (
@@ -490,63 +638,46 @@ export default function NotebookPhase6({ projectId: propProjectId }: NotebookPha
             <>
               {/* Drop Zone Area */}
               <div className="flex-1 flex flex-col min-h-0 p-6 pb-4">
-                <div className="mb-4 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-gray-700">
-                    Translation Builder
-                  </h3>
-                  {currentLineIndex !== null ? (
-                    <ModeSwitcher mode={mode} onModeChange={setMode} />
-                  ) : (
-                    <Badge
-                      variant="secondary"
-                      className="text-xs text-gray-700 bg-gray-200"
+                <NotebookDropZone
+                  cells={
+                    currentLineIndex !== null
+                      ? droppedCells.map((cell) => ({
+                          id: cell.id,
+                          words: [],
+                          isEditing: cellEditMode,
+                          isLocked:
+                            (cell.translation.lockedWords?.length ?? 0) > 0,
+                          isModified: modifiedCells.has(cell.id),
+                          customText: cell.translation.text,
+                          translationText: cell.translation.text,
+                          sourceLineNumber: cell.lineIndex + 1,
+                        }))
+                      : []
+                  }
+                  mode={mode}
+                  canDrop={currentLineIndex !== null}
+                  isActive={isDragActive}
+                  inactiveTitle="Select a Line to Translate"
+                  inactiveDescription="Choose a line from the Workshop panel to begin arranging your translation."
+                  inactiveAction={
+                    <Button
+                      onClick={togglePoemAssembly}
+                      variant="outline"
+                      size="sm"
                     >
-                      Select a line to begin
-                    </Badge>
-                  )}
-                </div>
-                <div className="flex-1 min-h-0">
-                  <NotebookDropZone
-                    cells={
-                      currentLineIndex !== null
-                        ? droppedCells.map((cell) => ({
-                            id: cell.id,
-                            words: [],
-                            isEditing: cellEditMode,
-                            isLocked:
-                              (cell.translation.lockedWords?.length ?? 0) > 0,
-                            isModified: modifiedCells.has(cell.id),
-                            customText: cell.translation.text,
-                            translationText: cell.translation.text,
-                            sourceLineNumber: cell.lineIndex + 1,
-                          }))
-                        : []
-                    }
-                    mode={mode}
-                    canDrop={currentLineIndex !== null}
-                    isActive={isDragActive}
-                    inactiveTitle="Select a Line to Translate"
-                    inactiveDescription="Choose a line from the Workshop panel to begin arranging your translation."
-                    inactiveAction={
-                      <Button
-                        onClick={togglePoemAssembly}
-                        variant="outline"
-                        size="sm"
-                      >
-                        View Progress
-                      </Button>
-                    }
-                    onEditCell={() => setCellEditMode(true)}
-                    onSaveCell={(id, text) => {
-                      updateCellText(id, text);
-                      markCellModified(id);
-                      setCellEditMode(false);
-                    }}
-                    onCancelEdit={() => setCellEditMode(false)}
-                    onRemoveCell={removeCell}
-                    onToggleLock={() => console.log("Toggle lock")}
-                  />
-                </div>
+                      View Progress
+                    </Button>
+                  }
+                  onEditCell={() => setCellEditMode(true)}
+                  onSaveCell={(id, text) => {
+                    updateCellText(id, text);
+                    markCellModified(id);
+                    setCellEditMode(false);
+                  }}
+                  onCancelEdit={() => setCellEditMode(false)}
+                  onRemoveCell={removeCell}
+                  onToggleLock={() => console.log("Toggle lock")}
+                />
               </div>
 
               {/* Compiled Line - Fixed at Bottom */}
@@ -679,6 +810,86 @@ export default function NotebookPhase6({ projectId: propProjectId }: NotebookPha
           togglePoemAssembly();
         }}
       />
+
+      {/* AI Assistant Panel Overlay */}
+      {showAIPanel &&
+        currentLineIndex !== null &&
+        threadId &&
+        composerValue.trim() && (
+          <div className="absolute inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center p-6 z-50">
+            <AIAssistantPanel
+              selectedWords={selectedWordsForAI}
+              sourceLineText={
+                currentLineIndex !== null
+                  ? poemLines[currentLineIndex] || ""
+                  : ""
+              }
+              guideAnswers={guideAnswers}
+              threadId={threadId}
+              cellId={`line-${currentLineIndex}`}
+              onApplySuggestion={handleApplyAISuggestion}
+              onClose={handleCloseAIPanel}
+              instruction="refine"
+            />
+          </div>
+        )}
+
+      {/* Poem Suggestions Panel Overlay (macro-level suggestions) */}
+      {showPoemSuggestions && threadId && poem.text && (
+        <div className="absolute inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center p-6 z-50 overflow-y-auto">
+          <PoemSuggestionsPanel
+            threadId={threadId}
+            sourcePoem={poem.text}
+            translationPoem={
+              droppedCells
+                .map((cell) => cell.translation.text)
+                .filter(Boolean)
+                .join("\n") || ""
+            }
+            guideAnswers={guideAnswers as Record<string, unknown>}
+            onClose={() => setShowPoemSuggestions(false)}
+          />
+        </div>
+      )}
     </div>
+  );
+}
+
+interface NotebookActionButtonProps {
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+  label: string;
+  description?: string;
+  onClick: () => void | Promise<void>;
+  disabled?: boolean;
+}
+
+function NotebookActionButton({
+  icon: Icon,
+  label,
+  description,
+  onClick,
+  disabled = false,
+}: NotebookActionButtonProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`w-full rounded-lg border border-slate-200 px-3 py-2 text-left text-sm transition ${
+        disabled
+          ? "cursor-not-allowed opacity-60"
+          : "hover:border-slate-300 hover:bg-slate-50"
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        <Icon className="mt-0.5 h-4 w-4 text-slate-500" />
+        <div className="space-y-0.5">
+          <p className="font-semibold text-slate-900">{label}</p>
+          {description ? (
+            <p className="text-xs text-slate-500">{description}</p>
+          ) : null}
+        </div>
+      </div>
+    </button>
   );
 }

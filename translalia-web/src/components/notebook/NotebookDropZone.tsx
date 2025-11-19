@@ -51,21 +51,16 @@ export function NotebookDropZone({
 
   const isEmpty = cells.length === 0;
 
-  const dropStateClass = !canDrop
-    ? "border-gray-200 bg-gray-50"
-    : isOver
-    ? "border-blue-500 bg-blue-50/70 shadow-lg"
-    : isActive
-    ? "border-blue-300 bg-blue-50/40"
-    : "border-gray-300 bg-white";
-
   return (
     <div
       ref={setNodeRef}
       className={cn(
-        "relative min-h-[200px] max-h-[400px] rounded-lg border-2 border-dashed transition-all duration-200 p-4 overflow-y-auto",
-        dropStateClass,
-        canDrop && isEmpty && "flex items-center justify-center"
+        "relative rounded-xl border-2 border-dashed transition-all duration-200",
+        "flex flex-col items-center justify-center text-center",
+        "min-h-[50px] p-2", // Increased height/padding for more space
+        isOver
+          ? "border-blue-400 bg-blue-50/50 scale-[1.02]"
+          : "border-slate-200 bg-slate-50/50 hover:border-slate-300 hover:bg-slate-100/50"
       )}
     >
       {!canDrop ? (
@@ -80,16 +75,16 @@ export function NotebookDropZone({
       ) : isEmpty ? (
         /* Empty State */
         <div className="text-center max-w-sm">
-          <div className="flex justify-center mb-4">
+          <div className="flex justify-center mb-3">
             <div
               className={cn(
-                "p-4 rounded-full transition-colors duration-200",
+                "p-3 rounded-full transition-colors duration-200",
                 isOver ? "bg-blue-100" : "bg-gray-100"
               )}
             >
               <Package
                 className={cn(
-                  "w-12 h-12 transition-colors duration-200",
+                  "w-8 h-8 transition-colors duration-200",
                   isOver ? "text-blue-500" : "text-gray-400"
                 )}
               />
@@ -103,13 +98,10 @@ export function NotebookDropZone({
           >
             {isOver ? "Drop here!" : "Drop words here"}
           </h3>
-          <p className="text-sm text-gray-500 mb-4">
-            Drag translation options from the Workshop to build your translation
-          </p>
 
           {canDrop && isOver && (
             <div className="flex justify-center animate-bounce">
-              <ArrowDown className="w-6 h-6 text-blue-500" />
+              <ArrowDown className="w-4 h-4 text-blue-500" />
             </div>
           )}
         </div>

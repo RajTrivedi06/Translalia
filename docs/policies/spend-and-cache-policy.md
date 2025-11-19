@@ -42,7 +42,7 @@ Defines how we minimize spend with caching, rate limiting, and disciplined API p
 
 | Surface        | Default model           | Anchor                                                                          |
 | -------------- | ----------------------- | ------------------------------------------------------------------------------- |
-| Translator     | "gpt-5"                 | /Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/models.ts#L2-L2      |
+| Translator     | "gpt-4o"                | /Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/models.ts#L2-L2      |
 | Enhancer       | "gpt-5-mini"            | /Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/models.ts#L4-L5      |
 | Router         | "gpt-5-nano-2025-08-07" | /Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/models.ts#L7-L8      |
 
@@ -186,7 +186,7 @@ export async function cacheSet<T>(
 - Prefer JSON outputs with `response_format` to avoid repair retries.
 - Cache idempotent results (same inputs) for 1 hour using stable hashed keys.
 - Avoid logging full prompts; if needed, gate with env and redact.
-- Prefer smaller models (`gpt-5-mini`, `gpt-5-nano-*`) where quality permits; fallback to `gpt-4o` only on model errors.
+- Prefer smaller models (`gpt-5-mini`, `gpt-5-nano-*`) where quality permits; fallback to `gpt-4o-mini` only on model errors.
 
 ## Monitoring & alerting
 

@@ -37,6 +37,8 @@ export function ProfileForm() {
       setPending(true);
       setMsg(null);
 
+      let nextAvatarUrl = avatarUrl;
+
       if (file && user) {
         const path = `${user.id}/${Date.now()}_${file.name}`;
         const { error: upErr } = await supabase.storage
@@ -47,7 +49,8 @@ export function ProfileForm() {
         } else {
           const { data } = supabase.storage.from("avatars").getPublicUrl(path);
           if (data?.publicUrl) {
-            setAvatarUrl(data.publicUrl);
+            nextAvatarUrl = data.publicUrl;
+            setAvatarUrl(nextAvatarUrl);
           }
         }
       }
@@ -55,7 +58,7 @@ export function ProfileForm() {
       await save({
         display_name: displayName,
         username: username || null,
-        avatar_url: avatarUrl || null,
+        avatar_url: nextAvatarUrl || null,
         locale: locale || null,
       });
       setMsg("Saved.");
@@ -119,6 +122,19 @@ export function ProfileForm() {
 
       <div className="grid gap-2">
         <label className="block text-sm text-neutral-700">Avatar</label>
+        {avatarUrl && (
+          <div className="flex items-center gap-3 rounded-md border p-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={avatarUrl}
+              alt="Avatar preview"
+              className="h-12 w-12 rounded-full border object-cover"
+            />
+            <div className="text-sm text-neutral-600">
+              Preview of the image that will appear in the header.
+            </div>
+          </div>
+        )}
         <input
           className="w-full rounded-md border px-3 py-2"
           value={avatarUrl}

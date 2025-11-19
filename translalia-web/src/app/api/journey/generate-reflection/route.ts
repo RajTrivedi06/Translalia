@@ -4,6 +4,8 @@ import { z } from "zod";
 import OpenAI from "openai";
 import { createServerClient } from "@supabase/ssr";
 import { ENHANCER_MODEL } from "@/lib/models";
+import { maskPrompts } from "@/server/audit/mask";
+import { insertPromptAudit } from "@/server/audit/insertPromptAudit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -80,7 +82,7 @@ export async function POST(req: NextRequest) {
     // 3) Thread ownership
     const { data: thread, error: threadErr } = await supabase
       .from("chat_threads")
-      .select("id,created_by")
+      .select("id,created_by,project_id")
       .eq("id", body.threadId)
       .single();
 
@@ -224,7 +226,27 @@ Please provide a reflective journey summary focusing on the translator's process
     reflection.challenges = reflection.challenges || [];
     reflection.recommendations = reflection.recommendations || [];
 
-    log("success", { ms: Date.now() - started });
+    // Log audit asynchronously (fire and forget)
+    const auditDuration = Date.now() - started;
+    insertPromptAudit({
+      createdBy: user.id,
+      projectId: thread.project_id ?? null,
+      threadId: body.threadId,
+      stage: "journey-reflection",
+      provider: "openai",
+      model: modelToUse,
+      params: {
+        duration_ms: auditDuration,
+        temperature: modelToUse.startsWith("gpt-5") ? null : 0.7,
+      },
+      promptSystemMasked: maskPrompts(systemPrompt, userPrompt).promptSystemMasked,
+      promptUserMasked: maskPrompts(systemPrompt, userPrompt).promptUserMasked,
+      responseExcerpt: content.slice(0, 400),
+    }).catch(() => {
+      // Swallow audit errors
+    });
+
+    log("success", { ms: auditDuration });
     return ok({ reflection, modelUsed: modelToUse });
   } catch (e: any) {
     console.error("[/api/journey/generate-reflection] fatal", e);
