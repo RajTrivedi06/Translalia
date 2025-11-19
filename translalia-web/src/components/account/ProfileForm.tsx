@@ -4,27 +4,33 @@ import * as React from "react";
 import { useSupabaseUser } from "@/hooks/useSupabaseUser";
 import { useProfile } from "@/hooks/useProfile";
 import { supabase } from "@/lib/supabaseClient";
+import { useTranslations } from "next-intl";
+import { useRouter, usePathname } from "@/i18n/routing";
 
 export function ProfileForm() {
+  const t = useTranslations('Settings');
+  const tCommon = useTranslations('Common');
   const { user, loading: userLoading } = useSupabaseUser();
   const { profile, loading, error, save, reload } = useProfile(user);
   const [displayName, setDisplayName] = React.useState("");
   const [username, setUsername] = React.useState("");
   const [avatarUrl, setAvatarUrl] = React.useState("");
-  const [locale, setLocale] = React.useState("");
+  const [locale, setLocale] = React.useState("en");
   const [msg, setMsg] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState(false);
   const [file, setFile] = React.useState<File | null>(null);
+  const router = useRouter();
+  const pathname = usePathname();
 
   React.useEffect(() => {
     setDisplayName(profile?.display_name ?? "");
     setUsername(profile?.username ?? "");
     setAvatarUrl(profile?.avatar_url ?? "");
-    setLocale(profile?.locale ?? "");
+    setLocale(profile?.locale ?? "en");
   }, [profile]);
 
   if (userLoading || loading) {
-    return <div className="text-sm text-neutral-500">Loading…</div>;
+    return <div className="text-sm text-neutral-500">{tCommon('loading')}</div>;
   }
 
   if (!user) {
@@ -45,7 +51,7 @@ export function ProfileForm() {
           .from("avatars")
           .upload(path, file, { upsert: true });
         if (upErr) {
-          setMsg(`Upload error: ${upErr.message}`);
+          setMsg(`${tCommon('error')}: ${upErr.message}`);
         } else {
           const { data } = supabase.storage.from("avatars").getPublicUrl(path);
           if (data?.publicUrl) {
@@ -61,13 +67,21 @@ export function ProfileForm() {
         avatar_url: nextAvatarUrl || null,
         locale: locale || null,
       });
-      setMsg("Saved.");
+      
+      // Set cookie for next-intl
+      document.cookie = `NEXT_LOCALE=${locale}; path=/; max-age=31536000; SameSite=Lax`;
+      
+      setMsg(tCommon('success'));
+      
+      // Refresh the page with new locale if it changed
+      router.replace(pathname, { locale: locale as any });
+      
     } catch (e) {
       const err = e as Error | { message?: string } | unknown;
       setMsg(
         (err as Error)?.message ??
           (err as { message?: string })?.message ??
-          "Save failed"
+          tCommon('error')
       );
     } finally {
       setPending(false);
@@ -111,13 +125,19 @@ export function ProfileForm() {
       </div>
 
       <div>
-        <label className="block text-sm text-neutral-700">Locale</label>
-        <input
-          className="mt-1 w-full rounded-md border px-3 py-2"
+        <label className="block text-sm text-neutral-700">{t('language')}</label>
+        <p className="text-xs text-neutral-500 mb-2">{t('languageDescription')}</p>
+        <select
+          className="mt-1 w-full rounded-md border px-3 py-2 bg-white"
           value={locale}
           onChange={(e) => setLocale(e.target.value)}
-          placeholder="e.g., en-US"
-        />
+        >
+          <option value="en">English</option>
+          <option value="es">Español (Spanish)</option>
+          <option value="hi">हिन्दी (Hindi)</option>
+          <option value="ar">العربية (Arabic)</option>
+          <option value="zh">中文 (Mandarin)</option>
+        </select>
       </div>
 
       <div className="grid gap-2">
@@ -155,7 +175,7 @@ export function ProfileForm() {
           disabled={pending}
           className="rounded-md bg-neutral-900 px-3 py-2 text-white disabled:opacity-60"
         >
-          {pending ? "Saving…" : "Save profile"}
+          {pending ? tCommon('loading') : t('saveProfile')}
         </button>
       </div>
     </form>

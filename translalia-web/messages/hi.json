@@ -1,0 +1,25 @@
+{
+  "Common": {
+    "loading": "लोड हो रहा है...",
+    "save": "सहेजें",
+    "cancel": "रद्द करें",
+    "error": "त्रुटि",
+    "success": "सफल"
+  },
+  "Navigation": {
+    "home": "होम",
+    "workspaces": "कार्यस्थान",
+    "settings": "सेटिंग्स",
+    "signOut": "साइन आउट"
+  },
+  "Settings": {
+    "title": "सेटिंग्स",
+    "profile": "प्रोफ़ाइल",
+    "language": "भाषा",
+    "languageDescription": "इंटरफ़ेस के लिए अपनी पसंदीदा भाषा चुनें।",
+    "saveProfile": "प्रोफ़ाइल सहेजें"
+  },
+  "GuideRail": {
+    "title": "गाइड"
+  }
+}

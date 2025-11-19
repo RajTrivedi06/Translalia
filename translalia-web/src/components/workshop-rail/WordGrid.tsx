@@ -207,10 +207,12 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
   const selectedLineIndex = useWorkshopStore((s) => s.selectedLineIndex);
   const poemLines = useWorkshopStore((s) => s.poemLines);
   const wordOptions = useWorkshopStore((s) => s.wordOptions);
+  const wordOptionsCache = useWorkshopStore((s) => s.wordOptionsCache);
   const selections = useWorkshopStore((s) => s.selections);
   const selectWord = useWorkshopStore((s) => s.selectWord);
   const deselectWord = useWorkshopStore((s) => s.deselectWord);
   const setWordOptions = useWorkshopStore((s) => s.setWordOptions);
+  const setWordOptionsForLine = useWorkshopStore((s) => s.setWordOptionsForLine);
   const setIsGenerating = useWorkshopStore((s) => s.setIsGenerating);
   const modelUsed = useWorkshopStore((s) => s.modelUsed);
 
@@ -253,6 +255,17 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
     selectedLineIndex !== null &&
     lineTranslations[selectedLineIndex] !== undefined;
 
+  // Check if word options are cached for this specific line
+  const cachedWordOptions =
+    selectedLineIndex !== null ? wordOptionsCache[selectedLineIndex] : null;
+
+  // If we have cached options for this line, restore them to the global state
+  React.useEffect(() => {
+    if (cachedWordOptions && cachedWordOptions.length > 0) {
+      setWordOptions(cachedWordOptions);
+    }
+  }, [cachedWordOptions, selectedLineIndex, setWordOptions]);
+
   React.useEffect(() => {
     if (
       selectedLineIndex === null ||
@@ -266,6 +279,13 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
 
     // If line translation already exists, don't fetch again
     if (hasLineTranslation) {
+      return;
+    }
+
+    // Also check if word options are cached for this specific line
+    if (cachedWordOptions && cachedWordOptions.length > 0) {
+      // Restore from cache
+      setWordOptions(cachedWordOptions);
       return;
     }
 
@@ -303,7 +323,8 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
               },
               {
                 onSuccess: (data) => {
-                  setWordOptions(data.words);
+                  // Cache options per line
+                  setWordOptionsForLine(selectedLineIndex, data.words);
                   useWorkshopStore.setState({
                     modelUsed: data.modelUsed || null,
                   });
@@ -329,7 +350,8 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
         },
         {
           onSuccess: (data) => {
-            setWordOptions(data.words);
+            // Cache options per line
+            setWordOptionsForLine(selectedLineIndex, data.words);
             useWorkshopStore.setState({ modelUsed: data.modelUsed || null });
             setIsGenerating(false);
           },
@@ -346,10 +368,12 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
     poemLines,
     lineContext,
     hasLineTranslation,
+    cachedWordOptions,
     translateLine,
     generateOptions,
     setLineTranslation,
     setWordOptions,
+    setWordOptionsForLine,
     setIsGenerating,
   ]);
 
@@ -406,7 +430,7 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
   }
 
   // Show line translation UI if available, otherwise show old word-by-word UI
-  if (currentLineTranslation && !isPending) {
+  if (currentLineTranslation) {
     return (
       <div className="space-y-6 p-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
@@ -456,13 +480,16 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
   }
 
   // Fall back to old word-by-word UI
-  if (!wordOptions || isPending) {
+  // Only show loading if we don't have word options AND we're actually pending
+  // (isPending from a previous line should not block display of current line's options)
+  if (!wordOptions) {
+    // Show loading state while fetching
     return (
       <div className="p-6 flex items-center justify-center h-full">
         <div className="text-center space-y-4">
           <Loader2 className="w-8 h-8 animate-spin text-blue-500 mx-auto" />
           <p className="text-sm text-muted-foreground">
-            Generating translation options...
+            {isPending ? "Generating translation options..." : "No options available"}
           </p>
         </div>
       </div>

@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import { Link } from "@/i18n/routing";
 import { BarChart3 } from "lucide-react";
 
 export default function MainNav() {
@@ -12,7 +12,7 @@ export default function MainNav() {
         Workspace
       </Link>
       {/* Internal verification dashboard - only in development */}
-      {process.env.NODE_ENV === "development" && (
+      {/* {process.env.NODE_ENV === "development" && (
         <Link
           href="/verification-dashboard"
           className="underline flex items-center gap-1"
@@ -20,7 +20,7 @@ export default function MainNav() {
           <BarChart3 className="w-4 h-4" />
           Verification Analytics
         </Link>
-      )}
+      )} */}
     </nav>
   );
 }

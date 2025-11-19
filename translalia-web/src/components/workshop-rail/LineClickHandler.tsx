@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlertCircle, Loader2, RotateCcw } from "lucide-react";
+import { Loader2, RotateCcw } from "lucide-react";
 import type { TranslationStanzaStatus } from "@/types/translationJob";
 import { Button } from "@/components/ui/button";
 
@@ -194,16 +194,9 @@ export function LineClickHandler({
         </div>
       </div>
 
-      {/* Loading overlay for processing lines */}
-      {isProcessing && (
-        <div className="absolute inset-0 rounded-lg bg-blue-50/50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-          <div className="flex flex-col items-center gap-2 text-blue-600">
-            <Loader2 className="h-5 w-5 animate-spin" />
-            <span className="text-xs font-medium">
-              Processing translation...
-            </span>
-          </div>
-        </div>
+      {/* Subtle processing sheen without blocking message */}
+      {isProcessing && !isComplete && (
+        <div className="pointer-events-none absolute inset-0 rounded-lg border border-blue-200 bg-blue-50/40" />
       )}
     </div>
   );

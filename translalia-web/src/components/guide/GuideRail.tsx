@@ -9,7 +9,7 @@ import {
   useState,
 } from "react";
 import { FileText, UploadCloud, X, Info, ChevronLeft } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/i18n/routing";
 
 import { useGuideStore } from "@/store/guideSlice";
 import { useWorkshopStore } from "@/store/workshopSlice";

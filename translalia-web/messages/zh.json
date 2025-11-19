@@ -1,0 +1,25 @@
+{
+  "Common": {
+    "loading": "加载中...",
+    "save": "保存",
+    "cancel": "取消",
+    "error": "错误",
+    "success": "成功"
+  },
+  "Navigation": {
+    "home": "首页",
+    "workspaces": "工作区",
+    "settings": "设置",
+    "signOut": "退出登录"
+  },
+  "Settings": {
+    "title": "设置",
+    "profile": "个人资料",
+    "language": "语言",
+    "languageDescription": "选择界面的首选语言。",
+    "saveProfile": "保存个人资料"
+  },
+  "GuideRail": {
+    "title": "指南"
+  }
+}

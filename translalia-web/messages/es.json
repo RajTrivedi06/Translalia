@@ -1,0 +1,25 @@
+{
+  "Common": {
+    "loading": "Cargando...",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "error": "Error",
+    "success": "Éxito"
+  },
+  "Navigation": {
+    "home": "Inicio",
+    "workspaces": "Espacios de trabajo",
+    "settings": "Configuración",
+    "signOut": "Cerrar sesión"
+  },
+  "Settings": {
+    "title": "Configuración",
+    "profile": "Perfil",
+    "language": "Idioma",
+    "languageDescription": "Selecciona tu idioma preferido para la interfaz.",
+    "saveProfile": "Guardar Perfil"
+  },
+  "GuideRail": {
+    "title": "Guía"
+  }
+}

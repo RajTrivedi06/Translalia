@@ -1,0 +1,25 @@
+{
+  "Common": {
+    "loading": "جارٍ التحميل...",
+    "save": "حفظ",
+    "cancel": "إلغاء",
+    "error": "خطأ",
+    "success": "نجاح"
+  },
+  "Navigation": {
+    "home": "الرئيسية",
+    "workspaces": "مساحات العمل",
+    "settings": "الإعدادات",
+    "signOut": "تسجيل الخروج"
+  },
+  "Settings": {
+    "title": "الإعدادات",
+    "profile": "الملف الشخصي",
+    "language": "اللغة",
+    "languageDescription": "اختر لغتك المفضلة للواجهة.",
+    "saveProfile": "حفظ الملف الشخصي"
+  },
+  "GuideRail": {
+    "title": "الدليل"
+  }
+}

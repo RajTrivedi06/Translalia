@@ -139,7 +139,7 @@ export default function ThreadPageClient({
                     <GuideRail
                       showHeading={false}
                       onCollapseToggle={() =>
-                        setIsGettingStartedCollapsed(false)
+                        setIsGettingStartedCollapsed((prevState) => !prevState)
                       }
                       onAutoCollapse={() => setIsGettingStartedCollapsed(true)}
                       isCollapsed={isGettingStartedCollapsed}

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "@/i18n/routing";
 import * as React from "react";
 
 /** Centralized app routes so you don’t hardcode strings everywhere. */

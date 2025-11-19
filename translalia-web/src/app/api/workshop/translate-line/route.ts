@@ -158,7 +158,7 @@ export async function POST(req: Request) {
       audit: {
         createdBy: user.id,
         projectId: thread.project_id ?? null,
-        stage: "workshop-translate-line",
+        stage: "workshop-options",
       },
     });
 

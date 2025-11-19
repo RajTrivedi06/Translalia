@@ -40,7 +40,8 @@ export function LineProgressIndicator({
 
   const totalLines = poemLines.length;
   const completedCount = Object.keys(completedLines).length;
-  const progressPercentage = totalLines > 0 ? Math.round((completedCount / totalLines) * 100) : 0;
+  const progressPercentage =
+    totalLines > 0 ? Math.round((completedCount / totalLines) * 100) : 0;
 
   if (totalLines === 0) {
     return (
@@ -53,22 +54,22 @@ export function LineProgressIndicator({
   return (
     <div className="space-y-3">
       {/* Progress Summary */}
-      <div className="flex items-center justify-between text-xs">
+      {/* <div className="flex items-center justify-between text-xs">
         <span className="font-medium text-gray-700">
           Translation Progress
         </span>
         <span className="text-gray-600">
           {completedCount} / {totalLines} lines ({progressPercentage}%)
         </span>
-      </div>
+      </div> */}
 
       {/* Progress Bar */}
-      <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+      {/* <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
         <div
           className="h-full bg-gradient-to-r from-blue-500 to-green-500 transition-all duration-500"
           style={{ width: `${progressPercentage}%` }}
         />
-      </div>
+      </div> */}
 
       {/* Line Dots */}
       {orientation === "horizontal" ? (

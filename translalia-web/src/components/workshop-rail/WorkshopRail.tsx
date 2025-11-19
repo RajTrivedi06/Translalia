@@ -7,7 +7,6 @@ import { useThreadId } from "@/hooks/useThreadId";
 import { useTranslationJob } from "@/lib/hooks/useTranslationJob";
 import { WorkshopHeader } from "@/components/workshop-rail/WorkshopHeader";
 import { WordGrid } from "@/components/workshop-rail/WordGrid";
-import { CompilationFooter } from "@/components/workshop-rail/CompilationFooter";
 import { StanzaProgressPanel } from "@/components/workshop-rail/StanzaProgressPanel";
 import { ProcessingProgress } from "@/components/workshop/ProcessingProgress";
 import { LineClickHandler } from "@/components/workshop-rail/LineClickHandler";
@@ -456,8 +455,6 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
           />
         )}
       </div>
-
-      {selectedLineIndex !== null ? <CompilationFooter /> : null}
     </div>
   );
 }

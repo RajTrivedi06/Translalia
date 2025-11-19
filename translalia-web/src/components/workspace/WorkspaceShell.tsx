@@ -8,7 +8,7 @@ import {
   type DragStartEvent,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import Link from "next/link";
+import { Link } from "@/i18n/routing";
 import { ChatPanel } from "./chat/ChatPanel";
 import { GuideRail } from "@/components/guide";
 import { WorkshopRail } from "@/components/workshop-rail/WorkshopRail";

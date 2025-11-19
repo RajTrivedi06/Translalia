@@ -31,8 +31,12 @@ export interface WorkshopState {
   // Active line
   selectedLineIndex: number | null;
 
-  // Generated options for current line (old per-word workflow)
+  // Generated options for current line (old per-word workflow) - DEPRECATED, use wordOptionsCache
   wordOptions: WordOption[] | null;
+
+  // Per-line cache of word options (lineIndex -> WordOption[])
+  // This prevents re-fetching when switching between lines
+  wordOptionsCache: Record<number, WordOption[]>;
 
   // User selections for current line (position -> selected word) (old workflow)
   selections: Record<number, string>;
@@ -60,6 +64,7 @@ export interface WorkshopState {
   selectLine: (index: number) => void;
   deselectLine: () => void;
   setWordOptions: (options: WordOption[] | null) => void;
+  setWordOptionsForLine: (lineIndex: number, options: WordOption[]) => void;
   selectWord: (position: number, word: string) => void;
   deselectWord: (position: number) => void;
   clearSelections: () => void;
@@ -81,6 +86,7 @@ export interface WorkshopState {
 const initialState = {
   selectedLineIndex: null,
   wordOptions: null,
+  wordOptionsCache: {},
   selections: {},
   isGenerating: false,
   isApplying: false,
@@ -101,7 +107,9 @@ export const useWorkshopStore = create<WorkshopState>()(
       selectLine: (index: number) =>
         set({
           selectedLineIndex: index,
-          wordOptions: null,
+          // DON'T reset wordOptions here - they persist per line in state
+          // This was causing the "Generating..." buffer when switching to ready lines
+          // The wordOptions will be managed by WordGrid based on the current line's state
           selections: {},
           // Don't clear line translations - they persist
         }),
@@ -119,6 +127,17 @@ export const useWorkshopStore = create<WorkshopState>()(
           wordOptions: options,
           isGenerating: false,
         }),
+
+      setWordOptionsForLine: (lineIndex: number, options: WordOption[]) =>
+        set((state) => ({
+          wordOptionsCache: {
+            ...state.wordOptionsCache,
+            [lineIndex]: options,
+          },
+          // Also set the global wordOptions for backward compatibility
+          wordOptions: options,
+          isGenerating: false,
+        })),
 
       selectWord: (position: number, word: string) =>
         set((state) => ({
