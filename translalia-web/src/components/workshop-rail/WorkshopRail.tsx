@@ -15,6 +15,7 @@ import type {
   TranslationStanzaStatus,
   TranslationJobProgressSummary,
 } from "@/types/translationJob";
+import type { LineTranslationVariant } from "@/types/lineTranslation";
 
 interface WorkshopRailProps {
   showHeaderTitle?: boolean;
@@ -71,7 +72,7 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
     if (
       !translationJobQuery.data?.job ||
       !threadId ||
-      completedLines.length > 0
+      Object.keys(completedLines).length > 0
     ) {
       return;
     }
@@ -96,7 +97,11 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
                 setLineTranslation(line.line_number, {
                   lineOriginal:
                     line.original_text || poemLines[line.line_number] || "",
-                  translations: line.translations as any,
+                  translations: line.translations as [
+                    LineTranslationVariant,
+                    LineTranslationVariant,
+                    LineTranslationVariant
+                  ],
                   modelUsed: line.model_used || "unknown",
                 });
               }
@@ -115,6 +120,7 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
       );
       setCompletedLines(savedLines);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [translationJobQuery.data?.job, threadId]); // Only depend on job data and threadId, not on completedLines
 
   // Reset stanza selection when poem changes
@@ -290,7 +296,11 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
                 setLineTranslation(line.line_number, {
                   lineOriginal:
                     line.original_text || poemLines[line.line_number] || "",
-                  translations: line.translations as any, // Type assertion for compatibility
+                  translations: line.translations as [
+                    LineTranslationVariant,
+                    LineTranslationVariant,
+                    LineTranslationVariant
+                  ],
                   modelUsed: line.model_used || "unknown",
                 });
               }
