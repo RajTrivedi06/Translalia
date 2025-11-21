@@ -108,6 +108,10 @@ export default function NotebookPhase6({
     React.useState(false);
   const [showCelebration, setShowCelebration] = React.useState(false);
   const [hasShownCelebration, setHasShownCelebration] = React.useState(false);
+  // Track which lines were manually finalized by the user (not auto-populated from translation job)
+  const [manuallyFinalizedLines, setManuallyFinalizedLines] = React.useState<
+    Set<number>
+  >(new Set());
   const [isDragActive, setIsDragActive] = React.useState(false);
   const [composerValue, setComposerValue] = React.useState("");
   const [isComposerManuallyEdited, setIsComposerManuallyEdited] =
@@ -139,6 +143,13 @@ export default function NotebookPhase6({
     setIsComposerManuallyEdited(false); // Reset manual edit flag when line changes
   }, [currentLineIndex]);
 
+  // Reset celebration state when poem changes (new poem loaded)
+  React.useEffect(() => {
+    setShowCelebration(false);
+    setHasShownCelebration(false);
+    setManuallyFinalizedLines(new Set());
+  }, [poemLines.length]);
+
   React.useEffect(() => {
     if (
       editingCellId &&
@@ -158,20 +169,23 @@ export default function NotebookPhase6({
     }
   }, [workshopSelectedLine, currentLineIndex, navigateToLine]);
 
-  // Check for completion and trigger celebration
+  // Check for completion and trigger celebration - ONLY when user manually finalizes all lines
   React.useEffect(() => {
-    const isComplete =
-      poemLines.length > 0 &&
-      Object.keys(completedLines).length === poemLines.length;
+    // Only celebrate if ALL lines were manually finalized by the user
+    // Not when they're auto-populated from background translation processing
+    const totalLines = poemLines.length;
+    const manuallyFinalizedCount = manuallyFinalizedLines.size;
+    const isManuallyComplete =
+      totalLines > 0 && manuallyFinalizedCount === totalLines;
 
-    if (isComplete && !hasShownCelebration) {
+    if (isManuallyComplete && !hasShownCelebration) {
       // Show celebration after a brief delay
       setTimeout(() => {
         setShowCelebration(true);
         setHasShownCelebration(true);
       }, 500);
     }
-  }, [completedLines, poemLines.length, hasShownCelebration]);
+  }, [manuallyFinalizedLines, poemLines.length, hasShownCelebration]);
 
   // Get current translation from cells
   const getCurrentTranslation = React.useCallback(() => {
@@ -301,6 +315,13 @@ export default function NotebookPhase6({
 
     // Save to workshop completed lines
     setCompletedLine(currentLineIndex, translation);
+
+    // Track that this line was manually finalized by the user
+    setManuallyFinalizedLines((prev) => {
+      const updated = new Set(prev);
+      updated.add(currentLineIndex);
+      return updated;
+    });
 
     // Clear notebook state for this line
     finalizeCurrentLine();
