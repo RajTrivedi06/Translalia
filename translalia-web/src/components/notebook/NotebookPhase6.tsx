@@ -110,6 +110,8 @@ export default function NotebookPhase6({
   const [hasShownCelebration, setHasShownCelebration] = React.useState(false);
   const [isDragActive, setIsDragActive] = React.useState(false);
   const [composerValue, setComposerValue] = React.useState("");
+  const [isComposerManuallyEdited, setIsComposerManuallyEdited] =
+    React.useState(false);
   const [editingCellId, setEditingCellId] = React.useState<string | null>(null);
   const [actionMenuOpen, setActionMenuOpen] = React.useState(false);
 
@@ -134,6 +136,7 @@ export default function NotebookPhase6({
   // Reset editing state when line changes
   React.useEffect(() => {
     setEditingCellId(null);
+    setIsComposerManuallyEdited(false); // Reset manual edit flag when line changes
   }, [currentLineIndex]);
 
   React.useEffect(() => {
@@ -217,10 +220,17 @@ export default function NotebookPhase6({
   React.useEffect(() => {
     if (currentLineIndex === null) {
       setComposerValue("");
+      setIsComposerManuallyEdited(false);
       return;
     }
 
-    // Always recompile from droppedCells when cells change
+    // Only auto-update from cells if user hasn't manually edited the compiled line
+    // This allows users to freely edit the compiled text without it being overwritten
+    if (isComposerManuallyEdited) {
+      return; // Don't overwrite manual edits
+    }
+
+    // Auto-recompile from droppedCells when cells change
     // This ensures the compiled section updates immediately when words are dropped
     const joined = droppedCells
       .map((cell) => {
@@ -247,11 +257,13 @@ export default function NotebookPhase6({
     droppedCells,
     draftForCurrentLine,
     saveDraftTranslation,
+    isComposerManuallyEdited,
   ]);
 
   const handleComposerChange = React.useCallback(
     (value: string) => {
       setComposerValue(value);
+      setIsComposerManuallyEdited(true); // Mark as manually edited
       if (currentLineIndex !== null) {
         saveDraftTranslation(currentLineIndex, value);
       }
@@ -259,7 +271,7 @@ export default function NotebookPhase6({
     [currentLineIndex, saveDraftTranslation]
   );
 
-  // Recompile text when cells change (for manual editing)
+  // Recompile text from cells (when user clicks Recompile button)
   const recompileFromCells = React.useCallback(() => {
     if (currentLineIndex === null) return;
 
@@ -272,6 +284,7 @@ export default function NotebookPhase6({
 
     if (joined.trim()) {
       setComposerValue(joined);
+      setIsComposerManuallyEdited(false); // Reset manual edit flag since we're recompiling
       saveDraftTranslation(currentLineIndex, joined);
     }
   }, [droppedCells, currentLineIndex, saveDraftTranslation]);
@@ -713,15 +726,15 @@ export default function NotebookPhase6({
                           Recompile
                         </Button>
                         <span className="text-[11px] text-gray-400">
-                          Editable summary used for AI assist & saving
+                          Click to edit • Used for AI assist & saving
                         </span>
                       </div>
                     </div>
                     <Textarea
                       value={composerValue}
                       onChange={(e) => handleComposerChange(e.target.value)}
-                      placeholder="Assemble your translation here…"
-                      className="min-h-[70px] text-sm bg-white"
+                      placeholder="Assemble your translation here… (You can edit this directly)"
+                      className="min-h-[70px] text-sm bg-white focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 </div>
