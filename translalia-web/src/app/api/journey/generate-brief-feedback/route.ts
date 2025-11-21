@@ -3,10 +3,11 @@ import { cookies } from "next/headers";
 import { z } from "zod";
 import OpenAI from "openai";
 import { createServerClient } from "@supabase/ssr";
+import { buildJourneyFeedbackPrompt } from "@/lib/ai/workshopPrompts";
 import {
-  buildJourneyFeedbackPrompt,
-  buildJourneyFeedbackSystemPrompt,
-} from "@/lib/ai/workshopPrompts";
+  getSystemPrompt,
+  getLanguageInstruction,
+} from "@/lib/ai/localePrompts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -114,15 +115,30 @@ export async function POST(req: NextRequest) {
       return err(403, "FORBIDDEN", "You do not have access to this thread.");
     }
 
-    // 5) Build prompt for AI
-    const systemPrompt = buildJourneyFeedbackSystemPrompt();
-    const userPrompt = buildJourneyFeedbackPrompt({
+    // 4a) Fetch user's locale preference
+    const { data: profile, error: profileErr } = await supabase
+      .from("profiles")
+      .select("locale")
+      .eq("id", user.id)
+      .single();
+
+    if (profileErr) {
+      log("profile_fetch_error", profileErr?.message);
+      log("proceeding with default locale");
+    }
+    const userLocale = profile?.locale || "en";
+    log("user_locale", { locale: userLocale, hasProfile: !!profile });
+
+    // 5) Build prompt for AI with locale-aware system prompt
+    const systemPrompt = getSystemPrompt("journeyFeedback", userLocale);
+    const baseUserPrompt = buildJourneyFeedbackPrompt({
       studentReflection: body.studentReflection,
       completedLines: body.completedLines,
       poemLines: body.poemLines,
       completedCount: body.completedCount,
       totalCount: body.totalCount,
     });
+    const userPrompt = `${baseUserPrompt}\n\n${getLanguageInstruction(userLocale)}`;
 
     // 6) Call OpenAI gpt-5 (with fallback to gpt-4o-mini)
     const key = process.env.OPENAI_API_KEY;

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "@/i18n/routing";
+import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
 import { routes } from "@/lib/routers";
@@ -10,6 +11,8 @@ import { useSupabaseUser } from "@/hooks/useSupabaseUser";
 type Project = { id: string; title: string | null; created_at: string };
 
 export default function WorkspacesPage() {
+  const t = useTranslations("Workspaces");
+  const tCommon = useTranslations("Common");
   const router = useRouter();
   const { user, loading: authLoading } = useSupabaseUser();
   const [title, setTitle] = React.useState("");
@@ -17,7 +20,6 @@ export default function WorkspacesPage() {
   const { data, refetch, isFetching } = useQuery({
     queryKey: ["projects"],
     queryFn: async () => {
-      // Try with created_at ordering; if the column doesn't exist yet, fall back to no order
       const base = supabase.from("projects").select("id, title, created_at");
       const ordered = await base.order("created_at", { ascending: false });
       if (!ordered.error) return (ordered.data ?? []) as Project[];
@@ -60,6 +62,8 @@ export default function WorkspacesPage() {
     }
   }
 
+  const userEmail = user?.email?.split("@")[0] ?? "";
+
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-10 text-slate-900">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-10">
@@ -67,16 +71,13 @@ export default function WorkspacesPage() {
           <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
             <div className="space-y-3">
               <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
-                Your studio hub
+                {t("title")}
               </p>
               <h1 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-                {user?.email
-                  ? `Welcome back, ${user.email.split("@")[0]}!`
-                  : "Your workspaces"}
+                {user?.email ? `Welcome back, ${userEmail}!` : t("heading")}
               </h1>
               <p className="text-base text-slate-600">
-                Organize poems, invite classmates, and keep every translation in
-                one calm place.
+                {t("description")}
               </p>
             </div>
             <form
@@ -86,7 +87,7 @@ export default function WorkspacesPage() {
               <div className="flex flex-1 flex-col gap-2 sm:flex-row">
                 <input
                   className="w-full min-w-[220px] rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100 sm:min-w-[320px]"
-                  placeholder="Workspace title"
+                  placeholder={t("workspaceTitle")}
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                 />
@@ -94,7 +95,7 @@ export default function WorkspacesPage() {
                   className="rounded-xl bg-sky-600 px-4 py-2.5 text-base font-semibold text-white transition hover:bg-sky-500 disabled:opacity-60"
                   disabled={loading}
                 >
-                  {loading ? "Creating…" : "Create workspace"}
+                  {loading ? t("creating") : t("createWorkspace")}
                 </button>
               </div>
             </form>
@@ -105,24 +106,23 @@ export default function WorkspacesPage() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
-                Library
+                {t("library")}
               </p>
               <h2 className="text-2xl font-semibold text-slate-900">
-                {isFetching ? "Loading…" : "Your workspaces"}
+                {isFetching ? tCommon("loading") : t("heading")}
               </h2>
             </div>
             <span className="text-sm text-slate-500">
               {data?.length
-                ? `${data.length} active`
-                : "Create your first workspace"}
+                ? `${data.length} ${t("active")}`
+                : t("noWorkspaces")}
             </span>
           </div>
 
           <ul className="mt-8 grid gap-4">
             {(data ?? []).length === 0 ? (
               <li className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 px-5 py-10 text-center text-sm text-slate-500">
-                No workspaces yet. Use the form above to start a new project for
-                your next poem.
+                {t("emptyMessage")}
               </li>
             ) : (
               data!.map((p) => (
@@ -132,11 +132,11 @@ export default function WorkspacesPage() {
                 >
                   <div>
                     <p className="text-lg font-semibold text-slate-900">
-                      {p.title?.trim() || "Untitled workspace"}
+                      {p.title?.trim() || t("untitled")}
                     </p>
                     <p className="text-sm text-slate-500">
                       {p.created_at
-                        ? `Started ${new Date(p.created_at).toLocaleString()}`
+                        ? `${t("started")} ${new Date(p.created_at).toLocaleString()}`
                         : "Created recently"}
                     </p>
                   </div>
@@ -145,17 +145,12 @@ export default function WorkspacesPage() {
                       className="inline-flex items-center justify-center rounded-full border border-slate-300 px-5 py-2 text-sm font-semibold text-slate-900 transition hover:border-sky-200 hover:bg-sky-50"
                       onClick={() => router.push(routes.workspaceChats(p.id))}
                     >
-                      Open workspace
+                      {t("openWorkspace")}
                     </button>
                     <button
                       className="inline-flex items-center justify-center rounded-full border border-red-200 px-5 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50"
                       onClick={async () => {
-                        if (
-                          !confirm(
-                            "Delete this workspace? This cannot be undone."
-                          )
-                        )
-                          return;
+                        if (!confirm(t("deleteConfirm"))) return;
                         const { data: sessionData } =
                           await supabase.auth.getSession();
                         const accessToken = sessionData.session?.access_token;
@@ -171,13 +166,13 @@ export default function WorkspacesPage() {
                         });
                         if (!res.ok) {
                           const json = await res.json().catch(() => ({}));
-                          alert(json?.error || "Failed to delete workspace");
+                          alert(json?.error || t("deleteError"));
                           return;
                         }
                         await refetch();
                       }}
                     >
-                      Delete
+                      {t("delete")}
                     </button>
                   </div>
                 </li>

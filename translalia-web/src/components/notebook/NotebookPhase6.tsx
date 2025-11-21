@@ -71,7 +71,6 @@ export default function NotebookPhase6({
   const isDirty = useNotebookStore((s) => s.isDirty);
   const showPoemAssembly = useNotebookStore((s) => s.showPoemAssembly);
   const mode = useNotebookStore((s) => s.mode);
-  const cellEditMode = useNotebookStore((s) => s.cellEditMode);
   const modifiedCells = useNotebookStore((s) => s.modifiedCells);
 
   // Notebook actions
@@ -82,7 +81,6 @@ export default function NotebookPhase6({
   const startSession = useNotebookStore((s) => s.startSession);
   const updateCellText = useNotebookStore((s) => s.updateCellText);
   const removeCell = useNotebookStore((s) => s.removeCell);
-  const setCellEditMode = useNotebookStore((s) => s.setCellEditMode);
   const markCellModified = useNotebookStore((s) => s.markCellModified);
   const undo = useNotebookStore((s) => s.undo);
   const redo = useNotebookStore((s) => s.redo);
@@ -112,6 +110,7 @@ export default function NotebookPhase6({
   const [hasShownCelebration, setHasShownCelebration] = React.useState(false);
   const [isDragActive, setIsDragActive] = React.useState(false);
   const [composerValue, setComposerValue] = React.useState("");
+  const [editingCellId, setEditingCellId] = React.useState<string | null>(null);
   const [actionMenuOpen, setActionMenuOpen] = React.useState(false);
 
   // AI Assistant state
@@ -131,6 +130,20 @@ export default function NotebookPhase6({
   React.useEffect(() => {
     startSession();
   }, [startSession]);
+
+  // Reset editing state when line changes
+  React.useEffect(() => {
+    setEditingCellId(null);
+  }, [currentLineIndex]);
+
+  React.useEffect(() => {
+    if (
+      editingCellId &&
+      !droppedCells.some((cell) => cell.id === editingCellId)
+    ) {
+      setEditingCellId(null);
+    }
+  }, [editingCellId, droppedCells]);
 
   // Keep notebook line in sync with workshop selection
   React.useEffect(() => {
@@ -644,7 +657,7 @@ export default function NotebookPhase6({
                       ? droppedCells.map((cell) => ({
                           id: cell.id,
                           words: [],
-                          isEditing: cellEditMode,
+                          isEditing: editingCellId === cell.id,
                           isLocked:
                             (cell.translation.lockedWords?.length ?? 0) > 0,
                           isModified: modifiedCells.has(cell.id),
@@ -668,13 +681,13 @@ export default function NotebookPhase6({
                       View Progress
                     </Button>
                   }
-                  onEditCell={() => setCellEditMode(true)}
+                  onEditCell={(cellId) => setEditingCellId(cellId)}
                   onSaveCell={(id, text) => {
                     updateCellText(id, text);
                     markCellModified(id);
-                    setCellEditMode(false);
+                    setEditingCellId(null);
                   }}
-                  onCancelEdit={() => setCellEditMode(false)}
+                  onCancelEdit={() => setEditingCellId(null)}
                   onRemoveCell={removeCell}
                   onToggleLock={() => console.log("Toggle lock")}
                 />

@@ -33,8 +33,10 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
     selectLine,
     deselectLine,
   } = useWorkshopStore();
-  // ⚠️ TEMPORARILY DISABLED - No background translation hydration
-  // const setLineTranslation = useWorkshopStore((s) => s.setLineTranslation);
+  // Re-enabled: Background translation hydration
+  const setLineTranslation = useWorkshopStore((s) => s.setLineTranslation);
+  const completedLines = useWorkshopStore((s) => s.completedLines);
+  const setCompletedLines = useWorkshopStore((s) => s.setCompletedLines);
 
   // Get stanzas directly from guide store (client-side, no API)
   const poemStanzas = poem.stanzas;
@@ -62,6 +64,58 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
       reset();
     }
   }, [guideStep, poemLines.length, reset]);
+
+  // ✅ Load saved translations on initial mount
+  React.useEffect(() => {
+    // Only run once on mount when translation data is available
+    if (
+      !translationJobQuery.data?.job ||
+      !threadId ||
+      completedLines.length > 0
+    ) {
+      return;
+    }
+
+    const job = translationJobQuery.data.job;
+    const chunkOrStanzaStates = job.chunks || job.stanzas || {};
+    const savedLines: Record<number, string> = {};
+
+    console.log("[WorkshopRail] Checking for saved translations on mount...");
+
+    // Iterate through all chunks/stanzas to collect already-translated lines
+    Object.values(chunkOrStanzaStates).forEach((chunk) => {
+      if (chunk.lines && Array.isArray(chunk.lines)) {
+        chunk.lines.forEach((line) => {
+          if (line.translations && line.translations.length > 0) {
+            const defaultTranslation = line.translations[0]?.fullText;
+            if (defaultTranslation && line.line_number !== undefined) {
+              savedLines[line.line_number] = defaultTranslation;
+
+              // Also restore the full LineTranslationResponse
+              if (line.translations.length === 3) {
+                setLineTranslation(line.line_number, {
+                  lineOriginal:
+                    line.original_text || poemLines[line.line_number] || "",
+                  translations: line.translations as any,
+                  modelUsed: line.model_used || "unknown",
+                });
+              }
+            }
+          }
+        });
+      }
+    });
+
+    // Load all saved translations at once
+    if (Object.keys(savedLines).length > 0) {
+      console.log(
+        `[WorkshopRail] Loading ${
+          Object.keys(savedLines).length
+        } saved translations from previous session`
+      );
+      setCompletedLines(savedLines);
+    }
+  }, [translationJobQuery.data?.job, threadId]); // Only depend on job data and threadId, not on completedLines
 
   // Reset stanza selection when poem changes
   React.useEffect(() => {
@@ -205,6 +259,67 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
 
     return statuses;
   }, [translationProgress, poemStanzas]);
+
+  // ✅ Hydrate background translations into workshop store
+  React.useEffect(() => {
+    if (!translationJobQuery.data?.job || !threadId) {
+      return;
+    }
+
+    const job = translationJobQuery.data.job;
+    const chunkOrStanzaStates = job.chunks || job.stanzas || {};
+    const hydratedLines: Record<number, string> = {};
+    let hasNewTranslations = false;
+
+    // Iterate through all chunks/stanzas to collect translated lines
+    Object.values(chunkOrStanzaStates).forEach((chunk) => {
+      if (chunk.lines && Array.isArray(chunk.lines)) {
+        chunk.lines.forEach((line) => {
+          if (line.translations && line.translations.length > 0) {
+            // Use the first translation variant as the default
+            const defaultTranslation = line.translations[0]?.fullText;
+            if (defaultTranslation && line.line_number !== undefined) {
+              // Check if this is a new translation we don't have yet
+              if (!completedLines[line.line_number]) {
+                hasNewTranslations = true;
+              }
+              hydratedLines[line.line_number] = defaultTranslation;
+
+              // Also hydrate the full LineTranslationResponse for the new workflow
+              if (line.translations.length === 3) {
+                setLineTranslation(line.line_number, {
+                  lineOriginal:
+                    line.original_text || poemLines[line.line_number] || "",
+                  translations: line.translations as any, // Type assertion for compatibility
+                  modelUsed: line.model_used || "unknown",
+                });
+              }
+            }
+          }
+        });
+      }
+    });
+
+    // Update completed lines if we have new translations
+    if (hasNewTranslations && Object.keys(hydratedLines).length > 0) {
+      console.log(
+        `[WorkshopRail] Hydrating ${
+          Object.keys(hydratedLines).length
+        } background translations`
+      );
+      setCompletedLines({
+        ...completedLines,
+        ...hydratedLines,
+      });
+    }
+  }, [
+    translationJobQuery.data,
+    threadId,
+    setLineTranslation,
+    completedLines,
+    setCompletedLines,
+    poemLines,
+  ]);
 
   // ✅ Show locked state if workshop not unlocked
   if (!isWorkshopUnlocked) {

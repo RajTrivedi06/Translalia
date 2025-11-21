@@ -31,7 +31,7 @@ export default async function LocaleLayout({
   const { locale } = await params;
 
   // Ensure that the incoming `locale` is valid
-  if (!routing.locales.includes(locale as any)) {
+  if (!routing.locales.includes(locale as (typeof routing.locales)[number])) {
     notFound();
   }
 
@@ -60,7 +60,9 @@ export default async function LocaleLayout({
                   <div className="text-base font-semibold tracking-tight text-slate-800">
                     Translalia
                   </div>
-                  <AuthNav />
+                  <div className="flex items-center gap-3">
+                    <AuthNav />
+                  </div>
                 </div>
               </header>
               <main className="min-h-[calc(100vh-var(--header-h))]">

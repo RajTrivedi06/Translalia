@@ -1,17 +1,20 @@
 "use client";
 
 import { Link, useRouter } from "@/i18n/routing";
+import { useTranslations } from "next-intl";
 import { supabase } from "@/lib/supabaseClient";
 import { useSupabaseUser } from "@/hooks/useSupabaseUser";
 import { useProfile } from "@/hooks/useProfile";
 
-const navLinks = [
-  { href: "/", label: "Home" },
-  { href: "/workspace", label: "Workspace" },
-  { href: "/verification-dashboard", label: "Verification Analytics" },
-];
-
 function PrimaryNav() {
+  const t = useTranslations("Navigation");
+
+  const navLinks = [
+    { href: "/", label: t("home") },
+    { href: "/workspaces", label: t("workspaces") },
+    // { href: "/verification-dashboard", label: "Verification Analytics" },
+  ];
+
   return (
     <nav className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-600 sm:text-sm">
       {navLinks.map((link) => (
@@ -29,6 +32,7 @@ function PrimaryNav() {
 
 export function AuthNav() {
   const router = useRouter();
+  const t = useTranslations("Navigation");
   const { user, loading } = useSupabaseUser();
   const { profile } = useProfile(user);
 
@@ -97,7 +101,7 @@ export function AuthNav() {
           }}
           className="rounded-md border bg-white px-2 py-1 text-xs shadow"
         >
-          Sign out
+          {t("signOut")}
         </button>
       </div>
     </div>

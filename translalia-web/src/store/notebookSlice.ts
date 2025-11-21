@@ -42,7 +42,6 @@ export interface NotebookState {
 
   // Drag and Drop state
   droppedCells: NotebookCell[];
-  cellEditMode: boolean;
   currentLineIndex: number | null;
 
   // Mode Management (Phase 4)
@@ -77,7 +76,6 @@ export interface NotebookState {
   removeCell: (cellId: string) => void;
   reorderCells: (startIndex: number, endIndex: number) => void;
   updateCellText: (cellId: string, text: string) => void;
-  setCellEditMode: (enabled: boolean) => void;
   setCurrentLineIndex: (index: number | null) => void;
 
   // Mode Management actions (Phase 4)
@@ -116,7 +114,6 @@ const initialState = {
   editingCellIndex: null,
   isDirty: false,
   droppedCells: [],
-  cellEditMode: false,
   currentLineIndex: null,
   mode: "arrange" as NotebookMode,
   modifiedCells: new Set<string>(),
@@ -283,8 +280,6 @@ export const useNotebookStore = create<NotebookState>()(
             isDirty: true,
           };
         }),
-
-      setCellEditMode: (enabled: boolean) => set({ cellEditMode: enabled }),
 
       setCurrentLineIndex: (index: number | null) =>
         set({ currentLineIndex: index }),

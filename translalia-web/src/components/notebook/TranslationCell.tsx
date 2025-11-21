@@ -103,12 +103,14 @@ export function TranslationCell({
         ref={setNodeRef}
         style={style}
         className={cn(
-          "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 transition-all duration-150 bg-white shadow-sm",
+          "group inline-flex items-center gap-2 rounded-full border px-3 py-1.5 transition-all duration-150 bg-white shadow-sm",
           isDragging && "opacity-60 shadow-lg scale-105 z-50",
           cell.isLocked && "border-yellow-400",
           cell.isModified && "border-green-500",
-          chipText ? "text-gray-900" : "text-gray-400"
+          chipText ? "text-gray-900" : "text-gray-400",
+          "hover:border-blue-300"
         )}
+        onDoubleClick={() => onEdit(cell.id)}
         {...attributes}
         {...listeners}
       >
@@ -116,6 +118,18 @@ export function TranslationCell({
           {chipText || "…"}
         </span>
         <div className="flex items-center gap-1">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 w-6 p-0 text-gray-400 opacity-0 transition-opacity group-hover:opacity-100"
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit(cell.id);
+            }}
+            title="Edit word"
+          >
+            <Edit2 className="w-3 h-3" />
+          </Button>
           {partOfSpeechSummary && (
             <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
               {partOfSpeechSummary.toUpperCase()}
@@ -209,38 +223,8 @@ export function TranslationCell({
 
           {/* Actions */}
           <div className="flex items-center gap-1">
-            {/* Lock/Unlock */}
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 w-7 p-0"
-              onClick={() => onToggleLock(cell.id)}
-              title={cell.isLocked ? "Unlock cell" : "Lock cell"}
-            >
-              {cell.isLocked ? (
-                <Lock className="w-3 h-3 text-yellow-600" />
-              ) : (
-                <Unlock className="w-3 h-3 text-gray-400" />
-              )}
-            </Button>
-
-            {/* Edit/Save */}
-            {!cell.isEditing ? (
-              isArrangeMode && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 w-7 p-0"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onEdit(cell.id);
-                  }}
-                  title="Edit translation"
-                >
-                  <Edit2 className="w-3 h-3" />
-                </Button>
-              )
-            ) : (
+            {/* When editing: Show only Save and Cancel */}
+            {cell.isEditing ? (
               <>
                 <Button
                   size="sm"
@@ -254,26 +238,59 @@ export function TranslationCell({
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="h-7 w-7 p-0 text-gray-500"
+                  className="h-7 w-7 p-0 text-red-500 hover:text-red-600"
                   onClick={handleCancel}
                   title="Cancel"
                 >
                   <X className="w-3 h-3" />
                 </Button>
               </>
-            )}
+            ) : (
+              <>
+                {/* Lock/Unlock - only when not editing */}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 w-7 p-0"
+                  onClick={() => onToggleLock(cell.id)}
+                  title={cell.isLocked ? "Unlock cell" : "Lock cell"}
+                >
+                  {cell.isLocked ? (
+                    <Lock className="w-3 h-3 text-yellow-600" />
+                  ) : (
+                    <Unlock className="w-3 h-3 text-gray-400" />
+                  )}
+                </Button>
 
-            {/* Remove */}
-            {!cell.isLocked && (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 w-7 p-0 text-red-500 hover:text-red-600"
-                onClick={() => onRemove(cell.id)}
-                title="Remove cell"
-              >
-                <X className="w-3 h-3" />
-              </Button>
+                {/* Edit button - only when not editing and in arrange mode */}
+                {isArrangeMode && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 w-7 p-0"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEdit(cell.id);
+                    }}
+                    title="Edit translation"
+                  >
+                    <Edit2 className="w-3 h-3" />
+                  </Button>
+                )}
+
+                {/* Remove - only when not editing and not locked */}
+                {!cell.isLocked && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 w-7 p-0 text-red-500 hover:text-red-600"
+                    onClick={() => onRemove(cell.id)}
+                    title="Remove cell"
+                  >
+                    <X className="w-3 h-3" />
+                  </Button>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -288,18 +305,12 @@ export function TranslationCell({
               placeholder="Edit your translation..."
               autoFocus
               onKeyDown={(e) => {
-                // Save on Enter (without Shift)
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSave();
-                }
                 // Cancel on Escape
                 if (e.key === "Escape") {
                   e.preventDefault();
                   handleCancel();
                 }
               }}
-              onBlur={handleSave} // Save on blur
             />
           ) : (
             <div className="space-y-2">

@@ -29,8 +29,7 @@ export default function NotebookPanelWithDnD() {
   const addCell = useNotebookStore((s) => s.addCell);
   const removeCell = useNotebookStore((s) => s.removeCell);
   const updateCellText = useNotebookStore((s) => s.updateCellText);
-  const setCellEditMode = useNotebookStore((s) => s.setCellEditMode);
-  const cellEditMode = useNotebookStore((s) => s.cellEditMode);
+  const [editingCellId, setEditingCellId] = React.useState<string | null>(null);
 
   // Mode management
   const mode = useNotebookStore((s) => s.mode);
@@ -60,28 +59,28 @@ export default function NotebookPanelWithDnD() {
     return droppedCells.map((cell) => ({
       id: cell.id,
       words: [], // Will be populated when we store DragData in cells
-      isEditing: false,
+      isEditing: editingCellId === cell.id,
       isLocked: (cell.translation.lockedWords?.length ?? 0) > 0,
       isModified: modifiedCells.has(cell.id),
       customText: cell.translation.text,
     }));
-  }, [droppedCells, modifiedCells]);
+  }, [droppedCells, modifiedCells, editingCellId]);
 
   const handleEditCell = (cellId: string) => {
     // Toggle edit mode for the cell
     // For now, we'll use a simple approach - in a full implementation,
     // we'd track which specific cell is being edited
-    setCellEditMode(true);
+    setEditingCellId(cellId);
   };
 
   const handleSaveCell = (cellId: string, text: string) => {
     updateCellText(cellId, text);
     markCellModified(cellId);
-    setCellEditMode(false);
+    setEditingCellId(null);
   };
 
   const handleCancelEdit = (cellId: string) => {
-    setCellEditMode(false);
+    setEditingCellId(null);
   };
 
   const handleRemoveCell = (cellId: string) => {
@@ -97,6 +96,15 @@ export default function NotebookPanelWithDnD() {
     setSelectedCellForAI(cellId);
     setShowAIPanel(true);
   };
+
+  React.useEffect(() => {
+    if (
+      editingCellId &&
+      !droppedCells.some((cell) => cell.id === editingCellId)
+    ) {
+      setEditingCellId(null);
+    }
+  }, [editingCellId, droppedCells]);
 
   const handleApplyAISuggestion = (cellId: string, suggestion: string) => {
     updateCellText(cellId, suggestion);

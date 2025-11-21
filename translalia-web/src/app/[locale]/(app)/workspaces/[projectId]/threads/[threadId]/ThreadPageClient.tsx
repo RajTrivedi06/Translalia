@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import {
   DndContext,
   DragOverlay,
@@ -29,6 +30,7 @@ export default function ThreadPageClient({
   projectId,
   threadId,
 }: ThreadPageClientProps) {
+  const t = useTranslations("Thread");
   useEffect(() => {
     setActiveThreadId(threadId ?? null);
   }, [threadId]);
@@ -89,15 +91,14 @@ export default function ThreadPageClient({
             <div className="mt-3 flex flex-col items-start justify-between sm:flex-row sm:items-center sm:gap-4">
               <div>
                 <h1 className="text-2xl font-semibold tracking-tight text-slate-500 sm:text-3xl">
-                  Poetry Translation Studio
+                  {t("title")}
                 </h1>
                 <p className="mt-1 text-sm text-slate-600">
-                  Drag options, refine lines, and keep every decision in one
-                  calm space.
+                  {t("description")}
                 </p>
               </div>
               <div className="mt-4 rounded-full bg-slate-100/80 px-4 py-1.5 text-xs font-semibold text-slate-600 sm:mt-0">
-                Thread {threadLabel}
+                {t("threadLabel")} {threadLabel}
               </div>
             </div>
           </div>
@@ -121,7 +122,7 @@ export default function ThreadPageClient({
                   <div className="relative px-4 py-3">
                     <div>
                       <h2 className="text-xl font-semibold tracking-tight text-slate-900">
-                        Let’s get started
+                        {t("gettingStarted")}
                       </h2>
                     </div>
                     <button
@@ -168,10 +169,10 @@ export default function ThreadPageClient({
             <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-white shadow-sm">
               <div className="px-4 py-3">
                 <h2 className="text-xl font-semibold tracking-tight text-slate-900">
-                  Workshop
+                  {t("workshop")}
                 </h2>
                 <p className="text-sm text-slate-500">
-                  Generate options, compare drafts, and refine each line.
+                  {t("workshopDescription")}
                 </p>
               </div>
               <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-2 md:p-3">
@@ -181,8 +182,13 @@ export default function ThreadPageClient({
 
             {/* RIGHT: Notebook – full-height, scrolls inside */}
             <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-white shadow-sm">
+              <div className="px-4 py-3">
+                <h2 className="text-xl font-semibold tracking-tight text-slate-900">
+                  {t("notebook")}
+                </h2>
+              </div>
               <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-2 md:p-3">
-                <NotebookPhase6 projectId={projectId} showTitle />
+                <NotebookPhase6 projectId={projectId} showTitle={false} />
               </div>
             </div>
           </div>
@@ -194,8 +200,8 @@ export default function ThreadPageClient({
           <div className="min-w-[200px] rounded-lg border-2 border-blue-500 bg-white px-4 py-3 opacity-90 shadow-2xl">
             <div className="text-[10px] uppercase tracking-wide text-gray-500">
               {activeDragData.dragType === "sourceWord"
-                ? "Original word"
-                : "Translation token"}
+                ? t("originalWord")
+                : t("translationToken")}
             </div>
             <div className="mt-1 flex items-center gap-2">
               <Badge variant="secondary" className="text-[10px]">
@@ -205,7 +211,7 @@ export default function ThreadPageClient({
             </div>
             {activeDragData.originalWord && (
               <div className="mt-1 text-xs text-gray-500">
-                from &ldquo;{activeDragData.originalWord}&rdquo;
+                {t("from")} &ldquo;{activeDragData.originalWord}&rdquo;
               </div>
             )}
           </div>

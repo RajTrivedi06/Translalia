@@ -1,16 +1,16 @@
-import { ProfileForm } from "@/components/account/ProfileForm";
+"use client";
 
-export const metadata = {
-  title: "Account",
-};
+import { ProfileForm } from "@/components/account/ProfileForm";
+import { useTranslations } from "next-intl";
 
 export default function AccountPage() {
-  // Client-only bits are inside ProfileForm
+  const t = useTranslations("Account");
+
   return (
     <div className="mx-auto max-w-2xl p-6">
-      <h1 className="mb-4 text-2xl font-semibold">Account</h1>
+      <h1 className="mb-4 text-2xl font-semibold">{t("title")}</h1>
       <p className="mb-6 text-sm text-neutral-600">
-        Manage your profile used across projects.
+        {t("description")}
       </p>
       <div className="rounded-xl border bg-white p-4 shadow-sm">
         <ProfileForm />

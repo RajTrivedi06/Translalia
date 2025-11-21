@@ -212,7 +212,9 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
   const selectWord = useWorkshopStore((s) => s.selectWord);
   const deselectWord = useWorkshopStore((s) => s.deselectWord);
   const setWordOptions = useWorkshopStore((s) => s.setWordOptions);
-  const setWordOptionsForLine = useWorkshopStore((s) => s.setWordOptionsForLine);
+  const setWordOptionsForLine = useWorkshopStore(
+    (s) => s.setWordOptionsForLine
+  );
   const setIsGenerating = useWorkshopStore((s) => s.setIsGenerating);
   const modelUsed = useWorkshopStore((s) => s.modelUsed);
 
@@ -489,7 +491,9 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
         <div className="text-center space-y-4">
           <Loader2 className="w-8 h-8 animate-spin text-blue-500 mx-auto" />
           <p className="text-sm text-muted-foreground">
-            {isPending ? "Generating translation options..." : "No options available"}
+            {isPending
+              ? "Generating translation options..."
+              : "No options available"}
           </p>
         </div>
       </div>
@@ -790,9 +794,9 @@ function TranslationVariantCard({
             </Badge>
             {isSelected && <CheckCircle2 className="w-4 h-4 text-green-600" />}
           </div>
-          <div className="text-xs text-gray-500">
+          {/* <div className="text-xs text-gray-500">
             Literalness: {(variant.metadata.literalness * 100).toFixed(0)}%
-          </div>
+          </div> */}
         </div>
 
         <div className="flex flex-wrap gap-2">

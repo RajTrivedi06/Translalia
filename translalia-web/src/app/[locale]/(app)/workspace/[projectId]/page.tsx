@@ -10,7 +10,13 @@ export default async function LegacyWorkspacePage({
   const { projectId } = await params;
   const { thread: tid } = await searchParams;
   if (tid) {
-    redirect(`/workspaces/${projectId}/threads/${tid}`);
+    redirect({
+      href: `/workspaces/${projectId}/threads/${tid}`,
+      locale: "en",
+    });
   }
-  redirect(`/workspaces/${projectId}`);
+  redirect({
+    href: `/workspaces/${projectId}`,
+    locale: "en",
+  });
 }

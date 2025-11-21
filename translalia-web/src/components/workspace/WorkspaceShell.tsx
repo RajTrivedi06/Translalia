@@ -17,7 +17,6 @@ import { useWorkspace } from "@/store/workspace";
 import { useThreadId } from "@/hooks/useThreadId";
 import { useQueryClient } from "@tanstack/react-query";
 import { routes } from "@/lib/routers";
-import { LanguageSelector } from "@/components/layout/LanguageSelector";
 import type { DragData } from "@/types/drag";
 import { useNotebookStore } from "@/store/notebookSlice";
 import { createCellFromDragData } from "@/lib/notebook/cellHelpers";
@@ -117,10 +116,7 @@ export function WorkspaceShell({
             ← Back to Chats
           </Link>
           <h1 className="text-xs font-semibold">Workspace</h1>
-          <div className="flex items-center gap-2">
-            <LanguageSelector />
-            <div className="w-16" />
-          </div>
+          <div className="w-16" />
         </header>
 
         <div className="flex flex-1 overflow-hidden min-h-0">

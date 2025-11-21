@@ -1,22 +1,15 @@
 "use client";
 
-import {
-  ChangeEvent,
-  KeyboardEvent,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { ChangeEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import { FileText, UploadCloud, X, Info, ChevronLeft } from "lucide-react";
 import { useRouter } from "@/i18n/routing";
+import { useTranslations, useLocale } from "next-intl";
 
 import { useGuideStore } from "@/store/guideSlice";
 import { useWorkshopStore } from "@/store/workshopSlice";
 import { useThreadId } from "@/hooks/useThreadId";
 import { cn } from "@/lib/utils";
 import { useSaveAnswer, useSavePoemState } from "@/lib/hooks/useGuideFlow";
-import { t, getLangFromCookie } from "@/lib/i18n/minimal";
 import { ConfirmationDialog } from "@/components/guide/ConfirmationDialog";
 
 interface GuideRailProps {
@@ -73,11 +66,16 @@ export function GuideRail({
   className = "",
   onCollapseToggle,
   onAutoCollapse,
-  isCollapsed,
+  isCollapsed: _isCollapsed, // Prop available but not used in this component's logic
   showHeading = true,
 }: GuideRailProps) {
-  const lang = getLangFromCookie();
+  const t = useTranslations("Guide");
+  const tThread = useTranslations("Thread");
+  const locale = useLocale();
   const router = useRouter();
+
+  // Determine text direction for inputs
+  const dir = locale === "ar" ? "rtl" : "ltr";
 
   const {
     poem,
@@ -187,21 +185,14 @@ export function GuideRail({
     setPreserveFormatting,
   ]);
 
-  const headerSubtitle = useMemo(() => {
-    if (readyForWorkshop) {
-      return "All set—head to the workshop when you're ready.";
-    }
-    return "Upload your poem and describe the translation intent to begin.";
-  }, [readyForWorkshop]);
-
   // Don't render until store is hydrated
   if (!hydrated) {
     return null;
   }
 
   const ariaAnnouncement = readyForWorkshop
-    ? "Guide setup complete"
-    : "Guide setup in progress";
+    ? t("ariaAnnouncementComplete")
+    : t("ariaAnnouncementProgress");
 
   const handlePoemChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
     setPoem(event.target.value.slice(0, POEM_CHAR_LIMIT));
@@ -226,12 +217,12 @@ export function GuideRail({
 
   const handleSaveZone = async () => {
     if (!translationZoneText.trim()) {
-      setZoneError("Please describe the translation zone before saving.");
+      setZoneError(t("zoneErrorDescribe"));
       return;
     }
 
     if (!threadId) {
-      setZoneError("Open or create a workspace thread to save your zone.");
+      setZoneError(t("zoneErrorThread"));
       return;
     }
 
@@ -245,7 +236,7 @@ export function GuideRail({
       submitTranslationZone();
       setEditingZone(false);
     } catch {
-      setZoneError("Failed to save. Please try again.");
+      setZoneError(t("zoneErrorSave"));
     } finally {
       setIsSavingZone(false);
     }
@@ -253,12 +244,12 @@ export function GuideRail({
 
   const handleSaveIntent = async () => {
     if (!translationIntentText.trim()) {
-      setIntentError("Please describe the translation intent before saving.");
+      setIntentError(t("intentErrorDescribe"));
       return;
     }
 
     if (!threadId) {
-      setIntentError("Open or create a workspace thread to save your intent.");
+      setIntentError(t("intentErrorThread"));
       return;
     }
 
@@ -272,7 +263,7 @@ export function GuideRail({
       submitTranslationIntent();
       setEditingIntent(false);
     } catch {
-      setIntentError("Failed to save. Please try again.");
+      setIntentError(t("intentErrorSave"));
     } finally {
       setIsSavingIntent(false);
     }
@@ -322,9 +313,7 @@ export function GuideRail({
 
     if (!isComplete) {
       // Show validation error message
-      setValidationError(
-        "Please fill in all required fields: Poem, Translation Zone, and Translation Intent"
-      );
+      setValidationError(t("validationError"));
       return;
     }
 
@@ -336,13 +325,11 @@ export function GuideRail({
   const handleConfirmWorkshop = async () => {
     // Validation
     if (!threadId) {
-      setValidationError("No thread ID found. Please refresh and try again.");
+      setValidationError(t("validationErrorThread"));
       return;
     }
     if (!poem.text || !poem.stanzas) {
-      setValidationError(
-        "Poem and stanzas are missing. Please go back and enter your poem."
-      );
+      setValidationError(t("validationErrorPoem"));
       return;
     }
 
@@ -432,7 +419,9 @@ export function GuideRail({
               className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-gray-200 text-gray-700 transition hover:bg-gray-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
             >
               <X className="h-3 w-3" aria-hidden="true" />
-              <span className="sr-only">Remove {chip.name}</span>
+              <span className="sr-only">
+                {t("removeFile", { name: chip.name })}
+              </span>
             </button>
           </span>
         ))}
@@ -460,14 +449,15 @@ export function GuideRail({
               htmlFor="poem-input"
               className="text-sm font-semibold text-gray-900"
             >
-              Your poem {isPoemSubmitted && "✓"}
+              {t("poemTitle")} {isPoemSubmitted && "✓"}
             </label>
-            <p className="mt-1 text-xs text-gray-500">
-              Paste the original poem (source language).
-            </p>
+            <p className="mt-1 text-xs text-gray-500">{t("poemHelper")}</p>
           </div>
           <span className="text-xs font-medium text-gray-500">
-            {poemCharCount} / {POEM_CHAR_LIMIT}
+            {t("characterCount", {
+              current: poemCharCount,
+              limit: POEM_CHAR_LIMIT,
+            })}
           </span>
         </div>
 
@@ -475,7 +465,7 @@ export function GuideRail({
           <div
             className="inline-flex rounded-full bg-gray-100 p-1 text-sm font-medium text-gray-500"
             role="tablist"
-            aria-label="Poem input mode"
+            aria-label={t("poemModeLabel")}
           >
             <button
               type="button"
@@ -491,7 +481,7 @@ export function GuideRail({
               aria-controls="poem-tab-paste"
               onClick={() => setPoemMode("paste")}
             >
-              Paste
+              {t("paste")}
             </button>
             <button
               type="button"
@@ -507,7 +497,7 @@ export function GuideRail({
               aria-controls="poem-tab-upload"
               onClick={() => setPoemMode("upload")}
             >
-              Upload
+              {t("upload")}
             </button>
           </div>
 
@@ -525,13 +515,15 @@ export function GuideRail({
               value={poemText}
               onChange={handlePoemChange}
               onKeyDown={handlePoemKeyDown}
-              placeholder={t("guide.poemPlaceholder", lang)}
+              placeholder={t("poemPlaceholder")}
               aria-describedby="poem-helper poem-error"
+              lang={locale}
+              dir={dir}
               className="w-full resize-y rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm leading-tight text-gray-900 shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
               style={{ maxHeight: "40vh", overflowY: "auto" }}
             />
             <p id="poem-helper" className="text-xs text-gray-500">
-              Paste the original poem (source language).
+              {t("poemHelper")}
             </p>
             {(poem.stanzas?.totalStanzas ?? 0) > 0 || hasBlankLinesDetected ? (
               <div className="mb-3">
@@ -542,25 +534,21 @@ export function GuideRail({
                 >
                   <Info className="h-4 w-4" aria-hidden="true" />
                   {showGuideHints
-                    ? "Hide detection notes"
-                    : "Show detection notes"}
+                    ? t("hideDetectionNotes")
+                    : t("showDetectionNotes")}
                 </button>
                 {showGuideHints && (
                   <div className="mt-2 space-y-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-3 text-xs text-blue-700">
                     {poem.stanzas && poem.stanzas.totalStanzas > 0 && (
                       <p>
-                        {poem.stanzas.totalStanzas} chunks detected (~4 lines
-                        each, split at semantic boundaries). These are
-                        functional divisions for LLM processing, not literary
-                        divisions.
+                        {t("chunksDetected", {
+                          count: poem.stanzas.totalStanzas,
+                        })}
                       </p>
                     )}
                     {hasBlankLinesDetected && (
                       <div className="flex items-center justify-between gap-3">
-                        <span>
-                          Blank lines detected — formatting will be preserved so
-                          chunk boundaries stay intact.
-                        </span>
+                        <span>{t("blankLinesDetected")}</span>
                         <button
                           type="button"
                           onClick={() => {
@@ -570,8 +558,8 @@ export function GuideRail({
                           className="text-xs font-medium text-blue-600 underline transition hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 rounded"
                         >
                           {poem.preserveFormatting
-                            ? "Collapse blanks"
-                            : "Preserve"}
+                            ? t("collapseBlanks")
+                            : t("preserve")}
                         </button>
                       </div>
                     )}
@@ -602,7 +590,7 @@ export function GuideRail({
                 aria-hidden="true"
               />
               <p className="mt-3 text-sm text-gray-600">
-                Upload a poem file (.txt, .md, .docx, .pdf).
+                {t("uploadPoemFile")}
               </p>
               <div className="mt-4 flex items-center justify-center gap-3">
                 <button
@@ -612,7 +600,7 @@ export function GuideRail({
                   className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
                 >
                   <UploadCloud className="h-4 w-4" aria-hidden="true" />
-                  Choose files
+                  {t("chooseFiles")}
                 </button>
                 <button
                   type="button"
@@ -620,7 +608,7 @@ export function GuideRail({
                   onClick={clearPoemFiles}
                   className="text-sm font-medium text-gray-600 transition hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
                 >
-                  Clear
+                  {t("clear")}
                 </button>
               </div>
             </div>
@@ -633,14 +621,14 @@ export function GuideRail({
             onClick={() => setShowCorpus((prev) => !prev)}
             className="mt-4 text-sm font-semibold text-gray-600 transition hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
           >
-            Add reference corpus (optional)
+            {t("addReferenceCorpus")}
           </button>
 
           {showCorpus && (
             <div className="corpus-popover mt-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-xl">
               <div className="flex items-start justify-between gap-4">
                 <p className="text-sm text-gray-600">
-                  Upload texts that represent the desired voice/style.
+                  {t("corpusDescription")}
                 </p>
                 <button
                   type="button"
@@ -648,7 +636,7 @@ export function GuideRail({
                     setShowCorpus(false);
                   }}
                   className="rounded-full p-1 text-gray-500 transition hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
-                  aria-label="Close corpus uploader"
+                  aria-label={t("closeCorpusUploader")}
                 >
                   <X className="h-4 w-4" aria-hidden="true" />
                 </button>
@@ -674,15 +662,15 @@ export function GuideRail({
                   className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
                 >
                   <UploadCloud className="h-4 w-4" aria-hidden="true" />
-                  Upload files
+                  {t("uploadFiles")}
                 </button>
                 <button
                   type="button"
                   id="corpus-help-link"
                   className="text-sm font-medium text-blue-600 transition hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
-                  title="Share backlist titles, comparable translations, or publications that capture the target voice."
+                  title={t("corpusHelpTooltip")}
                 >
-                  What should I upload?
+                  {t("corpusHelp")}
                 </button>
               </div>
 
@@ -693,14 +681,14 @@ export function GuideRail({
                 onClick={clearCorpusFiles}
                 className="mt-3 text-xs font-medium text-gray-500 transition hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
               >
-                Clear corpus files
+                {t("clearCorpusFiles")}
               </button>
             </div>
           )}
 
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-xs text-gray-500">
-              {!isPoemSubmitted && "Cmd/Ctrl + Enter to submit."}
+              {!isPoemSubmitted && t("submitShortcut")}
             </div>
             <button
               id="add-poem-btn"
@@ -709,7 +697,7 @@ export function GuideRail({
               disabled={isSubmitDisabled || isPoemSubmitted}
               className="inline-flex items-center justify-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isPoemSubmitted ? "Poem Submitted ✓" : "Submit Poem"}
+              {isPoemSubmitted ? t("poemSubmitted") : t("submitPoem")}
             </button>
           </div>
         </div>
@@ -733,8 +721,7 @@ export function GuideRail({
                 htmlFor="translation-zone-input"
                 className="text-sm font-semibold text-gray-900"
               >
-                {t("guide.translationZone", lang)}{" "}
-                {isTranslationZoneSubmitted && "✓"}
+                {t("translationZone")} {isTranslationZoneSubmitted && "✓"}
               </label>
               {isTranslationZoneSubmitted && (
                 <button
@@ -742,15 +729,15 @@ export function GuideRail({
                   onClick={() => setEditingZone(true)}
                   className="text-sm text-blue-600 hover:text-blue-700"
                 >
-                  {t("guide.edit", lang)}
+                  {t("edit")}
                 </button>
               )}
             </div>
             <p className="mt-1 text-xs text-gray-500">
-              {t("guide.translationZoneHelper", lang)}
+              {t("translationZoneHelper")}
             </p>
             <p className="text-xs text-gray-400 italic">
-              {t("guide.translationZoneExamples", lang)}
+              {t("translationZoneExamples")}
             </p>
           </div>
 
@@ -764,7 +751,9 @@ export function GuideRail({
                 setZoneError(null);
               }}
               disabled={isTranslationZoneSubmitted && !editingZone}
-              placeholder="e.g., Contemporary Mexican Spanish with indigenous influences"
+              placeholder={t("translationZonePlaceholder")}
+              lang={locale}
+              dir={dir}
               className="w-full resize-y rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm leading-tight text-gray-900 shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-500"
               style={{ maxHeight: "30vh", overflowY: "auto" }}
             />
@@ -779,10 +768,10 @@ export function GuideRail({
                 className="inline-flex items-center justify-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isSavingZone
-                  ? t("guide.saving", lang)
+                  ? t("saving")
                   : editingZone
-                  ? t("guide.updateZone", lang)
-                  : t("guide.saveZone", lang)}
+                  ? t("updateZone")
+                  : t("saveZone")}
               </button>
             </div>
           </div>
@@ -807,8 +796,7 @@ export function GuideRail({
                 htmlFor="translation-intent-input"
                 className="text-sm font-semibold text-gray-900"
               >
-                {t("guide.translationIntent", lang)}{" "}
-                {isTranslationIntentSubmitted && "✓"}
+                {t("translationIntent")} {isTranslationIntentSubmitted && "✓"}
               </label>
               {isTranslationIntentSubmitted && (
                 <button
@@ -816,15 +804,15 @@ export function GuideRail({
                   onClick={() => setEditingIntent(true)}
                   className="text-sm text-blue-600 hover:text-blue-700"
                 >
-                  {t("guide.edit", lang)}
+                  {t("edit")}
                 </button>
               )}
             </div>
             <p className="mt-1 text-xs text-gray-500">
-              {t("guide.translationIntentHelper", lang)}
+              {t("translationIntentHelper")}
             </p>
             <p className="text-xs text-gray-400 italic">
-              {t("guide.translationIntentExamples", lang)}
+              {t("translationIntentExamples")}
             </p>
           </div>
 
@@ -838,7 +826,9 @@ export function GuideRail({
                 setIntentError(null);
               }}
               disabled={isTranslationIntentSubmitted && !editingIntent}
-              placeholder="e.g., Preserve the rhythmic structure while finding contemporary equivalents"
+              placeholder={t("translationIntentPlaceholder")}
+              lang={locale}
+              dir={dir}
               className="w-full resize-y rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm leading-tight text-gray-900 shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-500"
               style={{ maxHeight: "30vh", overflowY: "auto" }}
             />
@@ -855,10 +845,10 @@ export function GuideRail({
                 className="inline-flex items-center justify-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isSavingIntent
-                  ? t("guide.saving", lang)
+                  ? t("saving")
                   : editingIntent
-                  ? t("guide.updateIntent", lang)
-                  : t("guide.saveIntent", lang)}
+                  ? t("updateIntent")
+                  : t("saveIntent")}
               </button>
             </div>
           </div>
@@ -882,17 +872,17 @@ export function GuideRail({
             <div className="flex flex-row items-start justify-between gap-2 px-4 py-3">
               <div className="min-w-0 flex-1">
                 <h2 className="truncate text-base font-semibold text-gray-900 lg:text-lg">
-                  Let’s get started
+                  {t("title")}
                 </h2>
                 <p className="mt-1 text-xs text-slate-500 lg:text-sm">
-                  Upload your poem and capture the brief before translating.
+                  {t("subtitle")}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={onCollapseToggle}
                 className="flex-shrink-0 rounded-lg p-1 text-gray-400 hover:bg-gray-50 hover:text-gray-600"
-                title="Collapse guide panel"
+                title={tThread("collapseGuidePanel")}
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
@@ -921,7 +911,7 @@ export function GuideRail({
                 onClick={handleStartWorkshop}
                 className="inline-flex w-full items-center justify-center rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
               >
-                Start Workshop
+                {t("startWorkshop")}
               </button>
               <button
                 id="clear-guide-btn"
@@ -929,7 +919,7 @@ export function GuideRail({
                 onClick={handleResetAll}
                 className="w-full rounded-lg border border-transparent px-3 py-2 text-xs font-semibold text-gray-600 transition hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 sm:w-auto"
               >
-                Clear inputs
+                {t("clearInputs")}
               </button>
             </div>
             <div className="sr-only" aria-live="polite">
@@ -943,10 +933,10 @@ export function GuideRail({
             onOpenChange={setShowConfirmDialog}
             onConfirm={handleConfirmWorkshop}
             isLoading={false}
-            title="Ready to start the workshop?"
-            description="Your poem, translation zone, and translation intent are set. You can make changes anytime. Click 'Start Workshop' to begin translating."
-            confirmText="Start Workshop"
-            cancelText="Cancel"
+            title={t("confirmDialogTitle")}
+            description={t("confirmDialogDescription")}
+            confirmText={t("confirmDialogConfirm")}
+            cancelText={t("confirmDialogCancel")}
           />
         </div>
       </aside>

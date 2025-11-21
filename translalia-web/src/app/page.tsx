@@ -1,6 +1,8 @@
-import { redirect } from "next/navigation";
-import { routing } from "@/i18n/routing";
+import { redirect } from "@/i18n/routing";
 
 export default function RootRedirectPage() {
-  redirect(`/${routing.defaultLocale}`);
+  redirect({
+    href: "/",
+    locale: "en",
+  });
 }

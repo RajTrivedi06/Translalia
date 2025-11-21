@@ -3,6 +3,12 @@ import { requireUser } from "@/lib/auth/requireUser";
 import { isSmartInterviewLLMEnabled } from "@/lib/flags/interview";
 import { ROUTER_MODEL } from "@/lib/models";
 import { openai } from "@/lib/ai/openai";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+import {
+  getSystemPrompt,
+  getLanguageInstruction,
+} from "@/lib/ai/localePrompts";
 
 export async function POST(req: Request) {
   const { user, response } = await requireUser();
@@ -12,13 +18,40 @@ export async function POST(req: Request) {
 
   const { gap, baseQuestion, context } = await req.json();
 
-  const SYSTEM = `You rewrite a single clarifying question for a translation interview.
-Return ONLY valid JSON: {"question": "<concise>"}.
-Be culturally respectful. Avoid prescriptive standardization.`;
+  // Fetch user's locale preference
+  const cookieStore = await cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get: (name: string) => cookieStore.get(name)?.value,
+        set() {},
+        remove() {},
+      },
+    }
+  );
 
-  const USER = `GAP=${gap}
+  const { data: profile, error: profileErr } = await supabase
+    .from("profiles")
+    .select("locale")
+    .eq("id", user.id)
+    .single();
+
+  if (profileErr) {
+    console.warn("[interview] profile fetch error:", profileErr?.message);
+    console.warn("[interview] proceeding with default locale");
+  }
+  const userLocale = profile?.locale || "en";
+  console.log("[interview] user_locale:", { locale: userLocale, hasProfile: !!profile });
+
+  const SYSTEM = getSystemPrompt("interview", userLocale);
+
+  const baseUSER = `GAP=${gap}
 BASE_QUESTION="${baseQuestion}"
 CONTEXT=${JSON.stringify(context ?? {})}`;
+
+  const USER = `${baseUSER}\n\n${getLanguageInstruction(userLocale)}`;
 
   // Use ROUTER_MODEL (defaults to gpt-5-nano) with fallback
   let modelToUse = ROUTER_MODEL;

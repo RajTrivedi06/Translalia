@@ -4,18 +4,19 @@ import * as React from "react";
 import { useSupabaseUser } from "@/hooks/useSupabaseUser";
 import { useProfile } from "@/hooks/useProfile";
 import { supabase } from "@/lib/supabaseClient";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
 import { useRouter, usePathname } from "@/i18n/routing";
 
 export function ProfileForm() {
-  const t = useTranslations('Settings');
-  const tCommon = useTranslations('Common');
+  const t = useTranslations("Settings");
+  const tCommon = useTranslations("Common");
+  const currentLocale = useLocale();
   const { user, loading: userLoading } = useSupabaseUser();
   const { profile, loading, error, save, reload } = useProfile(user);
   const [displayName, setDisplayName] = React.useState("");
   const [username, setUsername] = React.useState("");
   const [avatarUrl, setAvatarUrl] = React.useState("");
-  const [locale, setLocale] = React.useState("en");
+  const [locale, setLocale] = React.useState(currentLocale);
   const [msg, setMsg] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState(false);
   const [file, setFile] = React.useState<File | null>(null);
@@ -26,11 +27,12 @@ export function ProfileForm() {
     setDisplayName(profile?.display_name ?? "");
     setUsername(profile?.username ?? "");
     setAvatarUrl(profile?.avatar_url ?? "");
-    setLocale(profile?.locale ?? "en");
-  }, [profile]);
+    // Use profile locale if available, otherwise use current locale
+    setLocale(profile?.locale ?? currentLocale);
+  }, [profile, currentLocale]);
 
   if (userLoading || loading) {
-    return <div className="text-sm text-neutral-500">{tCommon('loading')}</div>;
+    return <div className="text-sm text-neutral-500">{tCommon("loading")}</div>;
   }
 
   if (!user) {
@@ -51,7 +53,7 @@ export function ProfileForm() {
           .from("avatars")
           .upload(path, file, { upsert: true });
         if (upErr) {
-          setMsg(`${tCommon('error')}: ${upErr.message}`);
+          setMsg(`${tCommon("error")}: ${upErr.message}`);
         } else {
           const { data } = supabase.storage.from("avatars").getPublicUrl(path);
           if (data?.publicUrl) {
@@ -67,21 +69,19 @@ export function ProfileForm() {
         avatar_url: nextAvatarUrl || null,
         locale: locale || null,
       });
-      
-      // Set cookie for next-intl
-      document.cookie = `NEXT_LOCALE=${locale}; path=/; max-age=31536000; SameSite=Lax`;
-      
-      setMsg(tCommon('success'));
-      
-      // Refresh the page with new locale if it changed
-      router.replace(pathname, { locale: locale as any });
-      
+
+      setMsg(tCommon("success"));
+
+      // Navigate to the same pathname with new locale if it changed
+      if (locale !== currentLocale) {
+        router.replace(pathname, { locale: locale as any });
+      }
     } catch (e) {
       const err = e as Error | { message?: string } | unknown;
       setMsg(
         (err as Error)?.message ??
           (err as { message?: string })?.message ??
-          tCommon('error')
+          tCommon("error")
       );
     } finally {
       setPending(false);
@@ -125,8 +125,12 @@ export function ProfileForm() {
       </div>
 
       <div>
-        <label className="block text-sm text-neutral-700">{t('language')}</label>
-        <p className="text-xs text-neutral-500 mb-2">{t('languageDescription')}</p>
+        <label className="block text-sm text-neutral-700">
+          {t("language")}
+        </label>
+        <p className="text-xs text-neutral-500 mb-2">
+          {t("languageDescription")}
+        </p>
         <select
           className="mt-1 w-full rounded-md border px-3 py-2 bg-white"
           value={locale}
@@ -175,7 +179,7 @@ export function ProfileForm() {
           disabled={pending}
           className="rounded-md bg-neutral-900 px-3 py-2 text-white disabled:opacity-60"
         >
-          {pending ? tCommon('loading') : t('saveProfile')}
+          {pending ? tCommon("loading") : t("saveProfile")}
         </button>
       </div>
     </form>

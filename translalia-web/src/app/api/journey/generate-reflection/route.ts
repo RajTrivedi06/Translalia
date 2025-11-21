@@ -6,6 +6,10 @@ import { createServerClient } from "@supabase/ssr";
 import { ENHANCER_MODEL } from "@/lib/models";
 import { maskPrompts } from "@/server/audit/mask";
 import { insertPromptAudit } from "@/server/audit/insertPromptAudit";
+import {
+  getSystemPrompt,
+  getLanguageInstruction,
+} from "@/lib/ai/localePrompts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -95,6 +99,20 @@ export async function POST(req: NextRequest) {
       return err(403, "FORBIDDEN", "You do not have access to this thread.");
     }
 
+    // 3a) Fetch user's locale preference
+    const { data: profile, error: profileErr } = await supabase
+      .from("profiles")
+      .select("locale")
+      .eq("id", user.id)
+      .single();
+
+    if (profileErr) {
+      log("profile_fetch_error", profileErr?.message);
+      log("proceeding with default locale");
+    }
+    const userLocale = profile?.locale || "en";
+    log("user_locale", { locale: userLocale, hasProfile: !!profile });
+
     // 4) OpenAI call for journey reflection
     const key = process.env.OPENAI_API_KEY;
     if (!key) {
@@ -119,26 +137,9 @@ export async function POST(req: NextRequest) {
     const translationIntent = (context.guideAnswers as any)?.translationIntent?.trim?.() || context.translationIntent?.trim?.() || "";
     const translationStrategy = translationZone || translationIntent || "Not specified";
 
-    const systemPrompt = `You are a poetry translation coach providing reflective insights on a translator's journey.
+    const systemPrompt = getSystemPrompt("journeyReflection", userLocale);
 
-IMPORTANT: Do NOT compare source and translation quality. Instead, reflect on:
-- The translator's creative choices and decision-making process
-- Patterns in their approach
-- Growth and learning throughout the translation
-- Challenges they navigated
-- Strengths they demonstrated
-
-Return STRICT JSON only with this schema:
-{
-  "summary": "1-2 paragraph reflection on their translation journey",
-  "insights": ["insight 1", "insight 2", ...],
-  "strengths": ["strength 1", "strength 2", ...],
-  "challenges": ["challenge 1", "challenge 2", ...],
-  "recommendations": ["recommendation 1", "recommendation 2", ...],
-  "overallAssessment": "encouraging final reflection on their work"
-}`;
-
-    const userPrompt = `Translation Journey Context:
+    const baseUserPrompt = `Translation Journey Context:
 
 Progress: ${context.completedCount}/${context.totalLines} lines (${
       context.progressPercentage
@@ -152,6 +153,8 @@ Completed Translations:
 ${completedLinesText || "No lines completed yet"}
 
 Please provide a reflective journey summary focusing on the translator's process, growth, and decisions (NOT a quality comparison of source vs translation).`;
+
+    const userPrompt = `${baseUserPrompt}\n\n${getLanguageInstruction(userLocale)}`;
 
     let modelToUse = ENHANCER_MODEL;
     let completion;
