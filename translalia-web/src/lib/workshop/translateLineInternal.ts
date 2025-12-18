@@ -4,7 +4,6 @@ import { openai } from "@/lib/ai/openai";
 import { cacheGet, cacheSet } from "@/lib/ai/cache";
 import {
   buildLineTranslationPrompt,
-  buildLineTranslationSystemPrompt,
   buildLineTranslationFallbackPrompt,
   buildLineTranslationFallbackSystemPrompt,
 } from "@/lib/ai/workshopPrompts";
@@ -36,6 +35,36 @@ function getOpenAIModelErrorDetails(error: unknown): {
       typeof candidate.status === "number"
         ? (candidate.status as number)
         : undefined,
+  };
+}
+
+function computeLinePosition(
+  fullPoem: string,
+  lineIndex: number
+): { isFirst: boolean; isLast: boolean; isOnly: boolean } {
+  const lines = String(fullPoem ?? "").split("\n");
+  const nonEmptyIndices: number[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if ((lines[i] ?? "").trim() !== "") nonEmptyIndices.push(i);
+  }
+
+  // If fullPoem doesn't include blank lines (or lineIndex is in a flattened index space),
+  // fall back to treating 0..N-1 as the range.
+  if (nonEmptyIndices.length === 0 || lineIndex >= lines.length) {
+    const n = lines.filter((l) => String(l).length > 0).length || lines.length;
+    return {
+      isOnly: n === 1,
+      isFirst: lineIndex === 0,
+      isLast: lineIndex === Math.max(0, n - 1),
+    };
+  }
+
+  const first = nonEmptyIndices[0];
+  const last = nonEmptyIndices[nonEmptyIndices.length - 1];
+  return {
+    isOnly: nonEmptyIndices.length === 1,
+    isFirst: lineIndex === first,
+    isLast: lineIndex === last,
   };
 }
 
@@ -76,6 +105,7 @@ export type TranslateLineInternalOptions = {
   nextLine?: string;
   guideAnswers: GuideAnswers;
   sourceLanguage: string;
+  targetLanguage: string;
   cacheKey?: string;
   forceRefresh?: boolean;
   audit?: {
@@ -101,6 +131,7 @@ export async function translateLineInternal(
     stanzaIndex,
     guideAnswers,
     sourceLanguage,
+    targetLanguage,
     cacheKey = `workshop:translate-line:${threadId}:line:${lineIndex}`,
     forceRefresh = false,
     audit,
@@ -116,9 +147,26 @@ export async function translateLineInternal(
   }
 
   // Feature 9 (R): Use fallback prompt if alignment failed
+  const position = computeLinePosition(fullPoem, lineIndex);
+
+  const prompt = fallbackMode
+    ? null
+    : buildLineTranslationPrompt({
+        lineText,
+        lineIndex,
+        prevLine: prevLine ?? null,
+        nextLine: nextLine ?? null,
+        fullPoem,
+        stanzaIndex,
+        position,
+        guideAnswers,
+        sourceLanguage,
+        targetLanguage,
+      });
+
   const systemPrompt = fallbackMode
     ? buildLineTranslationFallbackSystemPrompt()
-    : buildLineTranslationSystemPrompt();
+    : prompt!.system;
 
   const userPrompt = fallbackMode
     ? buildLineTranslationFallbackPrompt({
@@ -129,16 +177,14 @@ export async function translateLineInternal(
         guideAnswers,
         sourceLanguage,
       })
-    : buildLineTranslationPrompt({
-        lineText,
-        lineIndex,
-        fullPoem,
-        stanzaIndex,
-        prevLine,
-        nextLine,
-        guideAnswers,
-        sourceLanguage,
-      });
+    : prompt!.user;
+
+  if (process.env.NODE_ENV !== "production" && !fallbackMode) {
+    console.log(
+      "[translateLineInternal] User prompt (preview):",
+      userPrompt.slice(0, 500)
+    );
+  }
 
   const auditMask = maskPrompts(systemPrompt, userPrompt);
 

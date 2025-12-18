@@ -3,10 +3,11 @@
 import * as React from "react";
 import { useRouter } from "@/i18n/routing";
 import { useTranslations } from "next-intl";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabaseClient";
 import { routes } from "@/lib/routers";
 import { useSupabaseUser } from "@/hooks/useSupabaseUser";
+import { Loader2 } from "lucide-react";
 
 type Project = { id: string; title: string | null; created_at: string };
 
@@ -19,6 +20,7 @@ export default function WorkspacesPage() {
   const [loading, setLoading] = React.useState(false);
   const { data, refetch, isFetching } = useQuery({
     queryKey: ["projects"],
+    placeholderData: keepPreviousData,
     queryFn: async () => {
       const base = supabase.from("projects").select("id, title, created_at");
       const ordered = await base.order("created_at", { ascending: false });
@@ -65,7 +67,7 @@ export default function WorkspacesPage() {
   const userEmail = user?.email?.split("@")[0] ?? "";
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-10 text-slate-900">
+    <div className="min-h-full bg-slate-50 px-4 py-10 text-slate-900">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-10">
         <section className="rounded-3xl bg-white/80 px-6 py-8 shadow-[0_20px_60px_rgba(15,23,42,0.08)] sm:px-10 sm:py-12">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
@@ -76,9 +78,7 @@ export default function WorkspacesPage() {
               <h1 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
                 {user?.email ? `Welcome back, ${userEmail}!` : t("heading")}
               </h1>
-              <p className="text-base text-slate-600">
-                {t("description")}
-              </p>
+              <p className="text-base text-slate-600">{t("description")}</p>
             </div>
             <form
               onSubmit={onCreate}
@@ -92,10 +92,11 @@ export default function WorkspacesPage() {
                   onChange={(e) => setTitle(e.target.value)}
                 />
                 <button
-                  className="rounded-xl bg-sky-600 px-4 py-2.5 text-base font-semibold text-white transition hover:bg-sky-500 disabled:opacity-60"
+                  className="inline-flex min-w-[190px] items-center justify-center rounded-xl bg-sky-600 px-4 py-2.5 text-base font-semibold text-white transition hover:bg-sky-500 disabled:opacity-60"
                   disabled={loading}
                 >
-                  {loading ? t("creating") : t("createWorkspace")}
+                  {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {t("createWorkspace")}
                 </button>
               </div>
             </form>
@@ -136,7 +137,9 @@ export default function WorkspacesPage() {
                     </p>
                     <p className="text-sm text-slate-500">
                       {p.created_at
-                        ? `${t("started")} ${new Date(p.created_at).toLocaleString()}`
+                        ? `${t("started")} ${new Date(
+                            p.created_at
+                          ).toLocaleString()}`
                         : "Created recently"}
                     </p>
                   </div>

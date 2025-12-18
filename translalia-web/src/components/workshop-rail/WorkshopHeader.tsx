@@ -11,11 +11,9 @@ interface WorkshopHeaderProps {
 export function WorkshopHeader({ showTitle = true }: WorkshopHeaderProps) {
   const total = useWorkshopStore((s) => s.poemLines.length);
   const selectedLineIndex = useWorkshopStore((s) => s.selectedLineIndex);
-  const wordOptions = useWorkshopStore((s) => s.wordOptions);
-  const selections = useWorkshopStore((s) => s.selections);
-
-  const wordsTotal = wordOptions?.length || 0;
-  const wordsSelected = Object.keys(selections).length;
+  const selectedVariant = useWorkshopStore((s) => s.selectedVariant);
+  const currentVariant =
+    selectedLineIndex !== null ? selectedVariant[selectedLineIndex] : null;
 
   return (
     <div className="flex items-center justify-between border-b px-3 py-2 bg-white">
@@ -30,7 +28,9 @@ export function WorkshopHeader({ showTitle = true }: WorkshopHeaderProps) {
 
       <div className="flex items-center gap-2">
         <Badge variant="secondary" className="text-xs">
-          {wordsSelected}/{wordsTotal} words selected
+          {currentVariant
+            ? `Variant ${currentVariant} selected`
+            : "Select a variant"}
         </Badge>
       </div>
     </div>

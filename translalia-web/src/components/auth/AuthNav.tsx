@@ -33,6 +33,8 @@ function PrimaryNav() {
 export function AuthNav() {
   const router = useRouter();
   const t = useTranslations("Navigation");
+  const tCommon = useTranslations("Common");
+  const tAuth = useTranslations("Auth");
   const { user, loading } = useSupabaseUser();
   const { profile } = useProfile(user);
 
@@ -40,7 +42,7 @@ export function AuthNav() {
     return (
       <div className="flex flex-wrap items-center gap-4">
         <PrimaryNav />
-        <div className="text-xs text-neutral-500">Loading…</div>
+        <div className="text-xs text-neutral-500">{tCommon("loading")}</div>
       </div>
     );
   }
@@ -54,13 +56,13 @@ export function AuthNav() {
             href="/auth/sign-in"
             className="rounded-md border bg-white px-2 py-1 text-xs shadow"
           >
-            Sign in
+            {tAuth("signIn")}
           </Link>
           <Link
             href="/auth/sign-up"
             className="rounded-md bg-neutral-900 px-2 py-1 text-xs text-white shadow"
           >
-            Sign up
+            {tAuth("signUp")}
           </Link>
         </div>
       </div>
@@ -92,7 +94,7 @@ export function AuthNav() {
           href="/account"
           className="rounded-md border bg-white px-2 py-1 text-xs shadow"
         >
-          Account
+          {t("account")}
         </Link>
         <button
           onClick={async () => {

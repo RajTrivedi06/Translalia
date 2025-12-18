@@ -90,10 +90,10 @@ export function FinalizeLineDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Check className="w-5 h-5 text-green-600" />
-            Finalize Line {lineIndex + 1}?
+            Save Line {lineIndex + 1}?
           </DialogTitle>
           <DialogDescription>
-            Once finalized, this translation will be marked as complete. You can
+            This will save your translation and move to the next line. You can
             still edit it later if needed.
           </DialogDescription>
         </DialogHeader>
@@ -131,7 +131,7 @@ export function FinalizeLineDialog({
                 <p className="font-medium">Translation seems short</p>
                 <p className="mt-1">
                   Your translation appears shorter than expected. Please review
-                  before finalizing.
+                  before saving.
                 </p>
               </div>
             </div>
@@ -143,7 +143,7 @@ export function FinalizeLineDialog({
               <div className="text-xs text-amber-800">
                 <p className="font-medium">No translation provided</p>
                 <p className="mt-1">
-                  You haven't provided a translation for this line. Finalize
+                  You haven't provided a translation for this line. Saving
                   will mark it as skipped.
                 </p>
               </div>
@@ -154,7 +154,7 @@ export function FinalizeLineDialog({
           {hasTranslation && (
             <div className="flex items-center justify-center">
               <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
-                Ready to finalize
+                Ready to save
               </Badge>
             </div>
           )}
@@ -170,7 +170,7 @@ export function FinalizeLineDialog({
             className="bg-green-600 hover:bg-green-700"
           >
             <Check className="w-4 h-4 mr-2" />
-            Confirm Finalize
+            Confirm Save
           </Button>
         </DialogFooter>
       </DialogContent>

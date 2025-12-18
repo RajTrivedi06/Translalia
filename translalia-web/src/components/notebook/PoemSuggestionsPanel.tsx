@@ -16,7 +16,11 @@ interface PoemSuggestionsPanelProps {
   sourcePoem: string;
   translationPoem: string;
   guideAnswers?: Record<string, unknown>;
-  onClose: () => void;
+  onClose?: () => void;
+  /** "modal" keeps max width/height; "full" fills the parent container */
+  layout?: "modal" | "full";
+  /** Whether to show the top-right close button */
+  showCloseButton?: boolean;
 }
 
 /**
@@ -39,6 +43,8 @@ export function PoemSuggestionsPanel({
   translationPoem,
   guideAnswers,
   onClose,
+  layout = "modal",
+  showCloseButton = true,
 }: PoemSuggestionsPanelProps) {
   const [expandedSuggestions, setExpandedSuggestions] = React.useState<
     Set<string>
@@ -78,24 +84,30 @@ export function PoemSuggestionsPanel({
   // Loading state
   if (isLoading) {
     return (
-      <div className="w-full max-w-2xl bg-white rounded-lg shadow-lg p-6 max-h-[80vh] overflow-y-auto">
+      <div
+        className={
+          layout === "full"
+            ? "h-full w-full bg-white dark:bg-gray-900 p-6 overflow-y-auto"
+            : "w-full max-w-2xl bg-white rounded-lg shadow-lg p-6 max-h-[80vh] overflow-y-auto"
+        }
+      >
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">Exploring Your Translation</h3>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            <X className="w-4 h-4" />
-          </Button>
+          {showCloseButton && onClose && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          )}
         </div>
         <div className="flex items-center justify-center py-12">
           <div className="text-center">
             <Sparkles className="w-8 h-8 mx-auto text-blue-500 animate-spin mb-3" />
-            <p className="text-gray-600">
-              Analyzing your translation...
-            </p>
+            <p className="text-gray-600">Analyzing your translation...</p>
             <p className="text-xs text-gray-500 mt-1">
               We're looking at rhyme, tone, imagery, and more
             </p>
@@ -108,17 +120,25 @@ export function PoemSuggestionsPanel({
   // Error state
   if (error) {
     return (
-      <div className="w-full max-w-2xl bg-white rounded-lg shadow-lg p-6">
+      <div
+        className={
+          layout === "full"
+            ? "h-full w-full bg-white dark:bg-gray-900 p-6"
+            : "w-full max-w-2xl bg-white rounded-lg shadow-lg p-6"
+        }
+      >
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">Exploring Your Translation</h3>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            <X className="w-4 h-4" />
-          </Button>
+          {showCloseButton && onClose && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          )}
         </div>
         <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
           <p className="font-medium mb-1">Failed to generate suggestions</p>
@@ -126,12 +146,14 @@ export function PoemSuggestionsPanel({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => critiqueMutation.mutate({
-              threadId,
-              sourcePoem,
-              translationPoem,
-              guideAnswers,
-            })}
+            onClick={() =>
+              critiqueMutation.mutate({
+                threadId,
+                sourcePoem,
+                translationPoem,
+                guideAnswers,
+              })
+            }
             className="mt-3"
           >
             Try Again
@@ -145,12 +167,16 @@ export function PoemSuggestionsPanel({
     return null;
   }
 
-  const applicableSuggestions = data.suggestions.filter(
-    (s) => s.isApplicable
-  );
+  const applicableSuggestions = data.suggestions.filter((s) => s.isApplicable);
 
   return (
-    <div className="w-full max-w-2xl bg-white rounded-lg shadow-lg overflow-hidden max-h-[80vh] flex flex-col">
+    <div
+      className={
+        layout === "full"
+          ? "h-full w-full bg-white dark:bg-gray-900 overflow-hidden flex flex-col"
+          : "w-full max-w-2xl bg-white rounded-lg shadow-lg overflow-hidden max-h-[80vh] flex flex-col"
+      }
+    >
       {/* Header */}
       <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between bg-gradient-to-r from-blue-50 to-indigo-50 flex-shrink-0">
         <div className="flex items-center gap-2">
@@ -159,14 +185,16 @@ export function PoemSuggestionsPanel({
             Ideas to Explore
           </h3>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onClose}
-          className="text-gray-400 hover:text-gray-600"
-        >
-          <X className="w-4 h-4" />
-        </Button>
+        {showCloseButton && onClose && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600"
+          >
+            <X className="w-4 h-4" />
+          </Button>
+        )}
       </div>
 
       {/* Content */}
@@ -194,7 +222,9 @@ export function PoemSuggestionsPanel({
                 isExpanded={expandedSuggestions.has(suggestion.id)}
                 onToggle={() => toggleSuggestion(suggestion.id)}
                 onSelectOption={(optionId) => setSelectedOption(optionId)}
-                isOptionSelected={selectedOption?.startsWith(suggestion.id) ?? false}
+                isOptionSelected={
+                  selectedOption?.startsWith(suggestion.id) ?? false
+                }
               />
             ))
           )}
@@ -209,7 +239,10 @@ export function PoemSuggestionsPanel({
               </h4>
               <ul className="space-y-2">
                 {data.studentPromptsToConsider.map((prompt, idx) => (
-                  <li key={idx} className="text-sm text-amber-800 leading-relaxed">
+                  <li
+                    key={idx}
+                    className="text-sm text-amber-800 leading-relaxed"
+                  >
                     <span className="font-medium">{idx + 1}.</span> {prompt}
                   </li>
                 ))}
@@ -255,9 +288,7 @@ function SuggestionCard({
       >
         <div className="flex items-center gap-3">
           <Badge
-            variant={
-              isOptionSelected ? "default" : "secondary"
-            }
+            variant={isOptionSelected ? "default" : "secondary"}
             className="text-xs"
           >
             {suggestion.categoryLabel}
@@ -280,7 +311,9 @@ function SuggestionCard({
             <h5 className="text-xs font-semibold text-gray-700 mb-1">
               In Your Translation
             </h5>
-            <p className="text-sm text-gray-700">{suggestion.yourTranslation}</p>
+            <p className="text-sm text-gray-700">
+              {suggestion.yourTranslation}
+            </p>
           </div>
 
           {/* Options */}
@@ -322,9 +355,7 @@ function OptionCard({ option, suggestionId, onSelect }: OptionCardProps) {
     <div className="p-3 bg-white rounded border border-gray-200 space-y-2">
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1">
-          <h6 className="font-medium text-sm text-gray-800">
-            {option.title}
-          </h6>
+          <h6 className="font-medium text-sm text-gray-800">{option.title}</h6>
           <p className="text-xs text-gray-600 mt-1">{option.description}</p>
         </div>
         <Badge

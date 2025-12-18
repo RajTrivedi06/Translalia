@@ -1,11 +1,11 @@
 import { GuideAnswers } from "@/store/guideSlice";
 import { DragData } from "@/types/drag";
-
-const WORD_CLOSENESS_DESCRIPTIONS = {
-  close: "Stay close to the literal meaning",
-  in_between: "Balance literal and creative interpretations",
-  natural: "Prioritize natural, idiomatic expression in the target language",
-} as const;
+import {
+  buildTranslatorPersonality,
+  buildVariantDefinitions,
+  buildDomainExamples,
+  type TranslatorPersonality,
+} from "./translatorPersonality";
 
 const LINE_CLOSENESS_DESCRIPTIONS = {
   close: "Stay as close as possible to the literal meaning",
@@ -15,7 +15,7 @@ const LINE_CLOSENESS_DESCRIPTIONS = {
 
 function collectPreferenceLines(
   guideAnswers: GuideAnswers,
-  mode: "word" | "line"
+  mode: "line"
 ): string[] {
   const lines: string[] = [];
 
@@ -55,10 +55,7 @@ function collectPreferenceLines(
 
   const closeness = guideAnswers.stance?.closeness;
   if (closeness) {
-    const description =
-      mode === "word"
-        ? WORD_CLOSENESS_DESCRIPTIONS[closeness]
-        : LINE_CLOSENESS_DESCRIPTIONS[closeness];
+    const description = LINE_CLOSENESS_DESCRIPTIONS[closeness];
     lines.push(`Translation approach: ${description}`);
   }
 
@@ -91,9 +88,7 @@ function collectPreferenceLines(
 
   if (!closeness) {
     lines.push(
-      mode === "word"
-        ? "Translation approach: Balance literal and creative interpretations"
-        : "Translation approach: Balance literal accuracy with natural expression"
+      "Translation approach: Balance literal accuracy with natural expression"
     );
   }
 
@@ -102,20 +97,13 @@ function collectPreferenceLines(
 
 function formatPreferenceSection(
   guideAnswers: GuideAnswers,
-  mode: "word" | "line"
+  mode: "line"
 ): string {
   const lines = collectPreferenceLines(guideAnswers, mode);
   if (lines.length === 0) {
     return "- No specific instructions provided.";
   }
   return lines.map((line) => `- ${line}`).join("\n");
-}
-
-export interface WordTranslationContext {
-  word: string;
-  lineContext: string;
-  guideAnswers: GuideAnswers;
-  sourceLanguage?: string;
 }
 
 export interface AIAssistContext {
@@ -134,73 +122,6 @@ export interface LineTranslationContext {
   nextLine?: string;
   guideAnswers: GuideAnswers;
   sourceLanguage?: string;
-}
-
-/**
- * Builds a GPT prompt for generating translation options for a single word.
- * Uses Guide Rail answers for context-aware, style-consistent translations.
- */
-export function buildWordTranslationPrompt({
-  word,
-  lineContext,
-  guideAnswers,
-  sourceLanguage = "the source language",
-}: WordTranslationContext): string {
-  const translationIntent = guideAnswers.translationIntent?.trim();
-  const targetLanguage = guideAnswers.targetLanguage?.lang?.trim();
-  const targetVariety = guideAnswers.targetLanguage?.variety?.trim();
-  const targetDescriptor = targetLanguage
-    ? `${targetLanguage}${targetVariety ? ` (${targetVariety} variety)` : ""}`
-    : translationIntent
-    ? "the language specified in the translator instructions"
-    : "the target language";
-
-  const closenessKey = guideAnswers.stance?.closeness || "in_between";
-  const closenessSummary = WORD_CLOSENESS_DESCRIPTIONS[closenessKey];
-  const preferenceSection = formatPreferenceSection(guideAnswers, "word");
-
-  return `You are translating poetry from ${sourceLanguage} to ${targetDescriptor}.
-
-Translator instructions:
-${preferenceSection}
-
-Line being translated: "${lineContext}"
-Focus word: "${word}"
-
-Provide exactly 3 translation options for "${word}" that:
-1. Honour the translator instructions above.
-2. Fit naturally within the line context.
-3. Span from literal to more creative interpretations (${closenessSummary}).
-
-Keep each option to a single word or short phrase.
-Also identify the part of speech for "${word}" in this context.
-
-Return ONLY a JSON object with this exact structure:
-{
-  "partOfSpeech": "noun|verb|adjective|adverb|pronoun|preposition|conjunction|article|interjection",
-  "options": ["option1", "option2", "option3"]
-}`;
-}
-
-/**
- * Builds a system prompt for the workshop translation task.
- */
-export function buildWorkshopSystemPrompt(): string {
-  return `You are a poetry translation assistant. Your task is to provide translation options for individual words within poetic lines.
-
-IMPORTANT:
-- Return ONLY a valid JSON object with "partOfSpeech" and "options" fields
-- No explanations, no markdown, no additional formatting
-- Each option should be a single word or short phrase
-- Options should vary from literal to creative
-- Consider the poetic context and style preferences
-- Identify the part of speech accurately based on context
-
-Example valid response:
-{
-  "partOfSpeech": "noun",
-  "options": ["love", "affection", "devotion"]
-}`;
 }
 
 /**
@@ -434,134 +355,284 @@ Return ONLY the feedback text - no JSON, no markdown, no explanations.`;
  * - STATIC SECTION: Full poem + guide preferences (same for whole session)
  * - DYNAMIC SECTION: Line-specific context (changes per line)
  */
-export function buildLineTranslationPrompt({
-  lineText,
-  lineIndex,
-  fullPoem,
-  stanzaIndex,
-  prevLine,
-  nextLine,
-  guideAnswers,
-  sourceLanguage = "the source language",
-}: LineTranslationContext): string {
-  const closenessKey = guideAnswers.stance?.closeness || "in_between";
-  const closenessSummary = LINE_CLOSENESS_DESCRIPTIONS[closenessKey];
-  const preferenceSection = formatPreferenceSection(guideAnswers, "line");
+export function buildLineTranslationPrompt(params: {
+  lineText: string;
+  lineIndex: number;
+  prevLine?: string | null;
+  nextLine?: string | null;
+  fullPoem: string;
+  stanzaIndex?: number;
+  position?: { isFirst: boolean; isLast: boolean; isOnly: boolean };
+  guideAnswers: GuideAnswers;
+  sourceLanguage: string;
+  targetLanguage: string;
+}): { system: string; user: string } {
+  const {
+    lineText,
+    lineIndex,
+    prevLine,
+    nextLine,
+    fullPoem,
+    stanzaIndex,
+    position = { isFirst: false, isLast: false, isOnly: false },
+    guideAnswers,
+    sourceLanguage,
+    targetLanguage,
+  } = params;
 
-  // ============================================
-  // STATIC SECTION – same for whole session
-  // ============================================
-  const staticSections: string[] = [];
+  const personality = buildTranslatorPersonality(guideAnswers);
 
-  // Full poem context (always include if available)
-  // Include source language context for clarity
-  if (fullPoem) {
-    staticSections.push(`You are translating a poem from ${sourceLanguage}. Here is the FULL POEM for context:
+  const system = `
+You are a specialized poetry translation assistant with a specific translator personality.
 
-"""
+IMPORTANT:
+- Return ONLY a valid JSON object (no markdown, no explanations)
+- Use the exact output shape requested (key: "translations")
+- Generate exactly 3 DISTINCT variants (1, 2, 3)
+- ALL variants must honor the translator personality
+
+Any non-JSON content will cause parsing errors.
+`.trim();
+
+  const user = buildLineTranslationUserPrompt({
+    lineText,
+    lineIndex,
+    prevLine,
+    nextLine,
+    fullPoem,
+    stanzaIndex,
+    position,
+    personality,
+    sourceLanguage,
+    targetLanguage,
+  });
+
+  return { system, user };
+}
+
+function buildLineTranslationUserPrompt(params: {
+  lineText: string;
+  lineIndex: number;
+  prevLine?: string | null;
+  nextLine?: string | null;
+  fullPoem: string;
+  stanzaIndex?: number;
+  position: { isFirst: boolean; isLast: boolean; isOnly: boolean };
+  personality: TranslatorPersonality;
+  sourceLanguage: string;
+  targetLanguage: string;
+}): string {
+  const {
+    lineText,
+    lineIndex,
+    prevLine,
+    nextLine,
+    fullPoem,
+    stanzaIndex,
+    position,
+    personality,
+    sourceLanguage,
+    targetLanguage,
+  } = params;
+
+  const sections: string[] = [];
+  sections.push(buildPersonalitySection(personality));
+  sections.push(
+    buildContextSection({
+      lineText,
+      lineIndex,
+      prevLine,
+      nextLine,
+      fullPoem,
+      stanzaIndex,
+      position,
+    })
+  );
+  sections.push(buildVariantDefinitions(personality));
+  sections.push(
+    buildDomainExamples(personality, sourceLanguage, targetLanguage)
+  );
+  sections.push(
+    buildTaskInstructions({
+      lineText,
+      sourceLanguage,
+      targetLanguage,
+      personality,
+    })
+  );
+
+  return sections.join("\n\n");
+}
+
+function buildPersonalitySection(personality: TranslatorPersonality): string {
+  const {
+    domain,
+    purpose,
+    literalness,
+    register,
+    sacred_terms,
+    forbidden_terms,
+    approach_summary,
+    creativity_level,
+    priority,
+    source_language_variety,
+    source_language_notes,
+  } = personality;
+
+  const sacred =
+    sacred_terms.length > 0
+      ? `SACRED TERMS (use these when possible):\n${sacred_terms
+          .map((t) => `✓ \"${t}\"`)
+          .join("\n")}`
+      : "";
+  const forbidden =
+    forbidden_terms.length > 0
+      ? `FORBIDDEN TERMS (NEVER use):\n${forbidden_terms
+          .map((t) => `✗ \"${t}\"`)
+          .join("\n")}`
+      : "";
+
+  const sourceContext =
+    source_language_variety && source_language_variety.trim().length > 0
+      ? `
+SOURCE LANGUAGE CONTEXT:
+${source_language_notes ?? "Source language variety provided by user."}
+
+⚠️ IMPORTANT: The source text is in ${source_language_variety}.
+- Be aware of dialect-/variety-specific expressions and idioms
+- Don't mistake regional usage for errors
+- Preserve cultural/regional flavor where appropriate
+- If unsure about a phrase, consider it may be variety-specific
+`.trim()
+      : "";
+
+  return `
+═══════════════════════════════════════════════════════════════
+TRANSLATOR PERSONALITY (Your Identity)
+═══════════════════════════════════════════════════════════════
+This personality defines EVERY decision you make. All variants must reflect it.
+
+Domain: ${domain}
+Purpose: ${purpose}
+Approach: ${approach_summary}
+
+Literalness: ${literalness}/100 ${
+    literalness >= 70
+      ? "(Stay very close to source)"
+      : literalness >= 40
+      ? "(Balance source and target)"
+      : "(Prioritize target language naturalness)"
+  }
+Register: ${register.length > 0 ? register.join(", ") : "neutral"}
+Priority: ${priority}
+Creativity Level: ${creativity_level}
+
+${sourceContext}
+
+${sacred}
+${forbidden}
+
+Remember: This personality is NON-NEGOTIABLE. Every variant must embody it.
+`.trim();
+}
+
+function buildContextSection(params: {
+  lineText: string;
+  lineIndex: number;
+  prevLine?: string | null;
+  nextLine?: string | null;
+  fullPoem: string;
+  stanzaIndex?: number;
+  position: { isFirst: boolean; isLast: boolean; isOnly: boolean };
+}): string {
+  const {
+    lineText,
+    lineIndex,
+    prevLine,
+    nextLine,
+    fullPoem,
+    stanzaIndex,
+    position,
+  } = params;
+
+  const lineNumber = lineIndex + 1;
+  const chunkNumber = typeof stanzaIndex === "number" ? stanzaIndex + 1 : null;
+
+  const positionNote = position.isOnly
+    ? "📍 Position: COMPLETE SINGLE-LINE POEM — make it impactful and complete in itself."
+    : position.isFirst
+    ? "📍 Position: OPENING LINE — set the tone. No previous line to match."
+    : position.isLast
+    ? "📍 Position: CLOSING LINE — bring closure and finality."
+    : `📍 Position: Line ${lineNumber} — maintain flow across lines.`;
+
+  return `
+═══════════════════════════════════════════════════════════════
+POEM CONTEXT
+═══════════════════════════════════════════════════════════════
+${positionNote}
+
+${chunkNumber ? `Chunk: ${chunkNumber}` : ""}
+${prevLine ? `Previous line: \"${prevLine}\"` : ""}
+Current line (TO TRANSLATE): \"${lineText}\"
+${nextLine ? `Next line: \"${nextLine}\"` : ""}
+
+Full Poem:
+\"\"\"
 ${fullPoem}
-"""`);
-  } else {
-    // Fallback if full poem is not available (should be rare)
-    staticSections.push(`You are translating a poem from ${sourceLanguage}.`);
-  }
+\"\"\"
+`.trim();
+}
 
-  // Translation preferences
-  staticSections.push(`
-Translation preferences:
-${preferenceSection}`);
+function buildTaskInstructions(params: {
+  lineText: string;
+  sourceLanguage: string;
+  targetLanguage: string;
+  personality: TranslatorPersonality;
+}): string {
+  const { lineText, sourceLanguage, targetLanguage, personality } = params;
 
-  // ============================================
-  // DYNAMIC SECTION – changes per line
-  // ============================================
-  const dynamicSections: string[] = [];
+  return `
+═══════════════════════════════════════════════════════════════
+YOUR TASK
+═══════════════════════════════════════════════════════════════
+Translate from ${sourceLanguage} to ${targetLanguage}:
+\"${lineText}\"
 
-  // Build line identifier with chunk and line numbers
-  const lineNumber = lineIndex + 1; // Convert to 1-indexed for display
-  const chunkNumber = stanzaIndex !== undefined ? stanzaIndex + 1 : undefined;
+CRITICAL REQUIREMENTS:
+- Generate exactly 3 variants (variant 1, 2, 3)
+- Each variant must be DISTINCTLY different (not minor word swaps)
+- ALL variants must honor the translator personality (domain: ${personality.domain})
+- Include word-level alignment for each variant (\"words\" array)
+- Provide metadata for each variant (literalness 0-1, characterCount, preservesRhyme?, preservesMeter?)
 
-  if (chunkNumber !== undefined) {
-    dynamicSections.push(`Focus on this specific line:
-- Chunk ${chunkNumber}, Line ${lineNumber}: "${lineText}"`);
-  } else {
-    dynamicSections.push(`Focus on this specific line:
-- Line ${lineNumber}: "${lineText}"`);
-  }
-
-  // Previous and next line context
-  if (prevLine) {
-    dynamicSections.push(`- Previous line: "${prevLine}"`);
-  }
-  if (nextLine) {
-    dynamicSections.push(`- Next line: "${nextLine}"`);
-  }
-
-  // ============================================
-  // Combine sections
-  // ============================================
-  const staticSection = staticSections.join("\n");
-  const dynamicSection = dynamicSections.join("\n");
-
-  return `${staticSection}
-
-${dynamicSection}
-
-TASK:
-Generate exactly 3 translation variants for this line. Each variant should:
-1. Honor the translator instructions above
-2. Fit naturally within the poetic context${
-    prevLine || nextLine ? " (consider adjacent lines)" : ""
-  }
-3. Span from literal to more creative interpretations (${closenessSummary})
-4. Maintain poetic quality and flow
-
-ALIGNMENT REQUIREMENTS:
-- For each variant, provide sub-token alignment mapping original words/phrases to translations
-- Handle multi-word chunks correctly (e.g., "sat on" → "se sentó en")
-- Every word in the original line must be accounted for in the alignment
-- Position numbers should reflect the order in the original line (0-indexed)
-
-METADATA REQUIREMENTS:
-- literalness: Score 0-1 (1 = very literal, 0 = very creative)
-- characterCount: Count characters in the translated line
-- preservesRhyme: true if rhyme scheme is maintained (if applicable)
-- preservesMeter: true if meter/rhythm is maintained (if applicable)
-
-Return ONLY a JSON object with this exact structure:
+OUTPUT FORMAT
+Return ONLY this JSON structure:
 {
-  "translations": [
+  \"translations\": [
     {
-      "variant": 1,
-      "fullText": "complete translated line",
-      "words": [
+      \"variant\": 1,
+      \"fullText\": \"complete translated line\",
+      \"words\": [
         {
-          "original": "word or phrase",
-          "translation": "translated word or phrase",
-          "partOfSpeech": "noun|verb|adjective|adverb|pronoun|preposition|conjunction|article|interjection",
-          "position": 0
+          \"original\": \"source word or phrase\",
+          \"translation\": \"target word or phrase\",
+          \"position\": 0,
+          \"partOfSpeech\": \"noun|verb|adjective|adverb|pronoun|preposition|conjunction|article|interjection|neutral\"
         }
       ],
-      "metadata": {
-        "literalness": 0.8,
-        "characterCount": 31,
-        "preservesRhyme": true,
-        "preservesMeter": true
+      \"metadata\": {
+        \"literalness\": 0.95,
+        \"characterCount\": 31,
+        \"preservesRhyme\": false,
+        \"preservesMeter\": false
       }
     },
-    {
-      "variant": 2,
-      "fullText": "...",
-      "words": [...],
-      "metadata": {...}
-    },
-    {
-      "variant": 3,
-      "fullText": "...",
-      "words": [...],
-      "metadata": {...}
-    }
+    { \"variant\": 2, \"fullText\": \"...\", \"words\": [], \"metadata\": { \"literalness\": 0.5, \"characterCount\": 0 } },
+    { \"variant\": 3, \"fullText\": \"...\", \"words\": [], \"metadata\": { \"literalness\": 0.2, \"characterCount\": 0 } }
   ]
-}`;
+}
+`.trim();
 }
 
 /**
@@ -714,4 +785,157 @@ IMPORTANT RULES:
 
 This is a fallback mode used when alignment-based translation fails.
 Priority is on providing usable translations quickly, not perfect alignment.`;
+}
+
+/**
+ * Build prompt for generating additional word suggestions.
+ * Highly context-aware: considers neighboring lines, poem theme, and flow.
+ */
+export function buildAdditionalWordSuggestionsPrompt(params: {
+  currentLine: string;
+  lineIndex: number;
+  previousLine?: string | null;
+  nextLine?: string | null;
+  fullPoem: string;
+  poemTheme?: string;
+  guideAnswers: unknown;
+  userGuidance?: string | null; // For regeneration
+  targetLanguage: string;
+  sourceLanguage: string;
+}): { system: string; user: string } {
+  const {
+    currentLine,
+    lineIndex,
+    previousLine,
+    nextLine,
+    fullPoem,
+    poemTheme,
+    guideAnswers,
+    userGuidance,
+    targetLanguage,
+    sourceLanguage,
+  } = params;
+
+  const personality = buildTranslatorPersonality(guideAnswers);
+
+  const systemPrompt = `
+You are a specialized poetry translation assistant generating additional word alternatives.
+
+Your task: Provide 7-9 diverse, contextually-appropriate word suggestions for a specific line in a poem translation.
+
+CRITICAL RULES:
+- Consider the FULL POEM context
+- Pay special attention to neighboring lines (previous and next) for flow and rhyme
+- Respect the translator personality (domain, register, style)
+- Generate words that fit the line's meaning and position in the poem
+- Provide variety: different registers, synonyms, metaphors
+- Return ONLY JSON format (no markdown, no explanations)
+  `.trim();
+
+  const userPrompt = `
+═══════════════════════════════════════════════════════════════
+TRANSLATOR PERSONALITY
+═══════════════════════════════════════════════════════════════
+
+${personality.approach_summary}
+
+Domain: ${personality.domain}
+Register: ${personality.register.join(", ") || "neutral"}
+Priority: ${personality.priority}
+Literalness: ${personality.literalness}/100
+
+${
+  personality.sacred_terms.length > 0
+    ? `\nPreferred terms: ${personality.sacred_terms.join(", ")}`
+    : ""
+}
+${
+  personality.forbidden_terms.length > 0
+    ? `\nAvoid: ${personality.forbidden_terms.join(", ")}`
+    : ""
+}
+
+═══════════════════════════════════════════════════════════════
+POEM CONTEXT
+═══════════════════════════════════════════════════════════════
+
+Full Poem (${sourceLanguage}):
+"""
+${fullPoem}
+"""
+
+${poemTheme ? `\nPoem Theme: ${poemTheme}` : ""}
+
+═══════════════════════════════════════════════════════════════
+CURRENT LINE FOCUS
+═══════════════════════════════════════════════════════════════
+
+Line ${lineIndex + 1}: "${currentLine}"
+
+${
+  previousLine
+    ? `
+Previous Line (for flow/rhyme): "${previousLine}"
+→ Consider how your suggestions connect to this line
+`
+    : lineIndex === 0
+    ? "→ This is the OPENING LINE - set the tone"
+    : ""
+}
+
+${
+  nextLine
+    ? `
+Next Line (for flow/rhyme): "${nextLine}"
+→ Consider how your suggestions lead into this line
+`
+    : ""
+}
+
+═══════════════════════════════════════════════════════════════
+TASK: GENERATE 7-9 WORD SUGGESTIONS
+═══════════════════════════════════════════════════════════════
+
+Generate 7-9 diverse word alternatives in ${targetLanguage} for this line.
+
+${
+  userGuidance
+    ? `
+⚠️ USER'S SPECIFIC GUIDANCE:
+"${userGuidance}"
+
+Incorporate this guidance into your suggestions.
+`
+    : ""
+}
+
+REQUIREMENTS:
+1. Each word must fit naturally in the line's context
+2. Consider rhyme/meter with neighboring lines
+3. Vary the suggestions:
+   - Include both literal and metaphorical options
+   - Mix registers (formal/informal) within personality bounds
+   - Provide synonyms with different connotations
+4. Honor the translator personality above
+5. Each word should be a single token or short phrase (max 3 words)
+
+OUTPUT FORMAT (JSON only):
+{
+  "suggestions": [
+    {
+      "word": "palabra",
+      "reasoning": "Literal translation, neutral register",
+      "register": "neutral",
+      "literalness": 0.9
+    }
+  ]
+}
+
+CRITICAL: Return ONLY valid JSON. No preamble, no markdown, no explanations outside JSON.
+  `.trim();
+
+  return {
+    system: systemPrompt,
+    user: userPrompt,
+  };
 }

@@ -10,6 +10,8 @@ import { useRouter, usePathname } from "@/i18n/routing";
 export function ProfileForm() {
   const t = useTranslations("Settings");
   const tCommon = useTranslations("Common");
+  const tAccount = useTranslations("Account");
+  const tAuth = useTranslations("Auth");
   const currentLocale = useLocale();
   const { user, loading: userLoading } = useSupabaseUser();
   const { profile, loading, error, save, reload } = useProfile(user);
@@ -36,7 +38,7 @@ export function ProfileForm() {
   }
 
   if (!user) {
-    return <div className="text-sm">Sign in to manage your profile.</div>;
+    return <div className="text-sm">{tAuth("signInToManageProfile")}</div>;
   }
 
   async function onSave(e: React.FormEvent) {
@@ -75,6 +77,8 @@ export function ProfileForm() {
       // Navigate to the same pathname with new locale if it changed
       if (locale !== currentLocale) {
         router.replace(pathname, { locale: locale as any });
+        // Force refresh to re-render server components with new locale
+        router.refresh();
       }
     } catch (e) {
       const err = e as Error | { message?: string } | unknown;
@@ -92,15 +96,17 @@ export function ProfileForm() {
   return (
     <form onSubmit={onSave} className="space-y-4">
       <div>
-        <label className="block text-sm text-neutral-700">Username</label>
+        <label className="block text-sm text-neutral-700">
+          {tAccount("username")}
+        </label>
         <input
           className="mt-1 w-full rounded-md border px-3 py-2"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          placeholder="e.g., poet_ari"
+          placeholder={tAccount("usernamePlaceholder")}
         />
         <p className="mt-1 text-xs text-neutral-500">
-          Letters, numbers, underscores, dots (3–30 chars). Must be unique.
+          {tAccount("usernameHint")}
         </p>
       </div>
       {error && (
@@ -115,12 +121,14 @@ export function ProfileForm() {
       )}
 
       <div>
-        <label className="block text-sm text-neutral-700">Display name</label>
+        <label className="block text-sm text-neutral-700">
+          {tAccount("displayName")}
+        </label>
         <input
           className="mt-1 w-full rounded-md border px-3 py-2"
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
-          placeholder="Your name"
+          placeholder={tAccount("displayNamePlaceholder")}
         />
       </div>
 
@@ -145,17 +153,19 @@ export function ProfileForm() {
       </div>
 
       <div className="grid gap-2">
-        <label className="block text-sm text-neutral-700">Avatar</label>
+        <label className="block text-sm text-neutral-700">
+          {tAccount("avatar")}
+        </label>
         {avatarUrl && (
           <div className="flex items-center gap-3 rounded-md border p-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={avatarUrl}
-              alt="Avatar preview"
+              alt={tAccount("avatarPreview")}
               className="h-12 w-12 rounded-full border object-cover"
             />
             <div className="text-sm text-neutral-600">
-              Preview of the image that will appear in the header.
+              {tAccount("avatarPreviewHint")}
             </div>
           </div>
         )}
@@ -163,7 +173,7 @@ export function ProfileForm() {
           className="w-full rounded-md border px-3 py-2"
           value={avatarUrl}
           onChange={(e) => setAvatarUrl(e.target.value)}
-          placeholder="https://… (or upload below)"
+          placeholder={tAccount("avatarUrlPlaceholder")}
         />
         <input
           type="file"

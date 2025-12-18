@@ -5,7 +5,7 @@ export interface TranslateLineParams {
   threadId: string;
   lineIndex: number;
   lineText: string;
-  fullPoem?: string;
+  fullPoem: string;
   stanzaIndex?: number;
   prevLine?: string;
   nextLine?: string;

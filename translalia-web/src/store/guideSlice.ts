@@ -16,6 +16,12 @@ export interface GuideAnswers {
   translationIntent?: string | null;
 
   /**
+   * Optional: user-described source language variety/dialect/register.
+   * Examples: "Scouse English", "Garhwali", "Brazilian Portuguese".
+   */
+  sourceLanguageVariety?: string | null;
+
+  /**
    * Legacy structured fields are kept optional so previously saved
    * projects keep loading without errors. New flows won't populate these.
    */
@@ -60,6 +66,12 @@ export interface GuideState {
     isSubmitted: boolean;
   };
 
+  // Source language variety (optional)
+  sourceLanguageVariety: {
+    text: string | null;
+    isSubmitted: boolean;
+  };
+
   // Collected answers saved to Supabase (legacy compatible)
   answers: GuideAnswers;
 
@@ -73,6 +85,9 @@ export interface GuideState {
   submitPoem: () => void;
   getPoemStanzas: () => SimplePoemStanzas | null;
   setPreserveFormatting: (preserve: boolean) => void;
+  setSourceLanguageVariety: (value: string) => void;
+  submitSourceLanguageVariety: () => void;
+  editSourceLanguageVariety: () => void;
   setTranslationZone: (zone: string) => void;
   submitTranslationZone: () => void;
   setTranslationIntent: (intent: string) => void;
@@ -83,6 +98,8 @@ export interface GuideState {
   reset: () => void;
   checkGuideComplete: () => boolean;
   unlockWorkshop: () => void;
+  resetToDefaults: () => void;
+  setThreadId: (threadId: string | null) => void;
 }
 
 const initialState: Pick<
@@ -91,6 +108,7 @@ const initialState: Pick<
   | "poem"
   | "translationIntent"
   | "translationZone"
+  | "sourceLanguageVariety"
   | "answers"
   | "isCollapsed"
   | "width"
@@ -107,11 +125,15 @@ const initialState: Pick<
     text: null,
     isSubmitted: false,
   },
+  sourceLanguageVariety: {
+    text: null,
+    isSubmitted: false,
+  },
   translationZone: {
     text: "",
     isSubmitted: false,
   },
-  answers: {},
+  answers: { sourceLanguageVariety: null },
   isCollapsed: false,
   width: 320,
   isWorkshopUnlocked: false,
@@ -128,7 +150,7 @@ export const useGuideStore = create<GuideState>()(
   persist(
     (set, get) => ({
       hydrated: false,
-      meta: { threadId: getActiveThreadId() },
+      meta: { threadId: null }, // ✅ Safe default - will be set by component
       ...initialState,
 
       setPoem: (text: string) => {
@@ -170,6 +192,36 @@ export const useGuideStore = create<GuideState>()(
           answers: {
             ...state.answers,
             translationIntent: intent,
+          },
+        })),
+
+      setSourceLanguageVariety: (value: string) =>
+        set((state) => ({
+          currentStep: "setup",
+          sourceLanguageVariety: {
+            text: value,
+            isSubmitted: false,
+          },
+          answers: {
+            ...state.answers,
+            sourceLanguageVariety: value,
+          },
+          meta: { threadId: getActiveThreadId() },
+        })),
+
+      submitSourceLanguageVariety: () =>
+        set((state) => ({
+          sourceLanguageVariety: {
+            ...state.sourceLanguageVariety,
+            isSubmitted: true,
+          },
+        })),
+
+      editSourceLanguageVariety: () =>
+        set((state) => ({
+          sourceLanguageVariety: {
+            ...state.sourceLanguageVariety,
+            isSubmitted: false,
           },
         })),
 
@@ -264,22 +316,51 @@ export const useGuideStore = create<GuideState>()(
         set({
           isWorkshopUnlocked: true,
         }),
+
+      // Add method to update thread ID after mount
+      setThreadId: (threadId: string | null) => {
+        set((state) => ({
+          meta: { ...state.meta, threadId },
+        }));
+      },
+
+      // ADD THIS NEW METHOD: Reset to defaults for new thread
+      resetToDefaults: () => {
+        const tid = getActiveThreadId();
+        set({
+          ...initialState,
+          hydrated: true,
+          meta: { threadId: tid },
+        });
+      },
     }),
     {
       name: "guide-storage",
       version: 2,
       storage: createJSONStorage(() => threadStorage),
       merge: (persisted, current) => {
-        const tid = getActiveThreadId();
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const p = persisted as any;
 
-        if (!p || !tid) {
+        // No persisted data - return current
+        if (!p) {
           return {
             ...current,
             hydrated: true,
-            meta: { threadId: tid ?? null },
+            meta: { threadId: null }, // ✅ Safe default
           };
+        }
+
+        // Get thread ID from URL (source of truth)
+        const tid = getActiveThreadId();
+
+        // CRITICAL: If thread IDs don't match, return fresh state
+        // This prevents state leakage between threads
+        if (tid && p.meta?.threadId && p.meta.threadId !== tid) {
+          console.log(
+            `[guideSlice] Thread switch detected: ${p.meta.threadId} → ${tid}. Returning fresh state.`
+          );
+          return { ...current, hydrated: true, meta: { threadId: tid } };
         }
 
         const legacyIntent =
@@ -293,11 +374,12 @@ export const useGuideStore = create<GuideState>()(
           p.translationIntent?.isSubmitted ??
           (p.currentStep === "complete" || p.currentStep === "ready");
 
+        // Restore persisted state
         return {
           ...current,
           ...p,
           hydrated: true,
-          meta: { threadId: tid },
+          meta: { threadId: tid ?? p.meta?.threadId ?? null },
           currentStep: normalizeLegacyStep(p.currentStep),
           poem: {
             text: p.poem?.text ?? current.poem.text ?? "",
@@ -323,6 +405,10 @@ export const useGuideStore = create<GuideState>()(
             ...(p.answers || {}),
             translationIntent: legacyIntent,
           },
+          // Restore UI state if present
+          isWorkshopUnlocked:
+            p.isWorkshopUnlocked ?? current.isWorkshopUnlocked,
+          isCollapsed: p.isCollapsed ?? current.isCollapsed,
         };
       },
       onRehydrateStorage: () => (state) => {
@@ -335,8 +421,12 @@ export const useGuideStore = create<GuideState>()(
         currentStep: state.currentStep,
         poem: state.poem,
         translationIntent: state.translationIntent,
+        sourceLanguageVariety: state.sourceLanguageVariety,
         translationZone: state.translationZone,
         answers: state.answers,
+        // ADD CRITICAL FIELDS:
+        isWorkshopUnlocked: state.isWorkshopUnlocked,
+        isCollapsed: state.isCollapsed,
       }),
     }
   )
