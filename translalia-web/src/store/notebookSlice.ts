@@ -100,6 +100,8 @@ export interface NotebookState {
   startSession: () => void;
 
   reset: () => void;
+  resetToDefaults: () => void;
+  setThreadId: (threadId: string | null) => void;
 }
 
 const initialState = {
@@ -130,7 +132,7 @@ export const useNotebookStore = create<NotebookState>()(
   persist(
     (set, get) => ({
       hydrated: false,
-      meta: { threadId: getActiveThreadId() },
+      meta: { threadId: null }, // ✅ Safe default - will be set by component
       ...initialState,
 
       setCells: (cells: NotebookCell[]) =>
@@ -366,6 +368,9 @@ export const useNotebookStore = create<NotebookState>()(
 
       navigateToLine: (lineIndex: number) =>
         set((state) => {
+          console.log(`[notebookSlice.navigateToLine] Called with lineIndex: ${lineIndex}`);
+          console.log(`[notebookSlice.navigateToLine] Current state.currentLineIndex: ${state.currentLineIndex}`);
+
           // Save current work as draft if exists
           if (state.currentLineIndex !== null) {
             const currentTranslation = state.droppedCells
@@ -373,9 +378,12 @@ export const useNotebookStore = create<NotebookState>()(
               .filter(Boolean)
               .join(" ");
 
+            console.log(`[notebookSlice.navigateToLine] Current translation: "${currentTranslation}"`);
+
             if (currentTranslation.trim()) {
               const draftTranslations = new Map(state.draftTranslations);
               draftTranslations.set(state.currentLineIndex, currentTranslation);
+              console.log(`[notebookSlice.navigateToLine] Saving draft and navigating to ${lineIndex}`);
               return {
                 currentLineIndex: lineIndex,
                 draftTranslations,
@@ -385,6 +393,7 @@ export const useNotebookStore = create<NotebookState>()(
             }
           }
 
+          console.log(`[notebookSlice.navigateToLine] Navigating to ${lineIndex} without saving draft`);
           return {
             currentLineIndex: lineIndex,
             droppedCells: [], // Clear cells for new line
@@ -422,6 +431,23 @@ export const useNotebookStore = create<NotebookState>()(
 
       reset: () =>
         set({ ...initialState, meta: { threadId: getActiveThreadId() } }),
+
+      // Add method to update thread ID after mount
+      setThreadId: (threadId: string | null) => {
+        set((state) => ({
+          meta: { ...state.meta, threadId },
+        }));
+      },
+
+      // ADD THIS NEW METHOD: Reset to defaults for new thread
+      resetToDefaults: () => {
+        const tid = getActiveThreadId();
+        set({
+          ...initialState,
+          hydrated: true,
+          meta: { threadId: tid },
+        });
+      },
     }),
     {
       name: "notebook-storage",
@@ -429,19 +455,48 @@ export const useNotebookStore = create<NotebookState>()(
       storage: createJSONStorage(() => threadStorage),
       // If the persisted payload is for a different thread, ignore it
       merge: (persisted, current) => {
-        const tid = getActiveThreadId();
         const p = persisted as NotebookState;
-        if (!p || !tid) {
+
+        // No persisted data - return current
+        if (!p) {
           return {
             ...current,
             hydrated: true,
-            meta: { threadId: tid ?? null },
+            meta: { threadId: null }, // ✅ Safe default
           };
         }
-        if (p.meta?.threadId && p.meta.threadId !== tid) {
+
+        // Get thread ID from URL (source of truth)
+        const tid = getActiveThreadId();
+
+        // Thread switch detection
+        if (tid && p.meta?.threadId && p.meta.threadId !== tid) {
+          console.log(
+            `[notebookSlice] Thread switch detected: ${p.meta.threadId} → ${tid}. Returning fresh state.`
+          );
           return { ...current, hydrated: true, meta: { threadId: tid } };
         }
-        return { ...current, ...p, hydrated: true, meta: { threadId: tid } };
+
+        // Restore persisted state
+        // Note: Maps and Sets need special handling
+        const restored: NotebookState = {
+          ...current,
+          ...p,
+          hydrated: true,
+          meta: { threadId: tid ?? p.meta?.threadId ?? null },
+        };
+
+        // Restore Map and Set types properly
+        if (p.draftTranslations) {
+          restored.draftTranslations = new Map(
+            Object.entries(p.draftTranslations).map(([k, v]) => [Number(k), v])
+          );
+        }
+        if (p.modifiedCells) {
+          restored.modifiedCells = new Set(p.modifiedCells);
+        }
+
+        return restored;
       },
       onRehydrateStorage: () => (state) => {
         if (state && !state.hydrated) {
@@ -453,6 +508,18 @@ export const useNotebookStore = create<NotebookState>()(
         focusedCellIndex: state.focusedCellIndex,
         view: state.view,
         filter: state.filter,
+        // ADD CRITICAL FIELDS:
+        cells: state.cells,
+        droppedCells: state.droppedCells,
+        currentLineIndex: state.currentLineIndex,
+        mode: state.mode,
+        // Serialize Map and Set to plain objects/arrays for persistence
+        draftTranslations: Object.fromEntries(state.draftTranslations),
+        modifiedCells: Array.from(state.modifiedCells),
+        // Limit history to last 10 entries to avoid localStorage bloat
+        history: state.history,
+        lastEditedLine: state.lastEditedLine,
+        showPoemAssembly: state.showPoemAssembly,
       }),
     }
   )

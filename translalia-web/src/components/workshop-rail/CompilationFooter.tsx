@@ -9,17 +9,29 @@ import { useQueryClient } from "@tanstack/react-query";
 import { qkNotebookCells } from "@/lib/queryKeys";
 import { Check } from "lucide-react";
 
-export function CompilationFooter() {
+interface CompilationFooterProps {
+  /** Lines in the current stanza/chunk */
+  stanzaLines?: string[];
+  /** Global line offset for the current stanza */
+  globalLineOffset?: number;
+  /** Callback to deselect line and return to line selector */
+  onReturnToLineSelector?: () => void;
+}
+
+export function CompilationFooter({
+  stanzaLines,
+  globalLineOffset = 0,
+  onReturnToLineSelector,
+}: CompilationFooterProps) {
   const queryClient = useQueryClient();
   const threadId = useThreadId() || undefined;
   const selectedLineIndex = useWorkshopStore((s) => s.selectedLineIndex)!;
-  const wordOptions = useWorkshopStore((s) => s.wordOptions) || [];
-  const selections = useWorkshopStore((s) => s.selections);
   const poemLines = useWorkshopStore((s) => s.poemLines);
   const lineTranslations = useWorkshopStore((s) => s.lineTranslations);
   const selectedVariant = useWorkshopStore((s) => s.selectedVariant);
-  const clearSelections = useWorkshopStore((s) => s.clearSelections);
   const setCompletedLine = useWorkshopStore((s) => s.setCompletedLine);
+  const selectLine = useWorkshopStore((s) => s.selectLine);
+  const deselectLine = useWorkshopStore((s) => s.deselectLine);
 
   const [showSuccess, setShowSuccess] = React.useState(false);
 
@@ -29,188 +41,117 @@ export function CompilationFooter() {
   const currentSelectedVariant =
     selectedLineIndex !== null ? selectedVariant[selectedLineIndex] : null;
 
-  // Get compiled line: either from selected variant or from word selections
+  // Compiled line comes from the selected variant (line-level only)
   const compiledLine = React.useMemo(() => {
-    if (currentLineTranslation && currentSelectedVariant) {
-      const variant = currentLineTranslation.translations.find(
-        (v) => v.variant === currentSelectedVariant
-      );
-      return variant?.fullText || "";
-    }
-    // Fall back to old word selection assembly
-    return Object.keys(selections)
-      .sort((a, b) => Number(a) - Number(b))
-      .map((pos) => selections[Number(pos)])
-      .join(" ");
-  }, [currentLineTranslation, currentSelectedVariant, selections]);
+    if (!currentLineTranslation || !currentSelectedVariant) return "";
+    const variant = currentLineTranslation.translations.find(
+      (v) => v.variant === currentSelectedVariant
+    );
+    return variant?.fullText || "";
+  }, [currentLineTranslation, currentSelectedVariant]);
 
-  // Check if complete: either variant selected or all words selected
+  // Complete when a variant is selected for this line
   const isComplete = React.useMemo(() => {
-    if (currentLineTranslation && currentSelectedVariant) {
-      return true;
-    }
-    // Old workflow: check if all words are selected
-    return wordOptions?.every((_, i) => selections[i]);
-  }, [currentLineTranslation, currentSelectedVariant, wordOptions, selections]);
+    return !!(currentLineTranslation && currentSelectedVariant);
+  }, [currentLineTranslation, currentSelectedVariant]);
 
   const { mutate: saveLine, isPending } = useSaveLine();
 
   function apply() {
     if (!threadId) return;
 
-    // Use new format if line translation is available
-    if (currentLineTranslation && currentSelectedVariant) {
-      const variant = currentLineTranslation.translations.find(
-        (v) => v.variant === currentSelectedVariant
-      );
-      if (!variant) return;
+    if (!currentLineTranslation || !currentSelectedVariant) return;
 
-      saveLine(
-        {
-          threadId,
-          lineIndex: selectedLineIndex,
-          originalLine: poemLines[selectedLineIndex],
-          variant: currentSelectedVariant,
-          lineTranslation: currentLineTranslation,
-        },
-        {
-          onSuccess: (res) => {
-            // Update workshop store
-            setCompletedLine(res.lineIndex, res.translatedLine);
+    saveLine(
+      {
+        threadId,
+        lineIndex: selectedLineIndex,
+        originalLine: poemLines[selectedLineIndex],
+        variant: currentSelectedVariant,
+        lineTranslation: currentLineTranslation,
+      },
+      {
+        onSuccess: (res) => {
+          // Update workshop store
+          setCompletedLine(res.lineIndex, res.translatedLine);
 
-            // Optimistic UI update: patch notebook cells cache
-            queryClient.setQueryData(
-              qkNotebookCells(threadId),
-              (
-                prev:
-                  | {
-                      cells?: Array<{
-                        lineIndex: number;
-                        translation?: {
-                          text?: string;
-                          status?: string;
-                          lockedWords?: number[];
-                        };
-                      }>;
-                    }
-                  | undefined
-              ) => {
-                if (!prev?.cells) return prev;
-                return {
-                  ...prev,
-                  cells: prev.cells.map((c) =>
-                    c.lineIndex === res.lineIndex
-                      ? {
-                          ...c,
-                          translation: {
-                            ...(c.translation ?? {}),
-                            text: res.translatedLine,
-                            status: c.translation?.status ?? "draft",
-                            lockedWords: c.translation?.lockedWords ?? [],
-                          },
-                        }
-                      : c
-                  ),
-                };
+          // Optimistic UI update: patch notebook cells cache
+          queryClient.setQueryData(
+            qkNotebookCells(threadId),
+            (
+              prev:
+                | {
+                    cells?: Array<{
+                      lineIndex: number;
+                      translation?: {
+                        text?: string;
+                        status?: string;
+                        lockedWords?: number[];
+                      };
+                    }>;
+                  }
+                | undefined
+            ) => {
+              if (!prev?.cells) return prev;
+              return {
+                ...prev,
+                cells: prev.cells.map((c) =>
+                  c.lineIndex === res.lineIndex
+                    ? {
+                        ...c,
+                        translation: {
+                          ...(c.translation ?? {}),
+                          text: res.translatedLine,
+                          status: c.translation?.status ?? "draft",
+                          lockedWords: c.translation?.lockedWords ?? [],
+                        },
+                      }
+                    : c
+                ),
+              };
+            }
+          );
+
+          // Authoritative refetch
+          queryClient.invalidateQueries({
+            queryKey: qkNotebookCells(threadId),
+            exact: true,
+          });
+
+          // Show success feedback
+          setShowSuccess(true);
+          setTimeout(() => setShowSuccess(false), 2000);
+
+          // Auto-advance to next line after showing success message
+          if (stanzaLines && selectedLineIndex !== null) {
+            // Calculate next line index within the current stanza
+            const currentIndexInStanza = selectedLineIndex - globalLineOffset;
+            const nextIndexInStanza = currentIndexInStanza + 1;
+
+            setTimeout(() => {
+              if (nextIndexInStanza < stanzaLines.length) {
+                // There's a next line in this stanza - select it
+                const nextGlobalIndex = globalLineOffset + nextIndexInStanza;
+                selectLine(nextGlobalIndex);
+              } else {
+                // Last line in stanza - return to line selector
+                if (onReturnToLineSelector) {
+                  onReturnToLineSelector();
+                } else {
+                  deselectLine();
+                }
               }
-            );
-
-            // Authoritative refetch
-            queryClient.invalidateQueries({
-              queryKey: qkNotebookCells(threadId),
-              exact: true,
-            });
-
-            // Clear selections (for old workflow)
-            clearSelections();
-
-            // Show success feedback
-            setShowSuccess(true);
-            setTimeout(() => setShowSuccess(false), 2000);
-          },
-        }
-      );
-    } else {
-      // Old workflow: use word selections
-      const payload = Object.entries(selections).map(
-        ([position, selectedWord]) => ({
-          position: Number(position),
-          selectedWord,
-        })
-      );
-
-      saveLine(
-        {
-          threadId,
-          lineIndex: selectedLineIndex,
-          originalLine: poemLines[selectedLineIndex],
-          selections: payload,
-          wordOptions: wordOptions ?? undefined,
+            }, 1500); // Show success message for 1.5s before advancing
+          }
         },
-        {
-          onSuccess: (res) => {
-            // Update workshop store
-            setCompletedLine(res.lineIndex, res.translatedLine);
-
-            // Optimistic UI update: patch notebook cells cache
-            queryClient.setQueryData(
-              qkNotebookCells(threadId),
-              (
-                prev:
-                  | {
-                      cells?: Array<{
-                        lineIndex: number;
-                        translation?: {
-                          text?: string;
-                          status?: string;
-                          lockedWords?: number[];
-                        };
-                      }>;
-                    }
-                  | undefined
-              ) => {
-                if (!prev?.cells) return prev;
-                return {
-                  ...prev,
-                  cells: prev.cells.map((c) =>
-                    c.lineIndex === res.lineIndex
-                      ? {
-                          ...c,
-                          translation: {
-                            ...(c.translation ?? {}),
-                            text: res.translatedLine,
-                            status: c.translation?.status ?? "draft",
-                            lockedWords: c.translation?.lockedWords ?? [],
-                          },
-                        }
-                      : c
-                  ),
-                };
-              }
-            );
-
-            // Authoritative refetch
-            queryClient.invalidateQueries({
-              queryKey: qkNotebookCells(threadId),
-              exact: true,
-            });
-
-            // Clear selections
-            clearSelections();
-
-            // Show success feedback
-            setShowSuccess(true);
-            setTimeout(() => setShowSuccess(false), 2000);
-          },
-        }
-      );
-    }
+      }
+    );
   }
 
   return (
     <div className="border-t bg-white p-3">
       <div className="text-sm mb-2">
-        {compiledLine || "Select words to build a line…"}
+        {compiledLine || "Select a variant to build a line…"}
       </div>
       <div className="flex items-center gap-2">
         <Button onClick={apply} disabled={!isComplete || isPending}>
@@ -226,16 +167,10 @@ export function CompilationFooter() {
         <Button
           variant="outline"
           onClick={() => {
-            if (currentLineTranslation && currentSelectedVariant) {
-              // Clear variant selection for new workflow
-              if (selectedLineIndex !== null) {
-                useWorkshopStore
-                  .getState()
-                  .selectVariant(selectedLineIndex, null);
-              }
-            } else {
-              // Clear word selections for old workflow
-              clearSelections();
+            if (selectedLineIndex !== null) {
+              useWorkshopStore
+                .getState()
+                .selectVariant(selectedLineIndex, null);
             }
           }}
           disabled={isPending}

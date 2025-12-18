@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { routes } from "@/lib/routers";
 import { useSupabaseUser } from "@/hooks/useSupabaseUser";
 import Breadcrumbs from "@/components/nav/Breadcrumbs";
+import { useTranslations } from "next-intl";
 
 type Thread = { id: string; title: string | null; created_at: string };
 
@@ -16,6 +17,9 @@ export default function WorkspaceChatsPage() {
   const params = useParams<{ projectId: string }>();
   const projectId = params.projectId;
   const { user, loading: authLoading } = useSupabaseUser();
+  const t = useTranslations("Chats");
+  const tNav = useTranslations("Navigation");
+  const tCommon = useTranslations("Common");
 
   const { data, refetch, isFetching } = useQuery({
     enabled: !!projectId,
@@ -83,7 +87,7 @@ export default function WorkspaceChatsPage() {
     });
     const json = await res.json();
     if (!res.ok) {
-      alert(json?.error ?? "Failed to create chat");
+      alert(json?.error ?? t("createError"));
       return;
     }
     const id = (json?.thread?.id as string) || undefined;
@@ -94,8 +98,8 @@ export default function WorkspaceChatsPage() {
   }
 
   return (
-    <div className="flex min-h-screen w-full bg-slate-50 text-slate-900">
-      <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-4 py-10">
+    <div className="min-h-full w-full bg-slate-50 text-slate-900">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 py-10">
         <Breadcrumbs
           workspaceId={projectId}
           showNewChat
@@ -105,7 +109,7 @@ export default function WorkspaceChatsPage() {
               className="rounded-full bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-500 disabled:opacity-60"
               disabled={isFetching}
             >
-              New chat
+              {t("newChat")}
             </button>
           }
         />
@@ -117,15 +121,12 @@ export default function WorkspaceChatsPage() {
                 className="text-sm font-semibold text-slate-500 transition hover:text-slate-700"
                 onClick={() => router.push(routes.workspaces())}
               >
-                ← Back to workspaces
+                {tNav("backToWorkspaces")}
               </button>
               <h1 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-                Chats
+                {t("title")}
               </h1>
-              <p className="text-base text-slate-600">
-                Every conversation inside this workspace appears here. Keep your
-                drafts, reviews, and reflections neatly organized.
-              </p>
+              <p className="text-base text-slate-600">{t("description")}</p>
             </div>
           </div>
         </section>
@@ -134,10 +135,10 @@ export default function WorkspaceChatsPage() {
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
-                Threads
+                {t("threads")}
               </p>
               <h2 className="text-2xl font-semibold text-slate-900">
-                {isFetching ? "Loading…" : "Chats in this workspace"}
+                {isFetching ? tCommon("loading") : t("heading")}
               </h2>
             </div>
           </div>
@@ -145,39 +146,37 @@ export default function WorkspaceChatsPage() {
           <ul className="mt-8 flex flex-1 flex-col gap-4">
             {(data ?? []).length === 0 ? (
               <li className="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 px-5 py-10 text-center text-sm text-slate-500">
-                No chats yet. Start one to collect new translations or reviews
-                with your class.
+                {t("noChats")}
               </li>
             ) : (
-              data!.map((t) => (
+              data!.map((thread) => (
                 <li
-                  key={t.id}
+                  key={thread.id}
                   className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-5 transition hover:border-sky-200 hover:shadow-lg sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div>
                     <p className="text-lg font-semibold text-slate-900">
-                      {t.title?.trim() || "Untitled chat"}
+                      {thread.title?.trim() || t("untitledChat")}
                     </p>
                     <p className="text-sm text-slate-500">
-                      {new Date(t.created_at).toLocaleString()}
+                      {new Date(thread.created_at).toLocaleString()}
                     </p>
                   </div>
                   <div className="flex flex-col gap-3 sm:flex-row">
                     <button
                       className="inline-flex items-center justify-center rounded-full border border-slate-300 px-5 py-2 text-sm font-semibold text-slate-900 transition hover:border-sky-200 hover:bg-sky-50"
                       onClick={() =>
-                        router.push(routes.projectWithThread(projectId, t.id))
+                        router.push(
+                          routes.projectWithThread(projectId, thread.id)
+                        )
                       }
                     >
-                      Open chat
+                      {t("openChat")}
                     </button>
                     <button
                       className="inline-flex items-center justify-center rounded-full border border-red-200 px-5 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50"
                       onClick={async () => {
-                        if (
-                          !confirm("Delete this chat? This cannot be undone.")
-                        )
-                          return;
+                        if (!confirm(t("deleteConfirm"))) return;
                         const { data: sessionData } =
                           await supabase.auth.getSession();
                         const accessToken = sessionData.session?.access_token;
@@ -189,17 +188,17 @@ export default function WorkspaceChatsPage() {
                               ? { Authorization: `Bearer ${accessToken}` }
                               : {}),
                           },
-                          body: JSON.stringify({ id: t.id }),
+                          body: JSON.stringify({ id: thread.id }),
                         });
                         if (!res.ok) {
                           const json = await res.json().catch(() => ({}));
-                          alert(json?.error || "Failed to delete chat");
+                          alert(json?.error || t("deleteError"));
                           return;
                         }
                         await refetch();
                       }}
                     >
-                      Delete
+                      {tCommon("delete")}
                     </button>
                   </div>
                 </li>

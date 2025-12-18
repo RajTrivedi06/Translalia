@@ -14,12 +14,22 @@ import {
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { GuideRail } from "@/components/guide";
 import { WorkshopRail } from "@/components/workshop-rail/WorkshopRail";
-import NotebookPhase6 from "@/components/notebook/NotebookPhase6";
-import { setActiveThreadId } from "@/lib/threadStorage";
+import { NotebookViewContainer } from "@/components/notebook/NotebookViewContainer";
+import { CollapsedPanelTab } from "../../../../../../../components/common/CollapsedPanelTab";
+import {
+  setActiveThreadId,
+  clearActiveThreadId,
+  getActiveThreadId,
+  initializeThreadId,
+  threadStorage,
+} from "@/lib/threadStorage";
 import { type DragData } from "@/types/drag";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { useNotebookStore } from "@/store/notebookSlice";
 import { createCellFromDragData } from "@/lib/notebook/cellHelpers";
+import { useGuideStore } from "@/store/guideSlice";
+import { useWorkshopStore } from "@/store/workshopSlice";
 
 interface ThreadPageClientProps {
   projectId: string;
@@ -31,9 +41,27 @@ export default function ThreadPageClient({
   threadId,
 }: ThreadPageClientProps) {
   const t = useTranslations("Thread");
-  useEffect(() => {
-    setActiveThreadId(threadId ?? null);
-  }, [threadId]);
+
+  // ============================================================
+  // CRITICAL: Set thread ID SYNCHRONOUSLY before ANY store access
+  // This prevents store hydration from using stale thread IDs
+  // ============================================================
+  if (typeof window !== "undefined") {
+    const currentCachedId = getActiveThreadId();
+
+    // Force update if different from what we expect
+    if (currentCachedId !== threadId) {
+      console.log(
+        `[ThreadPageClient] Synchronously setting thread ID: ${currentCachedId} → ${threadId}`
+      );
+      setActiveThreadId(threadId ?? null);
+    }
+  }
+
+  // NOW safe to access stores (they will hydrate with correct thread ID)
+  const guideState = useGuideStore();
+  const workshopState = useWorkshopStore();
+  const notebookState = useNotebookStore();
 
   const addCell = useNotebookStore((s) => s.addCell);
   const reorderCells = useNotebookStore((s) => s.reorderCells);
@@ -48,8 +76,143 @@ export default function ThreadPageClient({
   );
 
   const [activeDragData, setActiveDragData] = useState<DragData | null>(null);
+
+  // Get workshop state to determine initial collapse state
+  const guideStoreHydrated = useGuideStore((s) => s.hydrated);
+  const guideStoreMeta = useGuideStore((s) => s.meta);
+  const isWorkshopUnlocked = useGuideStore((s) => s.isWorkshopUnlocked);
+  const workshopStoreHydrated = useWorkshopStore((s) => s.hydrated);
+  const workshopStoreMeta = useWorkshopStore((s) => s.meta);
+  const completedLines = useWorkshopStore((s) => s.completedLines);
+
+  // Initialize collapse state to false for new threads
+  // Will be updated in useEffect based on actual thread state
   const [isGettingStartedCollapsed, setIsGettingStartedCollapsed] =
     useState(false);
+
+  const isStartupFocusMode = !isWorkshopUnlocked && !isGettingStartedCollapsed;
+
+  // Reset and update collapse state when threadId changes or store state updates
+  // Only collapse if:
+  // 1. Stores are hydrated
+  // 2. The store's meta.threadId matches the current threadId (ensures we're looking at the right thread's data)
+  // 3. AND (workshop is unlocked OR has existing work)
+  useEffect(() => {
+    // Wait for stores to be hydrated before making decisions
+    if (!guideStoreHydrated || !workshopStoreHydrated) {
+      // Keep expanded while stores are hydrating
+      setIsGettingStartedCollapsed(false);
+      return;
+    }
+
+    // Verify we're looking at the correct thread's store data
+    const isGuideStoreForThisThread = guideStoreMeta.threadId === threadId;
+    const isWorkshopStoreForThisThread =
+      workshopStoreMeta.threadId === threadId;
+
+    // Only use store values if they belong to this thread
+    if (isGuideStoreForThisThread && isWorkshopStoreForThisThread) {
+      const hasWorkshopData = Object.keys(completedLines || {}).length > 0;
+      if (isWorkshopUnlocked || hasWorkshopData) {
+        setIsGettingStartedCollapsed(true);
+      } else {
+        // If no work exists for this thread, ensure it's expanded
+        setIsGettingStartedCollapsed(false);
+      }
+    } else {
+      // If stores are for a different thread, start expanded
+      setIsGettingStartedCollapsed(false);
+    }
+  }, [
+    threadId,
+    guideStoreHydrated,
+    guideStoreMeta.threadId,
+    workshopStoreHydrated,
+    workshopStoreMeta.threadId,
+    isWorkshopUnlocked,
+    completedLines,
+  ]);
+
+  // Persist collapse state to threadStorage
+  useEffect(() => {
+    threadStorage.setItem("guide-collapsed", String(isGettingStartedCollapsed));
+  }, [isGettingStartedCollapsed]);
+
+  // ============================================================
+  // Effect: Initialize thread ID properly after mount
+  // ============================================================
+  useEffect(() => {
+    // Double-check: Update stores with thread ID
+    if (threadId) {
+      // Ensure all stores have correct thread ID
+      if (guideState.meta.threadId !== threadId) {
+        useGuideStore.getState().setThreadId(threadId);
+      }
+      if (workshopState.meta.threadId !== threadId) {
+        useWorkshopStore.getState().setThreadId(threadId);
+      }
+      if (notebookState.meta.threadId !== threadId) {
+        useNotebookStore.getState().setThreadId(threadId);
+      }
+
+      // Initialize thread storage
+      initializeThreadId(threadId);
+    }
+
+    // Double-check: If stores have wrong thread ID, reset them
+    const guideThreadId = guideState.meta.threadId;
+    const workshopThreadId = workshopState.meta.threadId;
+    const notebookThreadId = notebookState.meta.threadId;
+
+    if (guideThreadId && guideThreadId !== threadId) {
+      console.log(
+        `[ThreadPageClient] Detected stale guide state. Resetting from ${guideThreadId} to ${threadId}`
+      );
+      useGuideStore.getState().resetToDefaults();
+    }
+
+    if (workshopThreadId && workshopThreadId !== threadId) {
+      console.log(
+        `[ThreadPageClient] Detected stale workshop state. Resetting from ${workshopThreadId} to ${threadId}`
+      );
+      useWorkshopStore.getState().resetToDefaults();
+    }
+
+    if (notebookThreadId && notebookThreadId !== threadId) {
+      console.log(
+        `[ThreadPageClient] Detected stale notebook state. Resetting from ${notebookThreadId} to ${threadId}`
+      );
+      useNotebookStore.getState().resetToDefaults();
+    }
+
+    // Cleanup on unmount
+    return () => {
+      clearActiveThreadId();
+    };
+  }, [
+    threadId,
+    guideState.meta.threadId,
+    workshopState.meta.threadId,
+    notebookState.meta.threadId,
+  ]);
+
+  // ============================================================
+  // Effect: Cross-store coordination (guide <-> workshop)
+  // ============================================================
+  useEffect(() => {
+    // If workshop has data, ensure guide is unlocked and collapsed
+    const hasWorkshopData =
+      Object.keys(workshopState.completedLines || {}).length > 0;
+
+    if (hasWorkshopData && !guideState.isWorkshopUnlocked) {
+      console.log("[ThreadPageClient] Workshop has data. Unlocking guide.");
+      useGuideStore.getState().unlockWorkshop();
+    }
+
+    if (hasWorkshopData || guideState.isWorkshopUnlocked) {
+      setIsGettingStartedCollapsed(true);
+    }
+  }, [workshopState.completedLines, guideState.isWorkshopUnlocked]);
 
   const handleDragStart = (event: DragStartEvent) => {
     const dragData = event.active.data.current as DragData;
@@ -107,16 +270,21 @@ export default function ThreadPageClient({
         {/* Main area – fills remaining viewport height */}
         <div className="flex-1 min-h-0 overflow-hidden px-2 pb-2 pt-2 md:px-4 sm:px-6 lg:px-8">
           <div
-            className="relative grid h-full min-h-0 gap-3 md:gap-4 lg:gap-6"
+            className={cn(
+              "relative grid h-full min-h-0 gap-0",
+              "transition-[grid-template-columns] duration-500 ease-in-out"
+            )}
             style={{
-              // Expanded: 3 columns. Collapsed: skinny rail + 50 / 50 center/right.
-              gridTemplateColumns: isGettingStartedCollapsed
+              // Startup focus: 80% guide, 10/10 tabs. Working: 3 columns. Collapsed: skinny guide + 50/50.
+              gridTemplateColumns: isStartupFocusMode
+                ? "80% 10% 10%"
+                : isGettingStartedCollapsed
                 ? "72px minmax(0,1fr) minmax(0,1fr)"
-                : "minmax(220px,0.8fr) minmax(0,1.4fr) minmax(220px,0.8fr)",
+                : "minmax(280px,22%) minmax(0,1fr) minmax(0,1fr)",
             }}
           >
             {/* LEFT: Let’s get started / collapsed rail */}
-            <div className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-white shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
+            <div className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-l-2xl rounded-r-none bg-white shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
               {!isGettingStartedCollapsed ? (
                 <>
                   <div className="relative px-4 py-3">
@@ -131,13 +299,15 @@ export default function ThreadPageClient({
                         setIsGettingStartedCollapsed(!isGettingStartedCollapsed)
                       }
                       className="absolute right-4 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-slate-300 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
-                      aria-label="Collapse guide panel"
+                      aria-label={t("collapseGuidePanel")}
                     >
                       <ChevronLeft className="h-4 w-4" />
                     </button>
                   </div>
                   <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4">
                     <GuideRail
+                      projectId={projectId}
+                      threadId={threadId}
                       showHeading={false}
                       onCollapseToggle={() =>
                         setIsGettingStartedCollapsed((prevState) => !prevState)
@@ -156,7 +326,7 @@ export default function ThreadPageClient({
                       setIsGettingStartedCollapsed(!isGettingStartedCollapsed)
                     }
                     className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow transition hover:border-slate-300 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
-                    aria-label="Expand guide panel"
+                    aria-label={t("expandGuidePanel")}
                   >
                     <ChevronRight className="h-5 w-5" />
                   </button>
@@ -166,30 +336,54 @@ export default function ThreadPageClient({
             </div>
 
             {/* CENTER: Workshop – full-height, scrolls inside */}
-            <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-white shadow-sm">
-              <div className="px-4 py-3">
-                <h2 className="text-xl font-semibold tracking-tight text-slate-900">
-                  {t("workshop")}
-                </h2>
-                <p className="text-sm text-slate-500">
-                  {t("workshopDescription")}
-                </p>
-              </div>
-              <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-2 md:p-3">
-                <WorkshopRail showHeaderTitle={false} />
-              </div>
+            <div
+              className={cn(
+                "flex h-full min-h-0 flex-col overflow-hidden border-l border-slate-200/50 bg-white shadow-sm",
+                "rounded-none transition-all duration-500 ease-in-out",
+                isStartupFocusMode && "bg-white/70"
+              )}
+            >
+              {isStartupFocusMode ? (
+                <CollapsedPanelTab label={t("workshop")} />
+              ) : (
+                <>
+                  <div className="px-4 py-3">
+                    <h2 className="text-xl font-semibold tracking-tight text-slate-900">
+                      {t("workshop")}
+                    </h2>
+                    <p className="text-sm text-slate-500">
+                      {t("workshopDescription")}
+                    </p>
+                  </div>
+                  <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-2 md:p-3">
+                    <WorkshopRail showHeaderTitle={false} />
+                  </div>
+                </>
+              )}
             </div>
 
             {/* RIGHT: Notebook – full-height, scrolls inside */}
-            <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-white shadow-sm">
-              <div className="px-4 py-3">
-                <h2 className="text-xl font-semibold tracking-tight text-slate-900">
-                  {t("notebook")}
-                </h2>
-              </div>
-              <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-2 md:p-3">
-                <NotebookPhase6 projectId={projectId} showTitle={false} />
-              </div>
+            <div
+              className={cn(
+                "flex h-full min-h-0 flex-col overflow-hidden border-l border-slate-200/50 bg-white shadow-sm",
+                "rounded-r-2xl rounded-l-none transition-all duration-500 ease-in-out",
+                isStartupFocusMode && "bg-white/70"
+              )}
+            >
+              {isStartupFocusMode ? (
+                <CollapsedPanelTab label={t("notebook")} />
+              ) : (
+                <>
+                  <div className="px-4 py-3">
+                    <h2 className="text-xl font-semibold tracking-tight text-slate-900">
+                      {t("notebook")}
+                    </h2>
+                  </div>
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    <NotebookViewContainer projectId={projectId} />
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

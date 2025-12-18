@@ -68,3 +68,21 @@ export interface InterviewData {
   lockedPhrases: string[];
   focusWords: string[];
 }
+
+// =========================
+// Issue #12: Additional Suggestions
+// =========================
+
+export interface AdditionalWordSuggestion {
+  word: string;
+  reasoning: string;
+  register: "formal" | "neutral" | "informal" | "poetic" | "technical" | string;
+  literalness: number; // 0-1 scale
+}
+
+export interface AdditionalSuggestionsState {
+  suggestions: AdditionalWordSuggestion[];
+  lineIndex: number | null;
+  isLoading: boolean;
+  lastUserGuidance: string | null;
+}

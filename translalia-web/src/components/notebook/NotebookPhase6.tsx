@@ -12,8 +12,8 @@ import {
   KeyboardShortcutsHint,
 } from "@/lib/hooks/useKeyboardShortcuts";
 import { useAutoSave, useAutoSaveIndicator } from "@/lib/hooks/useAutoSave";
+import { useSaveManualLine } from "@/lib/hooks/useWorkshopFlow";
 import { useDndMonitor } from "@dnd-kit/core";
-import { LineProgressIndicator } from "./LineProgressIndicator";
 import { FinalizeLineDialog } from "./FinalizeLineDialog";
 import { PoemAssembly } from "./PoemAssembly";
 import { ComparisonView } from "./ComparisonView";
@@ -26,23 +26,7 @@ import { PoemSuggestionsPanel } from "./PoemSuggestionsPanel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import Sheet, {
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import {
-  FileText,
-  Save,
-  Undo2,
-  Redo2,
-  AlertCircle,
-  CheckCircle,
-  ArrowRightLeft, // Correct import name
-  Sparkles,
-  Menu,
-  X,
-} from "lucide-react";
+import { FileText, AlertCircle, CheckCircle } from "lucide-react";
 
 interface NotebookPhase6Props {
   projectId?: string;
@@ -82,10 +66,6 @@ export default function NotebookPhase6({
   const updateCellText = useNotebookStore((s) => s.updateCellText);
   const removeCell = useNotebookStore((s) => s.removeCell);
   const markCellModified = useNotebookStore((s) => s.markCellModified);
-  const undo = useNotebookStore((s) => s.undo);
-  const redo = useNotebookStore((s) => s.redo);
-  const canUndoAction = useNotebookStore((s) => s.canUndo)();
-  const canRedoAction = useNotebookStore((s) => s.canRedo)();
   const saveDraftTranslation = useNotebookStore((s) => s.saveDraftTranslation);
 
   // Workshop state
@@ -93,6 +73,7 @@ export default function NotebookPhase6({
   const workshopSelectedLine = useWorkshopStore((s) => s.selectedLineIndex);
   const completedLines = useWorkshopStore((s) => s.completedLines);
   const setCompletedLine = useWorkshopStore((s) => s.setCompletedLine);
+  const selectLine = useWorkshopStore((s) => s.selectLine);
 
   // Workspace state - use prop if provided, otherwise fall back to store
   const storeProjectId = useWorkspace((s) => s.projectId);
@@ -102,7 +83,6 @@ export default function NotebookPhase6({
   const [showFinalizeDialog, setShowFinalizeDialog] = React.useState(false);
   const [showShortcutsHelp, setShowShortcutsHelp] = React.useState(false);
   const [showComparisonView, setShowComparisonView] = React.useState(false);
-  const [showComparison, setShowComparison] = React.useState(false);
   const [showJourneySummary, setShowJourneySummary] = React.useState(false);
   const [showJourneyReflection, setShowJourneyReflection] =
     React.useState(false);
@@ -117,7 +97,6 @@ export default function NotebookPhase6({
   const [isComposerManuallyEdited, setIsComposerManuallyEdited] =
     React.useState(false);
   const [editingCellId, setEditingCellId] = React.useState<string | null>(null);
-  const [actionMenuOpen, setActionMenuOpen] = React.useState(false);
 
   // AI Assistant state
   const [showAIPanel, setShowAIPanel] = React.useState(false);
@@ -125,6 +104,9 @@ export default function NotebookPhase6({
   const threadId = useThreadId();
   const guideAnswers = useGuideStore((s) => s.answers);
   const poem = useGuideStore((s) => s.poem);
+
+  // Save manual line mutation
+  const saveManualLine = useSaveManualLine();
 
   useDndMonitor({
     onDragStart: () => setIsDragActive(true),
@@ -160,11 +142,26 @@ export default function NotebookPhase6({
   }, [editingCellId, droppedCells]);
 
   // Keep notebook line in sync with workshop selection
+  // BUT: Only sync FROM workshop TO notebook, not the other way around
+  // Use a ref to track if we're actively navigating in the notebook
+  const isNavigatingInNotebook = React.useRef(false);
+
   React.useEffect(() => {
+    // Don't sync back to workshop if we just navigated in the notebook
+    if (isNavigatingInNotebook.current) {
+      isNavigatingInNotebook.current = false;
+      return;
+    }
+
+    // Sync notebook to workshop selection (when user clicks a line in Workshop)
     if (
       workshopSelectedLine !== null &&
       workshopSelectedLine !== currentLineIndex
     ) {
+      console.log(
+        "[NotebookPhase6] Syncing to workshop line:",
+        workshopSelectedLine
+      );
       navigateToLine(workshopSelectedLine);
     }
   }, [workshopSelectedLine, currentLineIndex, navigateToLine]);
@@ -304,43 +301,111 @@ export default function NotebookPhase6({
   }, [droppedCells, currentLineIndex, saveDraftTranslation]);
 
   // Handle finalization
-  const handleFinalize = React.useCallback(() => {
-    if (currentLineIndex === null) return;
+  const handleFinalize = React.useCallback(async () => {
+    console.log("[handleFinalize] START - currentLineIndex:", currentLineIndex);
 
-    const translation = getCurrentTranslation();
-    if (!translation.trim()) {
-      alert("Cannot finalize an empty translation");
+    if (currentLineIndex === null) {
+      console.log("[handleFinalize] ABORT - currentLineIndex is null");
       return;
     }
 
-    // Save to workshop completed lines
+    if (!threadId) {
+      console.error("[handleFinalize] ABORT - no threadId");
+      alert("Cannot save: no thread ID");
+      return;
+    }
+
+    const translation = getCurrentTranslation();
+    console.log("[handleFinalize] Translation:", translation);
+
+    if (!translation.trim()) {
+      alert("Cannot save an empty translation");
+      return;
+    }
+
+    console.log(
+      `[handleFinalize] Saving line ${currentLineIndex}:`,
+      translation
+    );
+
+    // Save to workshop completed lines (local state)
     setCompletedLine(currentLineIndex, translation);
 
     // Track that this line was manually finalized by the user
     setManuallyFinalizedLines((prev) => {
       const updated = new Set(prev);
       updated.add(currentLineIndex);
+      console.log(
+        "[handleFinalize] Updated manuallyFinalizedLines:",
+        Array.from(updated)
+      );
       return updated;
     });
 
-    // Clear notebook state for this line
-    finalizeCurrentLine();
-
-    // Close dialog
+    // Close dialog first
     setShowFinalizeDialog(false);
 
-    // Navigate to next line if available
+    // Clear notebook state for this line
+    console.log("[handleFinalize] Calling finalizeCurrentLine()");
+    finalizeCurrentLine();
+
+    // Persist to Supabase
+    try {
+      console.log("[handleFinalize] Persisting to Supabase via API...");
+      await saveManualLine.mutateAsync({
+        threadId,
+        lineIndex: currentLineIndex,
+        originalLine: poemLines[currentLineIndex] || "",
+        translatedLine: translation,
+      });
+      console.log("[handleFinalize] ✓ Successfully persisted to Supabase");
+    } catch (error) {
+      console.error("[handleFinalize] Failed to persist to Supabase:", error);
+      alert("Warning: Translation saved locally but failed to sync to server");
+    }
+
+    // Navigate to next line if available (use setTimeout to ensure state updates)
     const nextLineIndex = currentLineIndex + 1;
+    console.log(
+      `[handleFinalize] Next line index: ${nextLineIndex}, Total lines: ${poemLines.length}`
+    );
+
     if (nextLineIndex < poemLines.length) {
-      navigateToLine(nextLineIndex);
+      console.log(
+        `[handleFinalize] Will navigate to line ${nextLineIndex} after delay`
+      );
+      // Use setTimeout to ensure dialog closes and state updates before navigation
+      setTimeout(() => {
+        console.log(`[handleFinalize] NOW navigating to line ${nextLineIndex}`);
+        // Set flag to prevent workshop sync from overriding our navigation
+        isNavigatingInNotebook.current = true;
+
+        // Update both Notebook AND Workshop to keep them in sync
+        navigateToLine(nextLineIndex);
+        selectLine(nextLineIndex); // Sync Workshop to same line
+
+        console.log(
+          `[handleFinalize] navigateToLine() and selectLine() called for line ${nextLineIndex}`
+        );
+      }, 100);
+    } else {
+      console.log(
+        `[handleFinalize] Last line reached (${currentLineIndex + 1}/${
+          poemLines.length
+        }), not navigating`
+      );
     }
   }, [
     currentLineIndex,
+    threadId,
     getCurrentTranslation,
     setCompletedLine,
+    setManuallyFinalizedLines,
     finalizeCurrentLine,
-    poemLines.length,
+    saveManualLine,
+    poemLines,
     navigateToLine,
+    selectLine,
   ]);
 
   // AI Assistant handlers
@@ -434,16 +499,6 @@ export default function NotebookPhase6({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [currentLineIndex, composerValue, showAIPanel, handleOpenAIAssist]);
 
-  const createMenuActionHandler = React.useCallback(
-    (fn: () => void | Promise<void>) => {
-      return async () => {
-        await fn();
-        setActionMenuOpen(false);
-      };
-    },
-    [setActionMenuOpen]
-  );
-
   // Show poem assembly view
   if (showPoemAssembly) {
     return (
@@ -489,149 +544,23 @@ export default function NotebookPhase6({
                   <span>{timeSinceSave}</span>
                 </div>
               )}
-              <Sheet open={actionMenuOpen} onOpenChange={setActionMenuOpen}>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="inline-flex items-center gap-2 px-3"
-                  onClick={() => setActionMenuOpen(true)}
-                >
-                  <Menu className="h-4 w-4" />
-                </Button>
-                <SheetContent
-                  side="right"
-                  className="max-w-[400px]"
-                  ariaLabelledby="notebook-actions-title"
-                >
-                  <SheetHeader className="bg-slate-50">
-                    <SheetTitle
-                      id="notebook-actions-title"
-                      className="text-base text-slate-900"
-                    >
-                      Notebook actions
-                    </SheetTitle>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-slate-500 hover:text-slate-900"
-                      onClick={() => setActionMenuOpen(false)}
-                    >
-                      <X className="h-4 w-4" />
-                      <span className="sr-only">Close actions</span>
-                    </Button>
-                  </SheetHeader>
-                  <div className="space-y-4 overflow-y-auto p-4">
-                    <div className="space-y-2">
-                      <p className="text-xs font-semibold uppercase text-slate-500">
-                        Session
-                      </p>
-                      <NotebookActionButton
-                        icon={Save}
-                        label="Save now"
-                        description="Cmd/Ctrl + S"
-                        onClick={createMenuActionHandler(saveNow)}
-                        disabled={!isDirty}
-                      />
-                      <NotebookActionButton
-                        icon={Undo2}
-                        label="Undo"
-                        description="Cmd/Ctrl + Z"
-                        onClick={createMenuActionHandler(undo)}
-                        disabled={!canUndoAction}
-                      />
-                      <NotebookActionButton
-                        icon={Redo2}
-                        label="Redo"
-                        description="Cmd/Ctrl + Shift + Z"
-                        onClick={createMenuActionHandler(redo)}
-                        disabled={!canRedoAction}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <p className="text-xs font-semibold uppercase text-slate-500">
-                        Line tools
-                      </p>
-                      <NotebookActionButton
-                        icon={ArrowRightLeft}
-                        label={
-                          showComparison
-                            ? "Hide inline compare"
-                            : "Inline compare"
-                        }
-                        description="Peek at the source beside your draft"
-                        onClick={createMenuActionHandler(() =>
-                          setShowComparison((prev) => !prev)
-                        )}
-                      />
-                      {currentLineIndex !== null && composerValue.trim() && (
-                        <NotebookActionButton
-                          icon={Sparkles}
-                          label="AI Assist"
-                          description="Let AI refine this line (Cmd/Ctrl+Shift+A)"
-                          onClick={createMenuActionHandler(handleOpenAIAssist)}
-                        />
-                      )}
-                      <NotebookActionButton
-                        icon={ArrowRightLeft}
-                        label="Compare in modal"
-                        description="Open a detailed comparison view"
-                        onClick={createMenuActionHandler(() =>
-                          setShowComparisonView(true)
-                        )}
-                      />
-                      {Object.keys(completedLines).length > 0 && threadId && (
-                        <NotebookActionButton
-                          icon={Sparkles}
-                          label="Poem suggestions"
-                          description="Ideas for tone, flow, style"
-                          onClick={createMenuActionHandler(() =>
-                            setShowPoemSuggestions(true)
-                          )}
-                        />
-                      )}
-                    </div>
-
-                    <div className="space-y-2">
-                      <p className="text-xs font-semibold uppercase text-slate-500">
-                        Workflow
-                      </p>
-                      <NotebookActionButton
-                        icon={Sparkles}
-                        label="Journey reflection"
-                        description="Capture what you’ve learned"
-                        onClick={createMenuActionHandler(() =>
-                          setShowJourneyReflection(true)
-                        )}
-                        disabled={Object.keys(completedLines).length === 0}
-                      />
-                      <NotebookActionButton
-                        icon={FileText}
-                        label="View assembled poem"
-                        description="Open the poem assembly canvas"
-                        onClick={createMenuActionHandler(() =>
-                          togglePoemAssembly()
-                        )}
-                      />
-                    </div>
-                  </div>
-                </SheetContent>
-              </Sheet>
             </div>
           </div>
         </div>
 
         {/* Line Badge */}
         {currentLineIndex !== null && (
-          <div className="mb-3">
+          <div className="mb-3 flex items-center gap-2">
             <Badge variant="secondary" className="text-xs">
               Line {currentLineIndex + 1} of {poemLines.length}
             </Badge>
+            {manuallyFinalizedLines.has(currentLineIndex) && (
+              <Badge className="text-xs bg-green-100 text-green-700 border-green-300">
+                ✓ Saved
+              </Badge>
+            )}
           </div>
         )}
-
-        {/* Line Progress Indicator */}
-        <LineProgressIndicator />
       </div>
 
       {/* Content Area */}
@@ -790,7 +719,7 @@ export default function NotebookPhase6({
                   onClick={() => setShowFinalizeDialog(true)}
                   disabled={!getCurrentTranslation().trim()}
                 >
-                  Finalize Line (⌘↵)
+                  Save Line (⌘↵)
                 </Button>
               </div>
             </div>
@@ -899,44 +828,5 @@ export default function NotebookPhase6({
         </div>
       )}
     </div>
-  );
-}
-
-interface NotebookActionButtonProps {
-  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
-  label: string;
-  description?: string;
-  onClick: () => void | Promise<void>;
-  disabled?: boolean;
-}
-
-function NotebookActionButton({
-  icon: Icon,
-  label,
-  description,
-  onClick,
-  disabled = false,
-}: NotebookActionButtonProps) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`w-full rounded-lg border border-slate-200 px-3 py-2 text-left text-sm transition ${
-        disabled
-          ? "cursor-not-allowed opacity-60"
-          : "hover:border-slate-300 hover:bg-slate-50"
-      }`}
-    >
-      <div className="flex items-start gap-3">
-        <Icon className="mt-0.5 h-4 w-4 text-slate-500" />
-        <div className="space-y-0.5">
-          <p className="font-semibold text-slate-900">{label}</p>
-          {description ? (
-            <p className="text-xs text-slate-500">{description}</p>
-          ) : null}
-        </div>
-      </div>
-    </button>
   );
 }

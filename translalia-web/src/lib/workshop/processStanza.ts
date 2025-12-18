@@ -126,6 +126,11 @@ export async function processStanza({
 }: ProcessStanzaParams): Promise<void> {
   const totalLines = stanza.lines.length;
   const translatedLines: TranslatedLine[] = [];
+  const targetLang = guideAnswers.targetLanguage?.lang?.trim();
+  const targetVariety = guideAnswers.targetLanguage?.variety?.trim();
+  const targetLanguage = targetLang
+    ? `${targetLang}${targetVariety ? ` (${targetVariety})` : ""}`
+    : "the target language";
 
   for (let i = 0; i < totalLines; i += 1) {
     const lineText = stanza.lines[i];
@@ -166,6 +171,7 @@ export async function processStanza({
         nextLine,
         guideAnswers,
         sourceLanguage,
+        targetLanguage,
         audit:
           auditUserId !== undefined
             ? {
@@ -219,7 +225,8 @@ export async function processStanza({
 
       // If retryable and under max retries, re-queue with backoff (Feature 7)
       if (retryable && stanzaState) {
-        const chunkOrStanzaStates = stanzaState.chunks || stanzaState.stanzas || {};
+        const chunkOrStanzaStates =
+          stanzaState.chunks || stanzaState.stanzas || {};
         const currentRetries = chunkOrStanzaStates[stanzaIndex]?.retries ?? 0;
         const maxRetries = chunkOrStanzaStates[stanzaIndex]?.maxRetries ?? 3;
 
@@ -246,7 +253,10 @@ export async function processStanza({
       // Permanent error or max retries exceeded: mark stanza as failed
       await updateStanzaStatus(threadId, stanzaIndex, {
         status: "failed",
-        retries: stanzaState?.chunks?.[stanzaIndex]?.retries ?? stanzaState?.stanzas?.[stanzaIndex]?.retries ?? 0,
+        retries:
+          stanzaState?.chunks?.[stanzaIndex]?.retries ??
+          stanzaState?.stanzas?.[stanzaIndex]?.retries ??
+          0,
       });
 
       console.error(

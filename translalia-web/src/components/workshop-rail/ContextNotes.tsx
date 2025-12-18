@@ -11,6 +11,7 @@ import {
   ThumbsDown,
 } from "lucide-react";
 import { FEATURE_VERIFICATION_CONTEXT } from "@/lib/featureFlags";
+import { useTranslations } from "next-intl";
 
 interface ContextNotesProps {
   threadId: string;
@@ -35,6 +36,7 @@ export function ContextNotes({
   tokenIndex,
   wordOptionsForLine,
 }: ContextNotesProps) {
+  const t = useTranslations("ContextNotes");
   const [isExpanded, setIsExpanded] = useState(false);
   const [feedback, setFeedback] = useState<"helpful" | "unhelpful" | null>(
     null
@@ -91,10 +93,10 @@ export function ContextNotes({
         onClick={() => setIsExpanded(!isExpanded)}
         className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors w-full"
         aria-expanded={isExpanded}
-        aria-label={isExpanded ? "Hide context notes" : "Show context notes"}
+        aria-label={t("understandingOptions")}
       >
         <Lightbulb className="w-4 h-4" />
-        <span>Understanding your options</span>
+        <span>{t("understandingOptions")}</span>
         {isExpanded ? (
           <ChevronUp className="w-4 h-4 ml-auto" />
         ) : (
@@ -109,7 +111,7 @@ export function ContextNotes({
           {isLoading && (
             <div className="flex items-center gap-2 text-sm text-gray-500">
               <div className="animate-spin h-4 w-4 border-2 border-gray-300 border-t-gray-600 rounded-full" />
-              <span>Generating insights...</span>
+              <span>{t("generatingInsights")}</span>
             </div>
           )}
 
@@ -117,7 +119,7 @@ export function ContextNotes({
           {error && (
             <div className="text-sm text-red-600 flex items-center gap-2">
               <Info className="w-4 h-4" />
-              <span>Unable to load context notes</span>
+              <span>{t("unableToLoad")}</span>
             </div>
           )}
 
@@ -138,37 +140,36 @@ export function ContextNotes({
 
               {/* Subtle note about educational purpose */}
               <p className="text-xs text-gray-500 italic mt-2">
-                These notes explain considerations—not which option is
-                &quot;best.&quot; Multiple valid translations exist!
+                {t("educationalNote")}
               </p>
 
               {/* Feedback buttons */}
               {!feedback ? (
                 <div className="flex items-center justify-end gap-2 mt-3 pt-3 border-t border-blue-200">
                   <span className="text-xs text-gray-500 mr-2">
-                    Was this helpful?
+                    {t("wasHelpful")}
                   </span>
                   <button
                     onClick={() => submitFeedback("helpful")}
                     className="flex items-center gap-1 px-2 py-1 text-xs text-gray-600 hover:text-green-600 hover:bg-green-50 rounded transition-colors"
-                    title="Mark as helpful"
+                    title={t("markHelpful")}
                   >
                     <ThumbsUp className="w-3 h-3" />
-                    <span>Yes</span>
+                    <span>{t("yes")}</span>
                   </button>
                   <button
                     onClick={() => submitFeedback("unhelpful")}
                     className="flex items-center gap-1 px-2 py-1 text-xs text-gray-600 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                    title="Mark as unhelpful"
+                    title={t("markUnhelpful")}
                   >
                     <ThumbsDown className="w-3 h-3" />
-                    <span>No</span>
+                    <span>{t("no")}</span>
                   </button>
                 </div>
               ) : (
                 <div className="flex items-center justify-end gap-2 mt-3 pt-3 border-t border-blue-200">
                   <span className="text-xs text-green-600">
-                    Thanks for your feedback!
+                    {t("thanksFeedback")}
                   </span>
                 </div>
               )}

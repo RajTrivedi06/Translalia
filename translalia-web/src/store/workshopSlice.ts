@@ -5,23 +5,6 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import { getActiveThreadId, threadStorage } from "@/lib/threadStorage";
 import type { LineTranslationResponse } from "@/types/lineTranslation";
 
-export interface WordOption {
-  original: string;
-  position: number;
-  options: string[];
-  partOfSpeech?:
-    | "noun"
-    | "verb"
-    | "adjective"
-    | "adverb"
-    | "pronoun"
-    | "preposition"
-    | "conjunction"
-    | "article"
-    | "interjection"
-    | "neutral";
-}
-
 export interface WorkshopState {
   // Hydration flag
   hydrated: boolean;
@@ -31,16 +14,6 @@ export interface WorkshopState {
   // Active line
   selectedLineIndex: number | null;
 
-  // Generated options for current line (old per-word workflow) - DEPRECATED, use wordOptionsCache
-  wordOptions: WordOption[] | null;
-
-  // Per-line cache of word options (lineIndex -> WordOption[])
-  // This prevents re-fetching when switching between lines
-  wordOptionsCache: Record<number, WordOption[]>;
-
-  // User selections for current line (position -> selected word) (old workflow)
-  selections: Record<number, string>;
-
   // Line-level translations (new workflow) - lineIndex -> LineTranslationResponse
   lineTranslations: Record<number, LineTranslationResponse | null>;
 
@@ -48,7 +21,6 @@ export interface WorkshopState {
   selectedVariant: Record<number, 1 | 2 | 3 | null>;
 
   // UI state
-  isGenerating: boolean;
   isApplying: boolean;
 
   // Poem lines (from Guide Rail)
@@ -57,22 +29,26 @@ export interface WorkshopState {
   // Compiled translations (lineIndex -> translated line)
   completedLines: Record<number, string>;
 
+  /**
+   * Translation Studio drafts (lineIndex -> edited translation text).
+   * This is intentionally separate from `completedLines` because `completedLines`
+   * can be hydrated from background variants, while the Studio should default
+   * to showing only confirmed-saved lines.
+   */
+  studioDraftLines: Record<number, string>;
+
   // AI model used for current generation
   modelUsed: string | null;
 
   // Actions
   selectLine: (index: number) => void;
   deselectLine: () => void;
-  setWordOptions: (options: WordOption[] | null) => void;
-  setWordOptionsForLine: (lineIndex: number, options: WordOption[]) => void;
-  selectWord: (position: number, word: string) => void;
-  deselectWord: (position: number) => void;
-  clearSelections: () => void;
-  setIsGenerating: (isGenerating: boolean) => void;
   setIsApplying: (isApplying: boolean) => void;
   setPoemLines: (lines: string[]) => void;
   setCompletedLine: (index: number, translation: string) => void;
   setCompletedLines: (lines: Record<number, string>) => void;
+  setStudioDraftLine: (index: number, translation: string) => void;
+  setStudioDraftLines: (lines: Record<number, string>) => void;
   // New line translation actions
   setLineTranslation: (
     lineIndex: number,
@@ -81,17 +57,16 @@ export interface WorkshopState {
   selectVariant: (lineIndex: number, variant: 1 | 2 | 3 | null) => void;
   clearLineTranslation: (lineIndex: number) => void;
   reset: () => void;
+  resetToDefaults: () => void;
+  setThreadId: (threadId: string | null) => void;
 }
 
 const initialState = {
   selectedLineIndex: null,
-  wordOptions: null,
-  wordOptionsCache: {},
-  selections: {},
-  isGenerating: false,
   isApplying: false,
   poemLines: [],
   completedLines: {},
+  studioDraftLines: {},
   modelUsed: null,
   lineTranslations: {},
   selectedVariant: {},
@@ -99,66 +74,22 @@ const initialState = {
 
 export const useWorkshopStore = create<WorkshopState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       hydrated: false,
-      meta: { threadId: getActiveThreadId() },
+      meta: { threadId: null }, // ✅ Safe default - will be set by component
       ...initialState,
 
       selectLine: (index: number) =>
         set({
           selectedLineIndex: index,
-          // DON'T reset wordOptions here - they persist per line in state
-          // This was causing the "Generating..." buffer when switching to ready lines
-          // The wordOptions will be managed by WordGrid based on the current line's state
-          selections: {},
-          // Don't clear line translations - they persist
+          // Don't clear line translations/variants - they persist per line
         }),
 
       deselectLine: () =>
         set({
           selectedLineIndex: null,
-          wordOptions: null,
-          selections: {},
           // Don't clear line translations - they persist
         }),
-
-      setWordOptions: (options: WordOption[] | null) =>
-        set({
-          wordOptions: options,
-          isGenerating: false,
-        }),
-
-      setWordOptionsForLine: (lineIndex: number, options: WordOption[]) =>
-        set((state) => ({
-          wordOptionsCache: {
-            ...state.wordOptionsCache,
-            [lineIndex]: options,
-          },
-          // Also set the global wordOptions for backward compatibility
-          wordOptions: options,
-          isGenerating: false,
-        })),
-
-      selectWord: (position: number, word: string) =>
-        set((state) => ({
-          selections: {
-            ...state.selections,
-            [position]: word,
-          },
-        })),
-
-      deselectWord: (position: number) =>
-        set((state) => {
-          const { [position]: _, ...rest } = state.selections;
-          return { selections: rest };
-        }),
-
-      clearSelections: () =>
-        set({
-          selections: {},
-        }),
-
-      setIsGenerating: (isGenerating: boolean) => set({ isGenerating }),
 
       setIsApplying: (isApplying: boolean) => set({ isApplying }),
 
@@ -179,6 +110,19 @@ export const useWorkshopStore = create<WorkshopState>()(
       setCompletedLines: (lines: Record<number, string>) =>
         set({
           completedLines: lines,
+        }),
+
+      setStudioDraftLine: (index: number, translation: string) =>
+        set((state) => ({
+          studioDraftLines: {
+            ...state.studioDraftLines,
+            [index]: translation,
+          },
+        })),
+
+      setStudioDraftLines: (lines: Record<number, string>) =>
+        set({
+          studioDraftLines: lines,
         }),
 
       setLineTranslation: (
@@ -202,37 +146,84 @@ export const useWorkshopStore = create<WorkshopState>()(
 
       clearLineTranslation: (lineIndex: number) =>
         set((state) => {
-          const { [lineIndex]: _, ...restTranslations } =
-            state.lineTranslations;
-          const { [lineIndex]: __, ...restVariants } = state.selectedVariant;
+          const nextTranslations = { ...state.lineTranslations };
+          const nextVariants = { ...state.selectedVariant };
+          delete nextTranslations[lineIndex];
+          delete nextVariants[lineIndex];
           return {
-            lineTranslations: restTranslations,
-            selectedVariant: restVariants,
+            lineTranslations: nextTranslations,
+            selectedVariant: nextVariants,
           };
         }),
 
       reset: () =>
         set({ ...initialState, meta: { threadId: getActiveThreadId() } }),
+
+      // Add method to update thread ID after mount
+      setThreadId: (threadId: string | null) => {
+        set((state) => ({
+          meta: { ...state.meta, threadId },
+        }));
+      },
+
+      // ADD THIS NEW METHOD: Reset to defaults for new thread
+      resetToDefaults: () => {
+        const tid = getActiveThreadId();
+        set({
+          ...initialState,
+          hydrated: true,
+          meta: { threadId: tid },
+        });
+      },
     }),
     {
       name: "workshop-storage",
-      version: 1,
+      version: 2,
       storage: createJSONStorage(() => threadStorage),
       // If the persisted payload is for a different thread, ignore it
       merge: (persisted, current) => {
-        const tid = getActiveThreadId();
-        const p = persisted as WorkshopState;
-        if (!p || !tid) {
+        const p = persisted as Partial<WorkshopState> | undefined;
+
+        if (!p) {
           return {
             ...current,
             hydrated: true,
-            meta: { threadId: tid ?? null },
+            meta: { threadId: null }, // ✅ Safe default
           };
         }
-        if (p.meta?.threadId && p.meta.threadId !== tid) {
+
+        // Get thread ID from URL (source of truth)
+        const tid = getActiveThreadId();
+
+        // Thread switch detection
+        if (tid && p.meta?.threadId && p.meta.threadId !== tid) {
+          console.log(
+            `[workshopSlice] Thread switch detected: ${p.meta.threadId} → ${tid}. Returning fresh state.`
+          );
           return { ...current, hydrated: true, meta: { threadId: tid } };
         }
-        return { ...current, ...p, hydrated: true, meta: { threadId: tid } };
+
+        // Restore persisted state
+        return {
+          ...current,
+          selectedLineIndex:
+            typeof p.selectedLineIndex === "number" ||
+            p.selectedLineIndex === null
+              ? p.selectedLineIndex
+              : current.selectedLineIndex,
+          poemLines: Array.isArray(p.poemLines)
+            ? p.poemLines
+            : current.poemLines,
+          completedLines: p.completedLines ?? current.completedLines,
+          modelUsed:
+            typeof p.modelUsed === "string" || p.modelUsed === null
+              ? p.modelUsed
+              : current.modelUsed,
+          lineTranslations: p.lineTranslations ?? current.lineTranslations,
+          selectedVariant: p.selectedVariant ?? current.selectedVariant,
+          hydrated: true,
+          meta: { threadId: tid ?? p.meta?.threadId ?? null },
+        };
       },
       onRehydrateStorage: () => (state) => {
         if (state && !state.hydrated) {
@@ -243,6 +234,7 @@ export const useWorkshopStore = create<WorkshopState>()(
         meta: state.meta,
         poemLines: state.poemLines,
         completedLines: state.completedLines,
+        studioDraftLines: state.studioDraftLines,
         modelUsed: state.modelUsed,
         selectedLineIndex: state.selectedLineIndex,
         lineTranslations: state.lineTranslations,

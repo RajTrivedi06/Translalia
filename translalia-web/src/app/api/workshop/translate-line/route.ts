@@ -9,13 +9,14 @@ import { checkDailyLimit } from "@/lib/ratelimit/redis";
 import type { GuideAnswers } from "@/store/guideSlice";
 import type { LineTranslationResponse } from "@/types/lineTranslation";
 import { translateLineInternal } from "@/lib/workshop/translateLineInternal";
+import { buildTranslatorPersonality } from "@/lib/ai/translatorPersonality";
 
 const RequestSchema = z.object({
   threadId: z.string().uuid(),
   lineIndex: z.number().int().min(0),
-  lineText: z.string(),
-  fullPoem: z.string().optional(),
-  stanzaIndex: z.number().int().min(0).optional(),
+  lineText: z.string().min(1),
+  fullPoem: z.string(),
+  stanzaIndex: z.number().int().optional(),
   prevLine: z.string().optional(),
   nextLine: z.string().optional(),
 });
@@ -145,6 +146,23 @@ export async function POST(req: Request) {
       return NextResponse.json(emptyResponse);
     }
 
+    const targetLang = guideAnswers.targetLanguage?.lang?.trim();
+    const targetVariety = guideAnswers.targetLanguage?.variety?.trim();
+    const targetLanguage = targetLang
+      ? `${targetLang}${targetVariety ? ` (${targetVariety})` : ""}`
+      : "the target language";
+
+    if (process.env.NODE_ENV !== "production") {
+      const personality = buildTranslatorPersonality(guideAnswers);
+      console.log("[translate-line] Translator Personality:", {
+        domain: personality.domain,
+        priority: personality.priority,
+        literalness: personality.literalness,
+        sacred_terms: personality.sacred_terms,
+        forbidden_terms: personality.forbidden_terms,
+      });
+    }
+
     const result = await translateLineInternal({
       threadId,
       lineIndex,
@@ -155,6 +173,7 @@ export async function POST(req: Request) {
       nextLine,
       guideAnswers,
       sourceLanguage: poemAnalysis.language || "the source language",
+      targetLanguage,
       audit: {
         createdBy: user.id,
         projectId: thread.project_id ?? null,

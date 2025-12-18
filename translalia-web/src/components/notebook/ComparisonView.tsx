@@ -3,6 +3,8 @@
 import * as React from "react";
 import { useWorkshopStore } from "@/store/workshopSlice";
 import { useGuideStore } from "@/store/guideSlice";
+import { useThreadId } from "@/hooks/useThreadId";
+import { useWorkshopState } from "@/lib/hooks/useWorkshopFlow";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -19,6 +21,9 @@ import {
   Check,
   AlertCircle,
   X,
+  Edit,
+  RotateCcw,
+  Save,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -31,6 +36,8 @@ export interface ComparisonViewProps {
   highlightDiffs?: boolean;
   /** Optional: Show line numbers */
   showLineNumbers?: boolean;
+  /** Optional: Embedded mode (no Sheet wrapper) */
+  embedded?: boolean;
 }
 
 /**
@@ -50,18 +57,22 @@ export function ComparisonView({
   onOpenChange,
   highlightDiffs = true,
   showLineNumbers = true,
+  embedded = false,
 }: ComparisonViewProps) {
   const poemLines = useWorkshopStore((s) => s.poemLines);
-  const completedLines = useWorkshopStore((s) => s.completedLines);
+  const studioDraftLines = useWorkshopStore((s) => s.studioDraftLines);
+  const setStudioDraftLine = useWorkshopStore((s) => s.setStudioDraftLine);
+  const setStudioDraftLines = useWorkshopStore((s) => s.setStudioDraftLines);
   const guideAnswers = useGuideStore((s) => s.answers);
   const translationIntent = useGuideStore(
     (s) => s.translationIntent.text ?? null
   );
 
-  const targetLanguageName =
-    guideAnswers.targetLanguage?.lang?.trim() || null;
-  const targetVarietyName =
-    guideAnswers.targetLanguage?.variety?.trim() || "";
+  const threadId = useThreadId() || undefined;
+  const { data: savedWorkshopLines } = useWorkshopState(threadId);
+
+  const targetLanguageName = guideAnswers.targetLanguage?.lang?.trim() || null;
+  const targetVarietyName = guideAnswers.targetLanguage?.variety?.trim() || "";
   const targetLanguageDisplay =
     targetLanguageName ||
     (translationIntent ? "See translation intent" : "Not specified");
@@ -69,14 +80,45 @@ export function ComparisonView({
   const [copied, setCopied] = React.useState(false);
   const [syncScroll, setSyncScroll] = React.useState(true);
 
+  // Whole-edit mode state
+  const [editMode, setEditMode] = React.useState<"compare" | "whole-edit">(
+    "compare"
+  );
+  const [wholeTranslation, setWholeTranslation] = React.useState("");
+  const [hasUnsavedChanges, setHasUnsavedChanges] = React.useState(false);
+  const [saveSuccess, setSaveSuccess] = React.useState(false);
+
   const leftScrollRef = React.useRef<HTMLDivElement>(null);
   const rightScrollRef = React.useRef<HTMLDivElement>(null);
   const scrollingRef = React.useRef<"left" | "right" | null>(null);
 
   const totalLines = poemLines.length;
-  const completedCount = Object.keys(completedLines).length;
+  const getSavedTranslated = React.useCallback(
+    (idx: number) => {
+      if (!savedWorkshopLines || typeof savedWorkshopLines !== "object") {
+        return null;
+      }
+      const entry = (savedWorkshopLines as Record<number, unknown>)[idx];
+      if (!entry || typeof entry !== "object") return null;
+      const translated = (entry as { translated?: unknown }).translated;
+      return typeof translated === "string" && translated.trim().length > 0
+        ? translated
+        : null;
+    },
+    [savedWorkshopLines]
+  );
+
+  const confirmedCompletedCount = React.useMemo(() => {
+    let count = 0;
+    for (let idx = 0; idx < poemLines.length; idx++) {
+      if (getSavedTranslated(idx) !== null) count++;
+    }
+    return count;
+  }, [poemLines.length, getSavedTranslated]);
   const progressPercentage =
-    totalLines > 0 ? Math.round((completedCount / totalLines) * 100) : 0;
+    totalLines > 0
+      ? Math.round((confirmedCompletedCount / totalLines) * 100)
+      : 0;
 
   // Synchronized scrolling
   const handleScroll = (
@@ -101,14 +143,151 @@ export function ComparisonView({
   };
 
   // Assemble comparison data
+  const getConfirmedTranslation = getSavedTranslated;
+
+  const getStudioValue = React.useCallback(
+    (idx: number) => {
+      const hasDraft = Object.prototype.hasOwnProperty.call(
+        studioDraftLines,
+        idx
+      );
+      if (hasDraft) return studioDraftLines[idx] ?? "";
+      return getConfirmedTranslation(idx) ?? "";
+    },
+    [studioDraftLines, getConfirmedTranslation]
+  );
+
+  const isLineConfirmedSaved = React.useCallback(
+    (idx: number) => getConfirmedTranslation(idx) !== null,
+    [getConfirmedTranslation]
+  );
+
   const comparisonLines = React.useMemo(() => {
-    return poemLines.map((sourceLine, idx) => ({
-      lineNumber: idx + 1,
-      source: sourceLine,
-      translation: completedLines[idx] || null,
-      isCompleted: completedLines[idx] !== undefined,
-    }));
-  }, [poemLines, completedLines]);
+    return poemLines.map((sourceLine, idx) => {
+      const translation = getStudioValue(idx);
+      const confirmed = isLineConfirmedSaved(idx);
+      return {
+        lineNumber: idx + 1,
+        source: sourceLine,
+        translation: translation.trim().length > 0 ? translation : null,
+        isCompleted: confirmed,
+      };
+    });
+  }, [poemLines, getStudioValue, isLineConfirmedSaved]);
+
+  const availableTranslationCount = React.useMemo(() => {
+    return comparisonLines.reduce((acc, line) => {
+      return typeof line.translation === "string" &&
+        line.translation.trim().length > 0
+        ? acc + 1
+        : acc;
+    }, 0);
+  }, [comparisonLines]);
+
+  // Assemble complete translation from Studio drafts + confirmed saves
+  const assembleWholeTranslation = React.useCallback(() => {
+    return poemLines.map((_, idx) => getStudioValue(idx) || "").join("\n");
+  }, [poemLines, getStudioValue]);
+
+  // When a confirmed save arrives, drop any matching Studio drafts
+  React.useEffect(() => {
+    if (!savedWorkshopLines) return;
+
+    const currentDrafts = useWorkshopStore.getState().studioDraftLines;
+    const nextDrafts: Record<number, string> = { ...currentDrafts };
+    let changed = false;
+
+    for (const [k, draft] of Object.entries(currentDrafts)) {
+      const idx = Number(k);
+      if (!Number.isFinite(idx)) continue;
+      const confirmed = getConfirmedTranslation(idx);
+      if (confirmed && draft.trim() === confirmed.trim()) {
+        delete nextDrafts[idx];
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      useWorkshopStore.getState().setStudioDraftLines(nextDrafts);
+    }
+  }, [savedWorkshopLines, getConfirmedTranslation]);
+
+  // Initialize whole translation when entering edit mode
+  React.useEffect(() => {
+    if (editMode === "whole-edit" && !wholeTranslation) {
+      setWholeTranslation(assembleWholeTranslation());
+    }
+  }, [editMode, wholeTranslation, assembleWholeTranslation]);
+
+  // Save whole translation back to Studio drafts
+  const handleSaveWholeTranslation = React.useCallback(() => {
+    // Split the whole translation back into lines
+    const translationLines = wholeTranslation.split("\n");
+
+    // Only store drafts that differ from confirmed saves.
+    // This avoids "blank drafts" overriding newly confirmed translations.
+    const nextDraftLines: Record<number, string> = {};
+    translationLines.forEach((line, idx) => {
+      if (idx < poemLines.length) {
+        const draft = line.trim();
+        const confirmed = (getConfirmedTranslation(idx) ?? "").trim();
+        if (draft !== confirmed) {
+          nextDraftLines[idx] = draft;
+        }
+      }
+    });
+
+    // Save into Studio drafts (does not mark as confirmed-saved)
+    setStudioDraftLines(nextDraftLines);
+
+    // Show success feedback
+    setSaveSuccess(true);
+    setHasUnsavedChanges(false);
+    setTimeout(() => setSaveSuccess(false), 2000);
+  }, [
+    wholeTranslation,
+    poemLines.length,
+    getConfirmedTranslation,
+    setStudioDraftLines,
+  ]);
+
+  // Reset whole translation to original
+  const handleResetWholeTranslation = React.useCallback(() => {
+    setWholeTranslation(assembleWholeTranslation());
+    setHasUnsavedChanges(false);
+  }, [assembleWholeTranslation]);
+
+  // Keyboard shortcuts for whole-edit mode
+  React.useEffect(() => {
+    if (editMode !== "whole-edit" || !open) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd/Ctrl + Enter to save
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+        e.preventDefault();
+        if (hasUnsavedChanges) {
+          handleSaveWholeTranslation();
+        }
+      }
+
+      // ESC to discard changes
+      if (e.key === "Escape" && hasUnsavedChanges) {
+        e.preventDefault();
+        if (confirm("Discard unsaved changes?")) {
+          handleResetWholeTranslation();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [
+    editMode,
+    open,
+    hasUnsavedChanges,
+    handleSaveWholeTranslation,
+    handleResetWholeTranslation,
+  ]);
 
   // Export functions
   const handleCopyComparison = async () => {
@@ -284,7 +463,7 @@ export function ComparisonView({
 
           <div style="margin-top: 40px; padding-top: 20px; border-top: 2px solid #333; font-size: 12px; color: #666;">
             <p>Generated: ${new Date().toLocaleString()}</p>
-            <p>Progress: ${completedCount}/${totalLines} lines (${progressPercentage}%)</p>
+            <p>Progress: ${confirmedCompletedCount}/${totalLines} lines (${progressPercentage}%)</p>
           </div>
         </body>
       </html>
@@ -294,8 +473,443 @@ export function ComparisonView({
     printWindow.document.close();
   };
 
+  // Handle sheet close with unsaved changes warning
+  const handleOpenChange = React.useCallback(
+    (isOpen: boolean) => {
+      // Warn if closing with unsaved changes
+      if (!isOpen && hasUnsavedChanges && editMode === "whole-edit") {
+        if (!confirm("You have unsaved changes. Close anyway?")) {
+          return; // Don't close
+        }
+        // Reset state if closing without saving
+        setHasUnsavedChanges(false);
+        setWholeTranslation("");
+      }
+
+      // Reset edit mode when closing
+      if (!isOpen) {
+        setEditMode("compare");
+        setWholeTranslation("");
+        setHasUnsavedChanges(false);
+      }
+
+      onOpenChange(isOpen);
+    },
+    [hasUnsavedChanges, editMode, onOpenChange]
+  );
+
+  // Render the main content (used in both embedded and sheet modes)
+  const renderContent = () => (
+    <>
+      {/* Header */}
+      <div className="border-b pb-4 px-4 pt-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ArrowLeftRight className="w-5 h-5 text-blue-600" />
+            <h2 className="text-lg font-semibold">
+              {embedded
+                ? "Translation Studio"
+                : "Source-Translation Comparison"}
+            </h2>
+          </div>
+          {!embedded && (
+            <button
+              onClick={() => onOpenChange(false)}
+              className="rounded-full p-1 hover:bg-gray-100 transition"
+              aria-label="Close comparison"
+            >
+              <X className="w-5 h-5 text-gray-600" />
+            </button>
+          )}
+        </div>
+        {embedded && (
+          <p className="text-sm text-muted-foreground mt-2">
+            Edit and refine your complete translation
+          </p>
+        )}
+
+        {/* Mode Toggle */}
+        <div className="flex items-center gap-2 mt-4">
+          <Button
+            variant={editMode === "compare" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setEditMode("compare")}
+            className="gap-1"
+          >
+            <ArrowLeftRight className="w-4 h-4" />
+            Line-by-Line
+          </Button>
+          <Button
+            variant={editMode === "whole-edit" ? "default" : "outline"}
+            size="sm"
+            onClick={() => {
+              setEditMode("whole-edit");
+              if (!wholeTranslation) {
+                setWholeTranslation(assembleWholeTranslation());
+              }
+            }}
+            className="gap-1"
+          >
+            <Edit className="w-4 h-4" />
+            Edit Whole
+          </Button>
+
+          {hasUnsavedChanges && editMode === "whole-edit" && (
+            <Badge
+              variant="secondary"
+              className="text-amber-600 bg-amber-50 ml-2"
+            >
+              ⚠️ Unsaved changes
+            </Badge>
+          )}
+
+          {saveSuccess && (
+            <Badge
+              variant="secondary"
+              className="text-green-600 bg-green-50 ml-2"
+            >
+              <Check className="w-3 h-3 mr-1" />
+              Saved!
+            </Badge>
+          )}
+        </div>
+
+        {/* Stats and Actions Bar */}
+        <div className="flex items-center justify-between mt-4 pt-4 border-t">
+          <div className="flex items-center gap-4">
+            <div className="text-sm text-gray-600">
+              <span className="font-medium text-gray-900">
+                {confirmedCompletedCount}
+              </span>{" "}
+              of <span className="font-medium text-gray-900">{totalLines}</span>{" "}
+              lines ({progressPercentage}%)
+            </div>
+            {confirmedCompletedCount < totalLines && (
+              <Badge variant="secondary" className="text-xs">
+                {totalLines - confirmedCompletedCount} remaining
+              </Badge>
+            )}
+          </div>
+
+          {/* Export Actions */}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleCopyComparison}
+              disabled={availableTranslationCount === 0}
+              title="Copy comparison"
+            >
+              {copied ? (
+                <>
+                  <Check className="w-4 h-4 mr-1" />
+                  Copied
+                </>
+              ) : (
+                <>
+                  <Copy className="w-4 h-4 mr-1" />
+                  Copy
+                </>
+              )}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleExportComparison}
+              disabled={availableTranslationCount === 0}
+              title="Export as TXT"
+            >
+              <Download className="w-4 h-4 mr-1" />
+              Export
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handlePrintComparison}
+              disabled={availableTranslationCount === 0}
+              title="Print or save as PDF"
+            >
+              <Printer className="w-4 h-4 mr-1" />
+              PDF
+            </Button>
+            {editMode === "compare" && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSyncScroll(!syncScroll)}
+                className={cn(syncScroll && "bg-blue-50 text-blue-700")}
+                title="Toggle synchronized scrolling"
+              >
+                {syncScroll ? "Sync: ON" : "Sync: OFF"}
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Split-Screen Comparison / Whole Edit Mode */}
+      <div
+        className={cn(
+          "flex gap-px bg-gray-200",
+          embedded ? "flex-1 min-h-0" : "h-[calc(100%-180px)]"
+        )}
+      >
+        {editMode === "compare" ? (
+          <>
+            {/* Source Column */}
+            <div className="flex-1 bg-white flex flex-col">
+              <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex-shrink-0">
+                <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                  Source Text
+                </h3>
+                <p className="text-xs text-gray-500 mt-1">Original poem</p>
+              </div>
+              <div
+                ref={leftScrollRef}
+                className="flex-1 overflow-y-auto px-4 py-4 space-y-4"
+                onScroll={(e) => handleScroll("left", e)}
+              >
+                {comparisonLines.map((line) => (
+                  <div
+                    key={`source-${line.lineNumber}`}
+                    className="group relative"
+                    id={`source-line-${line.lineNumber}`}
+                  >
+                    {showLineNumbers && (
+                      <div className="text-xs text-gray-400 font-mono mb-1">
+                        Line {line.lineNumber}
+                      </div>
+                    )}
+                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-gray-300 transition">
+                      <p className="text-sm text-gray-900 leading-relaxed">
+                        {line.source}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div className="w-1 bg-gray-300 flex-shrink-0" />
+
+            {/* Translation Column */}
+            <div className="flex-1 bg-white flex flex-col">
+              <div className="px-4 py-3 bg-gradient-to-r from-blue-50 to-purple-50 border-b border-blue-200 flex-shrink-0">
+                <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                  Translation
+                </h3>
+                <p className="text-xs text-gray-600 mt-1">
+                  {targetLanguageDisplay}
+                  {targetLanguageName && targetVarietyName
+                    ? ` (${targetVarietyName})`
+                    : ""}
+                </p>
+                {translationIntent && (
+                  <p className="mt-1 text-[11px] text-gray-500 line-clamp-2">
+                    {translationIntent}
+                  </p>
+                )}
+              </div>
+              <div
+                ref={rightScrollRef}
+                className="flex-1 overflow-y-auto px-4 py-4 space-y-4"
+                onScroll={(e) => handleScroll("right", e)}
+              >
+                {comparisonLines.map((line) => (
+                  <div
+                    key={`translation-${line.lineNumber}`}
+                    className="group relative"
+                    id={`translation-line-${line.lineNumber}`}
+                  >
+                    {showLineNumbers && (
+                      <div className="text-xs text-gray-400 font-mono mb-1">
+                        Line {line.lineNumber}
+                      </div>
+                    )}
+                    <div
+                      className={cn(
+                        "p-3 rounded-lg border transition",
+                        line.isCompleted
+                          ? "bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200 hover:border-blue-300"
+                          : "bg-white border-gray-300 border-dashed hover:bg-gray-50"
+                      )}
+                    >
+                      <div className="flex items-start gap-2">
+                        {line.isCompleted ? (
+                          <Check className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+                        ) : (
+                          <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                        )}
+
+                        <textarea
+                          value={getStudioValue(line.lineNumber - 1)}
+                          onChange={(e) =>
+                            setStudioDraftLine(
+                              line.lineNumber - 1,
+                              e.target.value
+                            )
+                          }
+                          placeholder={
+                            line.isCompleted
+                              ? undefined
+                              : "Translation not yet completed"
+                          }
+                          className={cn(
+                            "flex-1 min-h-[44px] w-full resize-y bg-transparent",
+                            "text-sm leading-relaxed outline-none",
+                            line.isCompleted
+                              ? "text-gray-900 font-medium"
+                              : "text-gray-700"
+                          )}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Difference indicator (if enabled) */}
+                    {highlightDiffs && line.isCompleted && (
+                      <DifferenceIndicator
+                        source={line.source}
+                        translation={line.translation || ""}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Left: Original Poem (read-only reference) */}
+            <div className="flex-1 bg-white flex flex-col">
+              <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex-shrink-0">
+                <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                  Original Poem
+                </h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  Reference while editing
+                </p>
+              </div>
+              <div className="flex-1 overflow-y-auto px-4 py-4">
+                <pre className="text-sm whitespace-pre-wrap font-sans leading-relaxed text-gray-800">
+                  {poemLines.join("\n")}
+                </pre>
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div className="w-1 bg-gray-300 flex-shrink-0" />
+
+            {/* Right: Editable Complete Translation */}
+            <div className="flex-1 bg-white flex flex-col">
+              <div className="px-4 py-3 bg-gradient-to-r from-blue-50 to-purple-50 border-b border-blue-200 flex-shrink-0">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                      Your Complete Translation
+                    </h3>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Edit the entire translation as continuous text
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleResetWholeTranslation}
+                      className="gap-1"
+                      title="Reset to original"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                      Reset
+                    </Button>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={handleSaveWholeTranslation}
+                      disabled={!hasUnsavedChanges}
+                      className="gap-1"
+                    >
+                      <Save className="w-4 h-4" />
+                      Save
+                    </Button>
+                  </div>
+                </div>
+              </div>
+              <div className="flex-1 p-4 flex flex-col min-h-0">
+                <textarea
+                  value={wholeTranslation}
+                  onChange={(e) => {
+                    setWholeTranslation(e.target.value);
+                    setHasUnsavedChanges(true);
+                  }}
+                  className="w-full flex-1 resize-none border rounded-lg p-4 font-sans text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[200px]"
+                  placeholder="Your complete translation will appear here..."
+                  spellCheck={false}
+                />
+              </div>
+              <div className="px-4 py-2 border-t bg-gray-50 text-xs text-gray-500 flex items-center justify-between">
+                <span>
+                  Tip: Press{" "}
+                  <kbd className="px-1 py-0.5 bg-gray-200 rounded text-[11px]">
+                    ⌘/Ctrl
+                  </kbd>{" "}
+                  +{" "}
+                  <kbd className="px-1 py-0.5 bg-gray-200 rounded text-[11px]">
+                    Enter
+                  </kbd>{" "}
+                  to save
+                </span>
+                <span>{wholeTranslation.split("\n").length} lines</span>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Footer Summary */}
+      <div className="border-t border-gray-200 px-4 py-3 bg-gray-50 flex-shrink-0">
+        <div className="flex items-center justify-between text-xs text-gray-600">
+          <div>
+            {confirmedCompletedCount === totalLines ? (
+              <span className="flex items-center gap-1 text-green-600 font-medium">
+                <Check className="w-4 h-4" />
+                Translation complete!
+              </span>
+            ) : (
+              <span>
+                {totalLines - confirmedCompletedCount} line
+                {totalLines - confirmedCompletedCount !== 1 ? "s" : ""}{" "}
+                remaining
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-gray-500">Synchronized scrolling:</span>
+            <Badge
+              variant={syncScroll ? "default" : "secondary"}
+              className="text-xs"
+            >
+              {syncScroll ? "ON" : "OFF"}
+            </Badge>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+
+  // If embedded, render content directly without Sheet
+  if (embedded) {
+    return (
+      <div className="h-full flex flex-col bg-background">
+        {renderContent()}
+      </div>
+    );
+  }
+
+  // Otherwise, use Sheet wrapper (original behavior)
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetContent
         side="right"
         className="w-full sm:max-w-4xl"
@@ -319,20 +933,66 @@ export function ComparisonView({
             </button>
           </div>
 
+          {/* Mode Toggle */}
+          <div className="flex items-center gap-2 mt-4">
+            <Button
+              variant={editMode === "compare" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setEditMode("compare")}
+              className="gap-1"
+            >
+              <ArrowLeftRight className="w-4 h-4" />
+              Line-by-Line
+            </Button>
+            <Button
+              variant={editMode === "whole-edit" ? "default" : "outline"}
+              size="sm"
+              onClick={() => {
+                setEditMode("whole-edit");
+                if (!wholeTranslation) {
+                  setWholeTranslation(assembleWholeTranslation());
+                }
+              }}
+              className="gap-1"
+            >
+              <Edit className="w-4 h-4" />
+              Edit Whole
+            </Button>
+
+            {hasUnsavedChanges && editMode === "whole-edit" && (
+              <Badge
+                variant="secondary"
+                className="text-amber-600 bg-amber-50 ml-2"
+              >
+                ⚠️ Unsaved changes
+              </Badge>
+            )}
+
+            {saveSuccess && (
+              <Badge
+                variant="secondary"
+                className="text-green-600 bg-green-50 ml-2"
+              >
+                <Check className="w-3 h-3 mr-1" />
+                Saved!
+              </Badge>
+            )}
+          </div>
+
           {/* Stats and Actions Bar */}
           <div className="flex items-center justify-between mt-4 pt-4 border-t">
             <div className="flex items-center gap-4">
               <div className="text-sm text-gray-600">
                 <span className="font-medium text-gray-900">
-                  {completedCount}
+                  {confirmedCompletedCount}
                 </span>{" "}
                 of{" "}
                 <span className="font-medium text-gray-900">{totalLines}</span>{" "}
                 lines ({progressPercentage}%)
               </div>
-              {completedCount < totalLines && (
+              {confirmedCompletedCount < totalLines && (
                 <Badge variant="secondary" className="text-xs">
-                  {totalLines - completedCount} remaining
+                  {totalLines - confirmedCompletedCount} remaining
                 </Badge>
               )}
             </div>
@@ -343,7 +1003,7 @@ export function ComparisonView({
                 variant="ghost"
                 size="sm"
                 onClick={handleCopyComparison}
-                disabled={completedCount === 0}
+                disabled={availableTranslationCount === 0}
                 title="Copy comparison"
               >
                 {copied ? (
@@ -362,7 +1022,7 @@ export function ComparisonView({
                 variant="ghost"
                 size="sm"
                 onClick={handleExportComparison}
-                disabled={completedCount === 0}
+                disabled={availableTranslationCount === 0}
                 title="Export as TXT"
               >
                 <Download className="w-4 h-4 mr-1" />
@@ -372,149 +1032,256 @@ export function ComparisonView({
                 variant="ghost"
                 size="sm"
                 onClick={handlePrintComparison}
-                disabled={completedCount === 0}
+                disabled={availableTranslationCount === 0}
                 title="Print or save as PDF"
               >
                 <Printer className="w-4 h-4 mr-1" />
                 PDF
               </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setSyncScroll(!syncScroll)}
-                className={cn(syncScroll && "bg-blue-50 text-blue-700")}
-                title="Toggle synchronized scrolling"
-              >
-                {syncScroll ? "Sync: ON" : "Sync: OFF"}
-              </Button>
+              {editMode === "compare" && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSyncScroll(!syncScroll)}
+                  className={cn(syncScroll && "bg-blue-50 text-blue-700")}
+                  title="Toggle synchronized scrolling"
+                >
+                  {syncScroll ? "Sync: ON" : "Sync: OFF"}
+                </Button>
+              )}
             </div>
           </div>
         </SheetHeader>
 
-        {/* Split-Screen Comparison */}
-        <div className="flex h-[calc(100%-140px)] gap-px bg-gray-200">
-          {/* Source Column */}
-          <div className="flex-1 bg-white flex flex-col">
-            <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex-shrink-0">
-              <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                Source Text
-              </h3>
-              <p className="text-xs text-gray-500 mt-1">Original poem</p>
-            </div>
-            <div
-              ref={leftScrollRef}
-              className="flex-1 overflow-y-auto px-4 py-4 space-y-4"
-              onScroll={(e) => handleScroll("left", e)}
-            >
-              {comparisonLines.map((line) => (
+        {/* Split-Screen Comparison / Whole Edit Mode */}
+        <div className="flex h-[calc(100%-180px)] gap-px bg-gray-200">
+          {editMode === "compare" ? (
+            <>
+              {/* Source Column */}
+              <div className="flex-1 bg-white flex flex-col">
+                <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex-shrink-0">
+                  <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                    Source Text
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-1">Original poem</p>
+                </div>
                 <div
-                  key={`source-${line.lineNumber}`}
-                  className="group relative"
-                  id={`source-line-${line.lineNumber}`}
+                  ref={leftScrollRef}
+                  className="flex-1 overflow-y-auto px-4 py-4 space-y-4"
+                  onScroll={(e) => handleScroll("left", e)}
                 >
-                  {showLineNumbers && (
-                    <div className="text-xs text-gray-400 font-mono mb-1">
-                      Line {line.lineNumber}
+                  {comparisonLines.map((line) => (
+                    <div
+                      key={`source-${line.lineNumber}`}
+                      className="group relative"
+                      id={`source-line-${line.lineNumber}`}
+                    >
+                      {showLineNumbers && (
+                        <div className="text-xs text-gray-400 font-mono mb-1">
+                          Line {line.lineNumber}
+                        </div>
+                      )}
+                      <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-gray-300 transition">
+                        <p className="text-sm text-gray-900 leading-relaxed">
+                          {line.source}
+                        </p>
+                      </div>
                     </div>
-                  )}
-                  <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-gray-300 transition">
-                    <p className="text-sm text-gray-900 leading-relaxed">
-                      {line.source}
+                  ))}
+                </div>
+              </div>
+
+              {/* Divider */}
+              <div className="w-1 bg-gray-300 flex-shrink-0" />
+
+              {/* Translation Column */}
+              <div className="flex-1 bg-white flex flex-col">
+                <div className="px-4 py-3 bg-gradient-to-r from-blue-50 to-purple-50 border-b border-blue-200 flex-shrink-0">
+                  <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                    Translation
+                  </h3>
+                  <p className="text-xs text-gray-600 mt-1">
+                    {targetLanguageDisplay}
+                    {targetLanguageName && targetVarietyName
+                      ? ` (${targetVarietyName})`
+                      : ""}
+                  </p>
+                  {translationIntent && (
+                    <p className="mt-1 text-[11px] text-gray-500 line-clamp-2">
+                      {translationIntent}
                     </p>
-                  </div>
+                  )}
                 </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Divider */}
-          <div className="w-1 bg-gray-300 flex-shrink-0" />
-
-          {/* Translation Column */}
-          <div className="flex-1 bg-white flex flex-col">
-            <div className="px-4 py-3 bg-gradient-to-r from-blue-50 to-purple-50 border-b border-blue-200 flex-shrink-0">
-              <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                Translation
-              </h3>
-              <p className="text-xs text-gray-600 mt-1">
-                {targetLanguageDisplay}
-                {targetLanguageName && targetVarietyName
-                  ? ` (${targetVarietyName})`
-                  : ""}
-              </p>
-              {translationIntent && (
-                <p className="mt-1 text-[11px] text-gray-500 line-clamp-2">
-                  {translationIntent}
-                </p>
-              )}
-            </div>
-            <div
-              ref={rightScrollRef}
-              className="flex-1 overflow-y-auto px-4 py-4 space-y-4"
-              onScroll={(e) => handleScroll("right", e)}
-            >
-              {comparisonLines.map((line) => (
                 <div
-                  key={`translation-${line.lineNumber}`}
-                  className="group relative"
-                  id={`translation-line-${line.lineNumber}`}
+                  ref={rightScrollRef}
+                  className="flex-1 overflow-y-auto px-4 py-4 space-y-4"
+                  onScroll={(e) => handleScroll("right", e)}
                 >
-                  {showLineNumbers && (
-                    <div className="text-xs text-gray-400 font-mono mb-1">
-                      Line {line.lineNumber}
-                    </div>
-                  )}
-                  <div
-                    className={cn(
-                      "p-3 rounded-lg border transition",
-                      line.isCompleted
-                        ? "bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200 hover:border-blue-300"
-                        : "bg-white border-gray-300 border-dashed hover:bg-gray-50"
-                    )}
-                  >
-                    {line.isCompleted ? (
-                      <div className="flex items-start gap-2">
-                        <Check className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                        <p className="text-sm text-gray-900 leading-relaxed font-medium flex-1">
-                          {line.translation}
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="flex items-start gap-2">
-                        <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-                        <p className="text-sm text-gray-400 italic flex-1">
-                          Not yet translated
-                        </p>
-                      </div>
-                    )}
-                  </div>
+                  {comparisonLines.map((line) => (
+                    <div
+                      key={`translation-${line.lineNumber}`}
+                      className="group relative"
+                      id={`translation-line-${line.lineNumber}`}
+                    >
+                      {showLineNumbers && (
+                        <div className="text-xs text-gray-400 font-mono mb-1">
+                          Line {line.lineNumber}
+                        </div>
+                      )}
+                      <div
+                        className={cn(
+                          "p-3 rounded-lg border transition",
+                          line.isCompleted
+                            ? "bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200 hover:border-blue-300"
+                            : "bg-white border-gray-300 border-dashed hover:bg-gray-50"
+                        )}
+                      >
+                        <div className="flex items-start gap-2">
+                          {line.isCompleted ? (
+                            <Check className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+                          ) : (
+                            <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                          )}
 
-                  {/* Difference indicator (if enabled) */}
-                  {highlightDiffs && line.isCompleted && (
-                    <DifferenceIndicator
-                      source={line.source}
-                      translation={line.translation || ""}
-                    />
-                  )}
+                          <textarea
+                            value={getStudioValue(line.lineNumber - 1)}
+                            onChange={(e) =>
+                              setStudioDraftLine(
+                                line.lineNumber - 1,
+                                e.target.value
+                              )
+                            }
+                            placeholder={
+                              line.isCompleted
+                                ? undefined
+                                : "Translation not yet completed"
+                            }
+                            className={cn(
+                              "flex-1 min-h-[44px] w-full resize-y bg-transparent",
+                              "text-sm leading-relaxed outline-none",
+                              line.isCompleted
+                                ? "text-gray-900 font-medium"
+                                : "text-gray-700"
+                            )}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Difference indicator (if enabled) */}
+                      {highlightDiffs && line.isCompleted && (
+                        <DifferenceIndicator
+                          source={line.source}
+                          translation={line.translation || ""}
+                        />
+                      )}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Left: Original Poem (read-only reference) */}
+              <div className="flex-1 bg-white flex flex-col">
+                <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex-shrink-0">
+                  <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                    Original Poem
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Reference while editing
+                  </p>
+                </div>
+                <div className="flex-1 overflow-y-auto px-4 py-4">
+                  <pre className="text-sm whitespace-pre-wrap font-sans leading-relaxed text-gray-800">
+                    {poemLines.join("\n")}
+                  </pre>
+                </div>
+              </div>
+
+              {/* Divider */}
+              <div className="w-1 bg-gray-300 flex-shrink-0" />
+
+              {/* Right: Editable Complete Translation */}
+              <div className="flex-1 bg-white flex flex-col">
+                <div className="px-4 py-3 bg-gradient-to-r from-blue-50 to-purple-50 border-b border-blue-200 flex-shrink-0">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h3 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                        Your Complete Translation
+                      </h3>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Edit the entire translation as continuous text
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleResetWholeTranslation}
+                        className="gap-1"
+                        title="Reset to original"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                        Reset
+                      </Button>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={handleSaveWholeTranslation}
+                        disabled={!hasUnsavedChanges}
+                        className="gap-1"
+                      >
+                        <Save className="w-4 h-4" />
+                        Save
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex-1 p-4 flex flex-col min-h-0">
+                  <textarea
+                    value={wholeTranslation}
+                    onChange={(e) => {
+                      setWholeTranslation(e.target.value);
+                      setHasUnsavedChanges(true);
+                    }}
+                    className="w-full flex-1 resize-none border rounded-lg p-4 font-sans text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[200px]"
+                    placeholder="Your complete translation will appear here..."
+                    spellCheck={false}
+                  />
+                </div>
+                <div className="px-4 py-2 border-t bg-gray-50 text-xs text-gray-500 flex items-center justify-between">
+                  <span>
+                    Tip: Press{" "}
+                    <kbd className="px-1 py-0.5 bg-gray-200 rounded text-[11px]">
+                      ⌘/Ctrl
+                    </kbd>{" "}
+                    +{" "}
+                    <kbd className="px-1 py-0.5 bg-gray-200 rounded text-[11px]">
+                      Enter
+                    </kbd>{" "}
+                    to save
+                  </span>
+                  <span>{wholeTranslation.split("\n").length} lines</span>
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Footer Summary */}
         <div className="border-t border-gray-200 px-4 py-3 bg-gray-50 flex-shrink-0">
           <div className="flex items-center justify-between text-xs text-gray-600">
             <div>
-              {completedCount === totalLines ? (
+              {confirmedCompletedCount === totalLines ? (
                 <span className="flex items-center gap-1 text-green-600 font-medium">
                   <Check className="w-4 h-4" />
                   Translation complete!
                 </span>
               ) : (
                 <span>
-                  {totalLines - completedCount} line
-                  {totalLines - completedCount !== 1 ? "s" : ""} remaining
+                  {totalLines - confirmedCompletedCount} line
+                  {totalLines - confirmedCompletedCount !== 1 ? "s" : ""}{" "}
+                  remaining
                 </span>
               )}
             </div>

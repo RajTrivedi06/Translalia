@@ -8,39 +8,26 @@ import {
 } from "@/types/verification";
 import type { LineTranslationResponse } from "@/types/lineTranslation";
 
-const SelectionSchema = z.object({
-  position: z.number().int().min(0),
-  selectedWord: z.string().min(1),
-});
-
-const WordOptionSchema = z.object({
-  original: z.string(),
-  position: z.number(),
-  options: z.array(z.string()).min(1),
-  partOfSpeech: z.string().optional(),
-});
-
 const RequestSchema = z.object({
   threadId: z.string().uuid(),
   lineIndex: z.number().int().min(0),
   originalLine: z.string().optional(),
   // New format: line translation with variant
-  variant: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
-  lineTranslation: z.any().optional(), // LineTranslationResponse - using any for now to avoid circular deps
-  // Old format: word selections (for backward compatibility)
-  selections: z.array(SelectionSchema).optional(), // Allow empty array for blank lines
-  wordOptions: z.array(WordOptionSchema).optional(), // Optional: word options for verification
+  variant: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+  lineTranslation: z.unknown(), // validated at runtime
 });
 
-// Legacy interface for backwards compatibility
-export interface WorkshopLine {
-  original: string;
-  translated: string;
-  selections: Array<{
-    position: number;
-    selectedWord: string;
-  }>;
-  completedAt: string;
+export type WorkshopLine = WorkshopLineWithVerification;
+
+function normalizeLineTranslationResponse(
+  input: unknown
+): LineTranslationResponse | null {
+  if (!input || typeof input !== "object") return null;
+  const candidate = input as Partial<LineTranslationResponse>;
+  if (!Array.isArray(candidate.translations)) return null;
+  if (typeof candidate.lineOriginal !== "string") return null;
+  if (typeof candidate.modelUsed !== "string") return null;
+  return candidate as LineTranslationResponse;
 }
 
 export async function POST(req: Request) {
@@ -60,26 +47,14 @@ export async function POST(req: Request) {
       );
     }
 
-    const {
-      threadId,
-      lineIndex,
-      originalLine,
-      variant,
-      lineTranslation,
-      selections,
-      wordOptions,
-    } = validation.data;
+    const { threadId, lineIndex, originalLine, variant, lineTranslation } =
+      validation.data;
 
-    // Validate that either new format or old format is provided
-    const hasNewFormat = variant !== undefined && lineTranslation !== undefined;
-    const hasOldFormat = selections !== undefined && selections.length > 0;
-
-    if (!hasNewFormat && !hasOldFormat) {
+    const parsedLineTranslation =
+      normalizeLineTranslationResponse(lineTranslation);
+    if (!parsedLineTranslation) {
       return NextResponse.json(
-        {
-          error:
-            "Either variant+lineTranslation or selections must be provided",
-        },
+        { error: "Invalid lineTranslation payload" },
         { status: 400 }
       );
     }
@@ -100,83 +75,49 @@ export async function POST(req: Request) {
       );
     }
 
-    // Determine translated line and selections based on format
-    let translatedLine: string;
-    let finalSelections: Array<{ position: number; selectedWord: string }>;
-    let finalWordOptions: WordOptionForVerification[] | undefined;
-
-    if (hasNewFormat && variant && lineTranslation) {
-      // New format: use selected variant's fullText
-      const selectedVariant = (
-        lineTranslation as LineTranslationResponse
-      ).translations.find((v) => v.variant === variant);
-      if (!selectedVariant) {
-        return NextResponse.json(
-          { error: "Invalid variant number" },
-          { status: 400 }
-        );
-      }
-      translatedLine = selectedVariant.fullText;
-
-      // Convert alignment words to selections format for compatibility
-      finalSelections = selectedVariant.words.map((word) => ({
-        position: word.position,
-        selectedWord: word.translation,
-      }));
-
-      // Convert alignment words to word options format for verification
-      finalWordOptions = selectedVariant.words.map((word) => ({
-        source: word.original,
-        order: word.position,
-        options: [word.translation], // Single option from selected variant
-        pos: word.partOfSpeech,
-      }));
-    } else if (hasOldFormat && selections) {
-      // Old format: compile from word selections
-      const sortedSelections = [...selections].sort(
-        (a, b) => a.position - b.position
-      );
-      translatedLine = sortedSelections.map((s) => s.selectedWord).join(" ");
-      finalSelections = sortedSelections;
-
-      // Transform word options to verification format if provided
-      if (wordOptions && wordOptions.length > 0) {
-        finalWordOptions = wordOptions.map(
-          (wo: z.infer<typeof WordOptionSchema>) => ({
-            source: wo.original,
-            order: wo.position,
-            options: wo.options,
-            pos: wo.partOfSpeech,
-          })
-        );
-      }
-    } else {
+    // Determine translated line from selected variant
+    const selectedVariant = parsedLineTranslation.translations.find(
+      (v) => v.variant === variant
+    );
+    if (!selectedVariant) {
       return NextResponse.json(
-        { error: "Invalid request format" },
+        { error: "Invalid variant number" },
         { status: 400 }
       );
     }
 
+    const translatedLine = selectedVariant.fullText;
+
+    // Build verification-friendly selections + options from line variants
+    const selectionsForVerification = selectedVariant.words.map((w) => ({
+      source: w.original,
+      target: w.translation,
+      order: w.position,
+    }));
+
+    const wordOptionsForVerification: WordOptionForVerification[] =
+      selectedVariant.words.map((w) => {
+        const options = parsedLineTranslation.translations
+          .map(
+            (variantEntry) =>
+              variantEntry.words.find((vw) => vw.position === w.position)
+                ?.translation
+          )
+          .filter(
+            (t): t is string => typeof t === "string" && t.trim().length > 0
+          );
+
+        const unique = Array.from(new Set(options));
+        return {
+          source: w.original,
+          order: w.position,
+          options: unique.length > 0 ? unique : [w.translation],
+          pos: w.partOfSpeech,
+        };
+      });
+
     // Get current state
     const currentState = (thread.state as Record<string, unknown>) || {};
-
-    // Use finalWordOptions (already transformed above)
-    const wordOptionsForVerification = finalWordOptions;
-
-    // Transform selections to verification format (source -> target mapping)
-    const selectionsForVerification = finalSelections.map(
-      (sel: { position: number; selectedWord: string }) => {
-        // Find the corresponding word option to get the source word
-        const wordOption = wordOptions?.find(
-          (wo: z.infer<typeof WordOptionSchema>) => wo.position === sel.position
-        );
-        return {
-          source: wordOption?.original || sel.selectedWord, // Fallback to selected word if no option found
-          target: sel.selectedWord,
-          order: sel.position,
-        };
-      }
-    );
 
     // Create new line entry with verification support
     const newLine: WorkshopLineWithVerification = {

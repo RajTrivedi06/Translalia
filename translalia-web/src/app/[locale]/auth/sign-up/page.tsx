@@ -3,9 +3,11 @@
 import * as React from "react";
 import { Link, useRouter } from "@/i18n/routing";
 import { supabase } from "@/lib/supabaseClient";
+import { useTranslations } from "next-intl";
 
 export default function SignUpPage() {
   const router = useRouter();
+  const t = useTranslations("Auth");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [confirm, setConfirm] = React.useState("");
@@ -15,7 +17,7 @@ export default function SignUpPage() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (password !== confirm) {
-      setMsg("Passwords do not match");
+      setMsg(t("passwordsDoNotMatch"));
       return;
     }
     try {
@@ -34,11 +36,9 @@ export default function SignUpPage() {
     } catch (e) {
       const err = e as Error | { message?: string };
       const raw = (("message" in err && err.message) ||
-        "Sign up failed") as string;
+        t("signUpFailed")) as string;
       if (raw.toLowerCase().includes("email signups are disabled")) {
-        setMsg(
-          "Email signups are disabled in Supabase. Enable the Email provider and turn off 'Confirm email'."
-        );
+        setMsg(t("emailSignupsDisabled"));
       } else {
         setMsg(raw);
       }
@@ -49,11 +49,11 @@ export default function SignUpPage() {
 
   return (
     <div className="mx-auto max-w-sm p-6">
-      <h1 className="mb-2 text-2xl font-semibold">Create your account</h1>
+      <h1 className="mb-2 text-2xl font-semibold">{t("signUpTitle")}</h1>
       <p className="mb-6 text-sm text-neutral-600">
-        Already have an account?{" "}
+        {t("alreadyHaveAccount")}{" "}
         <Link href="/auth/sign-in" className="underline">
-          Sign in
+          {t("signIn")}
         </Link>
       </p>
 
@@ -65,36 +65,38 @@ export default function SignUpPage() {
 
       <form onSubmit={onSubmit} className="space-y-3">
         <div>
-          <label className="block text-sm text-neutral-700">Email</label>
+          <label className="block text-sm text-neutral-700">{t("email")}</label>
           <input
             type="email"
             required
             className="mt-1 w-full rounded-md border px-3 py-2"
-            placeholder="you@example.com"
+            placeholder={t("emailPlaceholder")}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
         </div>
         <div>
-          <label className="block text-sm text-neutral-700">Password</label>
+          <label className="block text-sm text-neutral-700">
+            {t("password")}
+          </label>
           <input
             type="password"
             required
             className="mt-1 w-full rounded-md border px-3 py-2"
-            placeholder="Choose a password"
+            placeholder={t("choosePasswordPlaceholder")}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
         </div>
         <div>
           <label className="block text-sm text-neutral-700">
-            Confirm password
+            {t("confirmPassword")}
           </label>
           <input
             type="password"
             required
             className="mt-1 w-full rounded-md border px-3 py-2"
-            placeholder="Repeat password"
+            placeholder={t("repeatPasswordPlaceholder")}
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
           />
@@ -104,7 +106,7 @@ export default function SignUpPage() {
           disabled={pending}
           className="w-full rounded-md bg-neutral-900 px-3 py-2 text-white disabled:opacity-60"
         >
-          {pending ? "Creating…" : "Create account"}
+          {pending ? t("creating") : t("createAccount")}
         </button>
       </form>
     </div>

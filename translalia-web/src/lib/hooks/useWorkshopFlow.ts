@@ -1,15 +1,8 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { GenerateOptionsResponse } from "@/app/api/workshop/generate-options/route";
 import { WorkshopLine } from "@/app/api/workshop/save-line/route";
 import { createBrowserClient } from "@/lib/supabaseBrowser";
-
-interface GenerateOptionsParams {
-  threadId: string;
-  lineIndex: number;
-  lineText: string;
-}
 
 import type { LineTranslationResponse } from "@/types/lineTranslation";
 
@@ -17,20 +10,9 @@ interface SaveLineParams {
   threadId: string;
   lineIndex: number;
   originalLine?: string;
-  // New format: line translation with variant
-  variant?: 1 | 2 | 3;
-  lineTranslation?: LineTranslationResponse;
-  // Old format: word selections (for backward compatibility)
-  selections?: Array<{
-    position: number;
-    selectedWord: string;
-  }>;
-  wordOptions?: Array<{
-    original: string;
-    position: number;
-    options: string[];
-    partOfSpeech?: string;
-  }>;
+  // Line translation with selected variant
+  variant: 1 | 2 | 3;
+  lineTranslation: LineTranslationResponse;
 }
 
 interface SaveLineResponse {
@@ -40,43 +22,7 @@ interface SaveLineResponse {
 }
 
 /**
- * Hook to generate translation options for all words in a line
- */
-export function useGenerateOptions() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async ({
-      threadId,
-      lineIndex,
-      lineText,
-    }: GenerateOptionsParams) => {
-      const res = await fetch("/api/workshop/generate-options", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ threadId, lineIndex, lineText }),
-      });
-
-      if (!res.ok) {
-        const error = await res
-          .json()
-          .catch(() => ({ error: "Unknown error" }));
-        throw new Error(error.error || `HTTP ${res.status}`);
-      }
-
-      return res.json() as Promise<GenerateOptionsResponse>;
-    },
-    onSuccess: (data, variables) => {
-      // Invalidate workshop state query for this thread
-      queryClient.invalidateQueries({
-        queryKey: ["workshop-state", variables.threadId],
-      });
-    },
-  });
-}
-
-/**
- * Hook to save user's word selections and compile the translated line
+ * Hook to save a selected line-variant translation
  */
 export function useSaveLine() {
   const queryClient = useQueryClient();
@@ -88,28 +34,14 @@ export function useSaveLine() {
       originalLine,
       variant,
       lineTranslation,
-      selections,
-      wordOptions,
     }: SaveLineParams) => {
       const body: Record<string, unknown> = {
         threadId,
         lineIndex,
         originalLine,
+        variant,
+        lineTranslation,
       };
-
-      // Include new format if provided
-      if (variant !== undefined && lineTranslation !== undefined) {
-        body.variant = variant;
-        body.lineTranslation = lineTranslation;
-      }
-
-      // Include old format if provided
-      if (selections !== undefined) {
-        body.selections = selections;
-      }
-      if (wordOptions !== undefined) {
-        body.wordOptions = wordOptions;
-      }
 
       const res = await fetch("/api/workshop/save-line", {
         method: "POST",
@@ -198,4 +130,55 @@ export function useIsLineCompleted(
     isCompleted: workshopState?.[lineIndex] !== undefined,
     isLoading,
   };
+}
+
+/**
+ * Hook to save a manually created translation (from Notebook or Translation Studio)
+ */
+export function useSaveManualLine() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      threadId,
+      lineIndex,
+      originalLine,
+      translatedLine,
+    }: {
+      threadId: string;
+      lineIndex: number;
+      originalLine: string;
+      translatedLine: string;
+    }) => {
+      const res = await fetch("/api/workshop/save-manual-line", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          threadId,
+          lineIndex,
+          originalLine,
+          translatedLine,
+        }),
+      });
+
+      if (!res.ok) {
+        const error = await res
+          .json()
+          .catch(() => ({ error: "Unknown error" }));
+        throw new Error(error.error || `HTTP ${res.status}`);
+      }
+
+      return res.json() as Promise<{
+        ok: boolean;
+        translatedLine: string;
+        lineIndex: number;
+      }>;
+    },
+    onSuccess: (_, variables) => {
+      // Invalidate workshop state query for this thread
+      queryClient.invalidateQueries({
+        queryKey: ["workshop-state", variables.threadId],
+      });
+    },
+  });
 }

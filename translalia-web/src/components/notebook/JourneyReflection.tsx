@@ -12,20 +12,23 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import {
-  BookOpen,
-  Loader2,
-  AlertCircle,
-  Sparkles,
-} from "lucide-react";
+import { BookOpen, Loader2, AlertCircle, Sparkles } from "lucide-react";
 
 export interface JourneyReflectionProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   projectId: string;
+  /** When true, render inline (no dialog/modal wrapper) */
+  embedded?: boolean;
 }
 
-type Stage = "input" | "display" | "feedback-offer" | "feedback-loading" | "feedback-display" | "error";
+type Stage =
+  | "input"
+  | "display"
+  | "feedback-offer"
+  | "feedback-loading"
+  | "feedback-display"
+  | "error";
 
 /**
  * JourneyReflection - Two-stage conversational reflection system
@@ -44,6 +47,7 @@ export function JourneyReflection({
   open,
   onOpenChange,
   projectId,
+  embedded = false,
 }: JourneyReflectionProps) {
   const threadId = useThreadId();
   const poemLines = useWorkshopStore((s) => s.poemLines);
@@ -125,7 +129,7 @@ export function JourneyReflection({
   const handleClose = () => {
     reset();
     setStage("input");
-    onOpenChange(false);
+    if (!embedded) onOpenChange(false);
   };
 
   // Handle cancel from input
@@ -135,67 +139,82 @@ export function JourneyReflection({
     handleClose();
   };
 
+  if (!open) return null;
+
+  const content = (
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2">
+          <BookOpen className="w-5 h-5 text-purple-600" />
+          Your Translation Reflection
+        </DialogTitle>
+        <DialogDescription>
+          Share your translation journey - how it felt, what you found
+          interesting or challenging
+        </DialogDescription>
+      </DialogHeader>
+
+      {/* Content Area */}
+      <div className="flex-1 overflow-y-auto py-4 px-1">
+        {stage === "input" && (
+          <InputStage
+            value={inputValue}
+            charCount={charCount}
+            maxChars={MAX_CHARS}
+            minChars={MIN_CHARS}
+            isLoading={isLoading}
+            onInputChange={handleInputChange}
+            onSubmit={handleSubmitReflection}
+            onCancel={handleCancel}
+          />
+        )}
+
+        {stage === "display" && reflection && (
+          <DisplayStage
+            reflection={reflection}
+            completedCount={completedCount}
+            totalLines={totalLines}
+            onRequestFeedback={handleRequestFeedback}
+            onDone={handleClose}
+          />
+        )}
+
+        {stage === "feedback-loading" && <FeedbackLoadingStage />}
+
+        {stage === "feedback-display" && reflection && (
+          <FeedbackDisplayStage
+            feedback={reflection.aiFeedback || ""}
+            onDone={handleClose}
+          />
+        )}
+
+        {stage === "error" && error && (
+          <ErrorStage
+            error={error}
+            onRetry={() => {
+              if (reflection) {
+                handleRequestFeedback();
+              }
+            }}
+            onDone={handleClose}
+          />
+        )}
+      </div>
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <div className="h-full w-full flex flex-col bg-background p-6">
+        {content}
+      </div>
+    );
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <BookOpen className="w-5 h-5 text-purple-600" />
-            Your Translation Reflection
-          </DialogTitle>
-          <DialogDescription>
-            Share your translation journey - how it felt, what you found interesting or challenging
-          </DialogDescription>
-        </DialogHeader>
-
-        {/* Content Area */}
-        <div className="flex-1 overflow-y-auto py-4 px-1">
-          {stage === "input" && (
-            <InputStage
-              value={inputValue}
-              charCount={charCount}
-              maxChars={MAX_CHARS}
-              minChars={MIN_CHARS}
-              isLoading={isLoading}
-              onInputChange={handleInputChange}
-              onSubmit={handleSubmitReflection}
-              onCancel={handleCancel}
-            />
-          )}
-
-          {stage === "display" && reflection && (
-            <DisplayStage
-              reflection={reflection}
-              completedCount={completedCount}
-              totalLines={totalLines}
-              onRequestFeedback={handleRequestFeedback}
-              onDone={handleClose}
-            />
-          )}
-
-          {stage === "feedback-loading" && (
-            <FeedbackLoadingStage />
-          )}
-
-          {stage === "feedback-display" && reflection && (
-            <FeedbackDisplayStage
-              feedback={reflection.aiFeedback || ""}
-              onDone={handleClose}
-            />
-          )}
-
-          {stage === "error" && error && (
-            <ErrorStage
-              error={error}
-              onRetry={() => {
-                if (reflection) {
-                  handleRequestFeedback();
-                }
-              }}
-              onDone={handleClose}
-            />
-          )}
-        </div>
+        {content}
       </DialogContent>
     </Dialog>
   );
@@ -232,7 +251,8 @@ function InputStage({
           📓 YOUR REFLECTION
         </h3>
         <p className="text-sm text-gray-600 mb-4">
-          How did your translation journey feel? What was the most interesting or challenging part for you?
+          How did your translation journey feel? What was the most interesting
+          or challenging part for you?
         </p>
 
         <textarea
@@ -275,9 +295,7 @@ function InputStage({
               Saving...
             </>
           ) : (
-            <>
-              Save & Continue →
-            </>
+            <>Save & Continue →</>
           )}
         </Button>
       </div>
@@ -321,7 +339,8 @@ function DisplayStage({
         {/* Progress Info */}
         <div className="text-xs text-gray-600 space-y-1">
           <p>
-            Lines completed: {completedCount} of {totalLines} ({progressPercentage}%)
+            Lines completed: {completedCount} of {totalLines} (
+            {progressPercentage}%)
           </p>
           <p>Saved at {new Date(reflection.createdAt).toLocaleTimeString()}</p>
         </div>
@@ -336,7 +355,8 @@ function DisplayStage({
               A helpful friend would like to comment
             </h4>
             <p className="text-sm text-gray-600 mb-4">
-              I can share some thoughts about your translation journey if you'd like. It's totally optional!
+              I can share some thoughts about your translation journey if you'd
+              like. It's totally optional!
             </p>
             <div className="flex gap-3">
               <Button

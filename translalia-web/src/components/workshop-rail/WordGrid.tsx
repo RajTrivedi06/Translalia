@@ -3,18 +3,22 @@
 import * as React from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { useWorkshopStore } from "@/store/workshopSlice";
-import { useGenerateOptions } from "@/lib/hooks/useWorkshopFlow";
 import { useTranslateLine } from "@/lib/hooks/useTranslateLine";
 import { useThreadId } from "@/hooks/useThreadId";
+import { useNotebookStore } from "@/store/notebookSlice";
+import { createCellFromDragData } from "@/lib/notebook/cellHelpers";
+import { useGuideStore } from "@/store/guideSlice";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { CheckCircle2, Loader2, Edit3, GripVertical } from "lucide-react";
+import { CheckCircle2, Loader2 } from "lucide-react";
 import { DragData } from "@/types/drag";
 import { cn } from "@/lib/utils";
-import { ContextNotes } from "./ContextNotes";
-import { usePrefetchContext } from "@/lib/hooks/usePrefetchContext";
 import type { LineTranslationVariant } from "@/types/lineTranslation";
+import {
+  AdditionalSuggestions,
+  type WordSuggestion,
+} from "@/components/workshop/AdditionalSuggestions";
 
 // Part of speech type and color mapping
 const POS_COLORS = {
@@ -30,116 +34,40 @@ const POS_COLORS = {
   neutral: "bg-slate-50 text-slate-700 border-slate-200",
 } as const;
 
-const POS_LABELS = {
-  noun: "NOUN",
-  verb: "VERB",
-  adjective: "ADJ",
-  adverb: "ADV",
-  pronoun: "PRON",
-  preposition: "PREP",
-  conjunction: "CONJ",
-  article: "ART",
-  interjection: "INTJ",
-  neutral: "—",
-} as const;
-
-// Simple heuristic to detect part of speech from word characteristics
-// This is a placeholder - ideally the API should return POS tags
-function detectPartOfSpeech(
-  word: string,
-  index: number
-): keyof typeof POS_COLORS {
-  const lower = word.toLowerCase();
-
-  // Articles
-  if (
-    ["a", "an", "the", "le", "la", "les", "un", "une", "des"].includes(lower)
-  ) {
-    return "article";
-  }
-
-  // Common prepositions
-  if (
-    [
-      "in",
-      "on",
-      "at",
-      "by",
-      "for",
-      "with",
-      "from",
-      "to",
-      "of",
-      "dans",
-      "sur",
-      "avec",
-      "de",
-    ].includes(lower)
-  ) {
-    return "preposition";
-  }
-
-  // Common pronouns
-  if (
-    [
-      "i",
-      "you",
-      "he",
-      "she",
-      "it",
-      "we",
-      "they",
-      "je",
-      "tu",
-      "il",
-      "elle",
-      "nous",
-      "vous",
-    ].includes(lower)
-  ) {
-    return "pronoun";
-  }
-
-  // Common conjunctions
-  if (["and", "or", "but", "yet", "so", "et", "ou", "mais"].includes(lower)) {
-    return "conjunction";
-  }
-
-  // Verbs (ending patterns - very basic heuristic)
-  if (
-    lower.endsWith("ing") ||
-    lower.endsWith("ed") ||
-    lower.endsWith("er") ||
-    lower.endsWith("ez")
-  ) {
-    return "verb";
-  }
-
-  // Adjectives (ending patterns)
-  if (
-    lower.endsWith("ful") ||
-    lower.endsWith("less") ||
-    lower.endsWith("ous") ||
-    lower.endsWith("able")
-  ) {
-    return "adjective";
-  }
-
-  // Adverbs
-  if (lower.endsWith("ly") || lower.endsWith("ment")) {
-    return "adverb";
-  }
-
-  // Default to noun for content words, neutral for unknown
-  return index % 3 === 0 ? "noun" : "neutral";
-}
-
 function normalizePartOfSpeechTag(
   tag?: string | null
 ): keyof typeof POS_COLORS {
   if (!tag) return "neutral";
   const normalized = tag.toLowerCase() as keyof typeof POS_COLORS;
   return normalized in POS_COLORS ? normalized : "neutral";
+}
+
+function determineStanzaIndex(lineIndex: number, allLines: string[]): number {
+  // Heuristic: empty lines separate stanzas
+  let stanzaIndex = 0;
+  for (let i = 0; i < lineIndex; i++) {
+    if ((allLines[i] ?? "").trim() === "") {
+      stanzaIndex++;
+    }
+  }
+  return stanzaIndex;
+}
+
+function buildLineContextForIndex(lineIndex: number, allLines: string[]) {
+  return {
+    fullPoem: allLines.join("\n"),
+    prevLine: lineIndex > 0 ? (allLines[lineIndex - 1] ?? "").trimEnd() : null,
+    nextLine:
+      lineIndex < allLines.length - 1
+        ? (allLines[lineIndex + 1] ?? "").trimEnd()
+        : null,
+    stanzaIndex: determineStanzaIndex(lineIndex, allLines),
+    position: {
+      isFirst: lineIndex === 0,
+      isLast: lineIndex === allLines.length - 1,
+      isOnly: allLines.length === 1,
+    },
+  };
 }
 
 function DraggableSourceWord({
@@ -151,6 +79,10 @@ function DraggableSourceWord({
   index: number;
   lineNumber: number;
 }) {
+  const addCell = useNotebookStore((s) => s.addCell);
+  const [clicked, setClicked] = React.useState(false);
+  const justDraggedRef = React.useRef(false);
+
   const dragData: DragData = {
     id: `source-${lineNumber}-${index}`,
     text: word,
@@ -167,6 +99,10 @@ function DraggableSourceWord({
       data: dragData,
     });
 
+  React.useEffect(() => {
+    if (isDragging) justDraggedRef.current = true;
+  }, [isDragging]);
+
   const style = transform
     ? {
         transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
@@ -176,15 +112,44 @@ function DraggableSourceWord({
   return (
     <div
       ref={setNodeRef}
+      data-draggable="true"
       {...attributes}
       {...listeners}
       style={style}
       className={cn(
         "px-3 py-1.5 bg-blue-50 border border-blue-200 rounded text-sm font-medium",
-        "cursor-move hover:bg-blue-100 hover:border-blue-300 transition-colors",
+        "cursor-pointer hover:bg-blue-100 hover:border-blue-300 transition-colors",
         "select-none touch-none",
-        isDragging && "opacity-40"
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300",
+        isDragging && "opacity-40 cursor-grabbing",
+        clicked && "scale-[1.03] ring-2 ring-green-200"
       )}
+      role="button"
+      tabIndex={0}
+      aria-label={`Add "${word}" to notebook`}
+      onPointerDown={() => {
+        // Reset so a normal click isn't blocked by a prior drag.
+        justDraggedRef.current = false;
+      }}
+      onClick={(e) => {
+        e.stopPropagation();
+        // If the user just dragged, browsers can fire a click on mouseup—ignore once.
+        if (justDraggedRef.current) {
+          justDraggedRef.current = false;
+          return;
+        }
+        addCell(createCellFromDragData(dragData));
+        setClicked(true);
+        window.setTimeout(() => setClicked(false), 250);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          addCell(createCellFromDragData(dragData));
+          setClicked(true);
+          window.setTimeout(() => setClicked(false), 250);
+        }
+      }}
     >
       {word}
     </div>
@@ -206,23 +171,16 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
   const thread = pThreadId || threadHook || undefined;
   const selectedLineIndex = useWorkshopStore((s) => s.selectedLineIndex);
   const poemLines = useWorkshopStore((s) => s.poemLines);
-  const wordOptions = useWorkshopStore((s) => s.wordOptions);
-  const wordOptionsCache = useWorkshopStore((s) => s.wordOptionsCache);
-  const selections = useWorkshopStore((s) => s.selections);
-  const selectWord = useWorkshopStore((s) => s.selectWord);
-  const deselectWord = useWorkshopStore((s) => s.deselectWord);
-  const setWordOptions = useWorkshopStore((s) => s.setWordOptions);
-  const setWordOptionsForLine = useWorkshopStore(
-    (s) => s.setWordOptionsForLine
-  );
-  const setIsGenerating = useWorkshopStore((s) => s.setIsGenerating);
   const modelUsed = useWorkshopStore((s) => s.modelUsed);
+  const translationIntent = useGuideStore(
+    (s) => s.translationIntent.text ?? null
+  );
 
-  const {
-    mutate: generateOptions,
-    isPending: isGeneratingOptions,
-    error: generateError,
-  } = useGenerateOptions();
+  const [additionalSuggestions, setAdditionalSuggestions] = React.useState<
+    WordSuggestion[]
+  >([]);
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = React.useState(false);
+
   const {
     mutate: translateLine,
     isPending: isTranslatingLine,
@@ -234,149 +192,54 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
   const setLineTranslation = useWorkshopStore((s) => s.setLineTranslation);
   const selectVariant = useWorkshopStore((s) => s.selectVariant);
 
-  const isPending = isGeneratingOptions || isTranslatingLine;
-  const error = generateError || translateError;
+  const isPending = isTranslatingLine;
+  const error = translateError;
 
   // Derive source words from the raw line (instant, no LLM wait)
   const sourceWords = React.useMemo(() => {
     if (selectedLineIndex === null) return [];
     const line = poemLines[selectedLineIndex];
+    // Guard against undefined line (can happen when store is reset or poemLines is empty)
+    if (!line || typeof line !== "string") return [];
     return line.split(/\s+/).filter(Boolean);
   }, [selectedLineIndex, poemLines]);
 
-  // Prefetch context notes when word options are loaded (include options for unsaved lines)
-  usePrefetchContext(
-    thread,
-    selectedLineIndex,
-    wordOptions?.length || 0,
-    wordOptions || undefined
-  );
-
-  // Check if we should use new line translation or old word-by-word workflow
-  const hasLineTranslation =
-    selectedLineIndex !== null &&
-    lineTranslations[selectedLineIndex] !== undefined;
-
-  // Check if word options are cached for this specific line
-  const cachedWordOptions =
-    selectedLineIndex !== null ? wordOptionsCache[selectedLineIndex] : null;
-
-  // If we have cached options for this line, restore them to the global state
   React.useEffect(() => {
-    if (cachedWordOptions && cachedWordOptions.length > 0) {
-      setWordOptions(cachedWordOptions);
-    }
-  }, [cachedWordOptions, selectedLineIndex, setWordOptions]);
-
-  React.useEffect(() => {
-    if (
-      selectedLineIndex === null ||
-      !thread ||
-      !poemLines[selectedLineIndex]
-    ) {
-      return;
-    }
-
+    if (selectedLineIndex === null || !thread) return;
     const lineText = poemLines[selectedLineIndex];
+    if (typeof lineText !== "string") return;
 
-    // If line translation already exists, don't fetch again
-    if (hasLineTranslation) {
-      return;
-    }
+    // Already translated → no fetch
+    if (lineTranslations[selectedLineIndex]) return;
 
-    // Also check if word options are cached for this specific line
-    if (cachedWordOptions && cachedWordOptions.length > 0) {
-      // Restore from cache
-      setWordOptions(cachedWordOptions);
-      return;
-    }
+    const ctx = buildLineContextForIndex(selectedLineIndex, poemLines);
+    const fullPoem = lineContext?.fullPoem ?? ctx.fullPoem;
 
-    // Try new line translation workflow first (if context is available)
-    // Fall back to old word-by-word if context is missing or translation fails
-    if (lineContext) {
-      setIsGenerating(true);
-      translateLine(
-        {
-          threadId: thread,
-          lineIndex: selectedLineIndex,
-          lineText,
-          fullPoem: lineContext.fullPoem,
-          stanzaIndex: lineContext.stanzaIndex,
-          prevLine: lineContext.prevLine,
-          nextLine: lineContext.nextLine,
+    translateLine(
+      {
+        threadId: thread,
+        lineIndex: selectedLineIndex,
+        lineText,
+        fullPoem,
+        stanzaIndex: lineContext?.stanzaIndex ?? ctx.stanzaIndex,
+        prevLine: (lineContext?.prevLine ?? ctx.prevLine) || undefined,
+        nextLine: (lineContext?.nextLine ?? ctx.nextLine) || undefined,
+      },
+      {
+        onSuccess: (data) => {
+          setLineTranslation(selectedLineIndex, data);
+          useWorkshopStore.setState({ modelUsed: data.modelUsed || null });
         },
-        {
-          onSuccess: (data) => {
-            setLineTranslation(selectedLineIndex, data);
-            useWorkshopStore.setState({ modelUsed: data.modelUsed || null });
-            setIsGenerating(false);
-          },
-          onError: () => {
-            // Fall back to old workflow on error
-            console.warn(
-              "[WordGrid] Line translation failed, falling back to word-by-word"
-            );
-            setIsGenerating(true);
-            generateOptions(
-              {
-                threadId: thread,
-                lineIndex: selectedLineIndex,
-                lineText,
-              },
-              {
-                onSuccess: (data) => {
-                  // Cache options per line
-                  setWordOptionsForLine(selectedLineIndex, data.words);
-                  useWorkshopStore.setState({
-                    modelUsed: data.modelUsed || null,
-                  });
-                  setIsGenerating(false);
-                },
-                onError: () => {
-                  setWordOptions(null);
-                  setIsGenerating(false);
-                },
-              }
-            );
-          },
-        }
-      );
-    } else {
-      // No context available, use old workflow
-      setIsGenerating(true);
-      generateOptions(
-        {
-          threadId: thread,
-          lineIndex: selectedLineIndex,
-          lineText,
-        },
-        {
-          onSuccess: (data) => {
-            // Cache options per line
-            setWordOptionsForLine(selectedLineIndex, data.words);
-            useWorkshopStore.setState({ modelUsed: data.modelUsed || null });
-            setIsGenerating(false);
-          },
-          onError: () => {
-            setWordOptions(null);
-            setIsGenerating(false);
-          },
-        }
-      );
-    }
+      }
+    );
   }, [
     selectedLineIndex,
     thread,
     poemLines,
+    lineTranslations,
     lineContext,
-    hasLineTranslation,
-    cachedWordOptions,
     translateLine,
-    generateOptions,
     setLineTranslation,
-    setWordOptions,
-    setWordOptionsForLine,
-    setIsGenerating,
   ]);
 
   // Get current line translation if available
@@ -385,42 +248,123 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
   const currentSelectedVariant =
     selectedLineIndex !== null ? selectedVariant[selectedLineIndex] : null;
 
+  // Clear suggestions when switching lines
+  React.useEffect(() => {
+    setAdditionalSuggestions([]);
+    setIsLoadingSuggestions(false);
+  }, [selectedLineIndex]);
+
+  const generateAdditionalSuggestions = React.useCallback(
+    async (userGuidance?: string) => {
+      if (!thread || selectedLineIndex === null) return;
+
+      setIsLoadingSuggestions(true);
+      try {
+        const response = await fetch("/api/workshop/additional-suggestions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            threadId: thread,
+            lineIndex: selectedLineIndex,
+            currentLine: poemLines[selectedLineIndex],
+            previousLine:
+              selectedLineIndex > 0 ? poemLines[selectedLineIndex - 1] : null,
+            nextLine:
+              selectedLineIndex < poemLines.length - 1
+                ? poemLines[selectedLineIndex + 1]
+                : null,
+            fullPoem: poemLines.join("\n"),
+            poemTheme: translationIntent || undefined,
+            userGuidance: userGuidance || null,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = (await response.json()) as {
+          suggestions?: WordSuggestion[];
+        };
+        setAdditionalSuggestions(
+          Array.isArray(data.suggestions) ? data.suggestions : []
+        );
+      } catch (error) {
+        console.error("[WordGrid] Error generating suggestions:", error);
+      } finally {
+        setIsLoadingSuggestions(false);
+      }
+    },
+    [thread, selectedLineIndex, poemLines, translationIntent]
+  );
+
+  const handleAdditionalWordClick = React.useCallback(
+    (word: string) => {
+      if (selectedLineIndex === null) return;
+      const dragData: DragData = {
+        id: `additional-${selectedLineIndex}-${Date.now()}-${word}`,
+        text: word,
+        originalWord: word,
+        partOfSpeech: "neutral",
+        sourceLineNumber: selectedLineIndex,
+        position: 0,
+        dragType: "variantWord",
+        metadata: {
+          source: "additional-suggestions",
+        },
+      };
+      useNotebookStore.getState().addCell(createCellFromDragData(dragData));
+    },
+    [selectedLineIndex]
+  );
+
+  if (selectedLineIndex === null) {
+    return (
+      <div className="p-6 flex items-center justify-center h-full">
+        <div className="text-center space-y-2">
+          <div className="text-sm font-medium text-gray-700">
+            Select a line to begin translation
+          </div>
+          <p className="text-xs text-gray-500">
+            You’ll get 3 full-line translation variants for every line.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (error) {
     return (
       <div className="p-6 flex items-center justify-center">
         <Card className="max-w-md w-full border-red-200 bg-red-50">
           <CardContent className="pt-6">
             <p className="text-sm text-red-600 text-center mb-4">
-              Failed to generate translation options.
+              Translation failed. Please try again.
             </p>
             <Button
               size="sm"
               variant="outline"
               className="w-full"
               onClick={() => {
-                if (
-                  selectedLineIndex !== null &&
-                  thread &&
-                  poemLines[selectedLineIndex]
-                ) {
-                  if (lineContext) {
-                    translateLine({
-                      threadId: thread,
-                      lineIndex: selectedLineIndex,
-                      lineText: poemLines[selectedLineIndex],
-                      fullPoem: lineContext.fullPoem,
-                      stanzaIndex: lineContext.stanzaIndex,
-                      prevLine: lineContext.prevLine,
-                      nextLine: lineContext.nextLine,
-                    });
-                  } else {
-                    generateOptions({
-                      threadId: thread,
-                      lineIndex: selectedLineIndex,
-                      lineText: poemLines[selectedLineIndex],
-                    });
-                  }
-                }
+                if (!thread) return;
+                const lineText = poemLines[selectedLineIndex];
+                if (typeof lineText !== "string") return;
+                const ctx = buildLineContextForIndex(
+                  selectedLineIndex,
+                  poemLines
+                );
+                const fullPoem = lineContext?.fullPoem ?? ctx.fullPoem;
+                translateLine({
+                  threadId: thread,
+                  lineIndex: selectedLineIndex,
+                  lineText,
+                  fullPoem,
+                  stanzaIndex: lineContext?.stanzaIndex ?? ctx.stanzaIndex,
+                  prevLine:
+                    (lineContext?.prevLine ?? ctx.prevLine) || undefined,
+                  nextLine:
+                    (lineContext?.nextLine ?? ctx.nextLine) || undefined,
+                });
               }}
             >
               Retry
@@ -433,6 +377,7 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
 
   // Show line translation UI if available, otherwise show old word-by-word UI
   if (currentLineTranslation) {
+    const ctx = buildLineContextForIndex(selectedLineIndex, poemLines);
     return (
       <div className="space-y-6 p-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
@@ -444,6 +389,16 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
               Drag any token from the variants or the original line into your
               notebook.
             </p>
+            {ctx.position.isOnly ? (
+              <p className="text-xs text-gray-500 mt-1">
+                ℹ️ Single-line poem — variants adapted for standalone impact
+              </p>
+            ) : ctx.position.isFirst || ctx.position.isLast ? (
+              <p className="text-xs text-gray-500 mt-1">
+                ℹ️ {ctx.position.isFirst ? "Opening" : "Closing"} line —
+                variants adapted for position
+              </p>
+            ) : null}
           </div>
           {modelUsed && (
             <Badge variant="secondary" className="bg-blue-50 text-blue-700">
@@ -477,220 +432,32 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
             />
           ))}
         </div>
+
+        <AdditionalSuggestions
+          suggestions={additionalSuggestions}
+          isLoading={isLoadingSuggestions}
+          onGenerate={() => generateAdditionalSuggestions()}
+          onRegenerate={(guidance) => generateAdditionalSuggestions(guidance)}
+          onWordClick={handleAdditionalWordClick}
+          isExpanded={false}
+        />
       </div>
     );
   }
 
-  // Fall back to old word-by-word UI
-  // Only show loading if we don't have word options AND we're actually pending
-  // (isPending from a previous line should not block display of current line's options)
-  if (!wordOptions) {
-    // Show loading state while fetching
-    return (
-      <div className="p-6 flex items-center justify-center h-full">
-        <div className="text-center space-y-4">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-500 mx-auto" />
-          <p className="text-sm text-muted-foreground">
-            {isPending
-              ? "Generating translation options..."
-              : "No options available"}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // Check if this is a blank line (no words)
-  const isBlankLine = wordOptions.length === 0;
-
-  if (isBlankLine) {
-    return (
-      <div className="h-full bg-gradient-to-b from-gray-50 to-white flex flex-col items-center justify-center p-6">
-        <div className="text-center space-y-3">
-          <div className="text-4xl opacity-20">⏸</div>
-          <h3 className="text-lg font-medium text-gray-700">Blank Line</h3>
-          <p className="text-sm text-gray-500 max-w-sm">
-            This line is empty or contains only whitespace. It will be preserved
-            in the formatting.
-          </p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              // Auto-complete blank lines
-              if (selectedLineIndex !== null) {
-                useWorkshopStore.setState({
-                  completedLines: {
-                    ...useWorkshopStore.getState().completedLines,
-                    [selectedLineIndex]: "", // Save empty string for blank line
-                  },
-                });
-              }
-            }}
-            className="mt-4"
-          >
-            Mark as Complete
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
+  // No translation yet (or request in-flight)
   return (
-    <div className="space-y-6 p-4">
-      <SourceWordsPalette
-        sourceWords={sourceWords}
-        lineNumber={selectedLineIndex}
-      />
-
-      {/* Existing translation options grid */}
-      <div className="h-full bg-gradient-to-b from-gray-50 to-white flex flex-col">
-        {/* Model indicator banner */}
-        {modelUsed && (
-          <div className="mx-6 mt-6 mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex-shrink-0">
-            <div className="flex items-center gap-2">
-              <Badge variant="secondary" className="bg-blue-500 text-white">
-                AI Model
-              </Badge>
-              <span className="text-sm font-medium text-blue-900">
-                {modelUsed}
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Horizontal word-by-word translation layout - Single line with horizontal scroll */}
-        <div className="flex-1 overflow-x-auto overflow-y-auto px-6 pb-6">
-          <div className="flex gap-6 min-w-min justify-center items-start">
-            {wordOptions.map((w, colIdx) => {
-              const pos =
-                w.partOfSpeech || detectPartOfSpeech(w.original, colIdx);
-              const isSelected = selections[w.position] !== undefined;
-              const selectedValue = selections[w.position];
-
-              return (
-                <div key={colIdx} className="flex flex-col">
-                  <WordColumn
-                    word={w}
-                    pos={pos}
-                    isSelected={isSelected}
-                    selectedValue={selectedValue}
-                    onSelectOption={(opt) => {
-                      // Toggle: if clicking the same option, deselect it
-                      if (selectedValue === opt) {
-                        deselectWord(w.position);
-                      } else {
-                        selectWord(w.position, opt);
-                      }
-                    }}
-                  />
-                  {/* Context Notes for this token */}
-                  {thread && selectedLineIndex !== null && (
-                    <ContextNotes
-                      threadId={thread}
-                      lineIndex={selectedLineIndex}
-                      tokenIndex={colIdx}
-                      wordOptionsForLine={wordOptions}
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
+    <div className="p-6 flex items-center justify-center h-full">
+      <div className="text-center space-y-4">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500 mx-auto" />
+        <p className="text-sm text-muted-foreground">
+          {isPending
+            ? "Generating translation variants..."
+            : "No translation available"}
+        </p>
       </div>
     </div>
   );
-}
-
-interface DraggableWordOptionProps {
-  word: { original: string; position: number };
-  option: string;
-  pos: keyof typeof POS_COLORS;
-  isSelected: boolean;
-  sourceLineNumber: number;
-  onClick: () => void;
-}
-
-function DraggableWordOption({
-  word,
-  option,
-  pos,
-  isSelected,
-  sourceLineNumber,
-  onClick,
-}: DraggableWordOptionProps) {
-  const dragData: DragData = {
-    id: `${sourceLineNumber}-${word.position}-${option}`,
-    text: option,
-    originalWord: word.original,
-    partOfSpeech: pos,
-    sourceLineNumber,
-    position: word.position,
-    dragType: "option",
-  };
-
-  const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({
-      id: dragData.id,
-      data: dragData,
-    });
-
-  const style: React.CSSProperties = {
-    transform: transform
-      ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
-      : undefined,
-    cursor: isDragging ? "grabbing" : "grab",
-  };
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`
-        group relative w-full text-center rounded-lg border-2 px-3 py-2
-        transition-all duration-200 text-sm font-medium select-none
-        ${
-          isSelected
-            ? "border-green-500 bg-green-50 text-green-800 shadow-md scale-105"
-            : "border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 hover:shadow-sm"
-        }
-        ${isDragging ? "opacity-60 scale-95" : ""}
-      `}
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onClick();
-        }
-      }}
-      {...attributes}
-      {...listeners}
-    >
-      <div className="absolute left-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-50 transition-opacity pointer-events-none">
-        <GripVertical className="w-3 h-3 text-gray-400" />
-      </div>
-
-      <span className="w-full h-full inline-block">{option}</span>
-
-      <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
-        <span className="text-[10px] text-gray-500 bg-white px-2 py-1 rounded border border-gray-200 shadow-sm">
-          Drag to notebook →
-        </span>
-      </div>
-    </div>
-  );
-}
-
-interface WordColumnProps {
-  word: { original: string; position: number; options: string[] };
-  pos: keyof typeof POS_COLORS;
-  isSelected: boolean;
-  selectedValue?: string;
-  onSelectOption: (option: string) => void;
 }
 
 function SourceWordsPalette({
@@ -847,6 +614,10 @@ function DraggableVariantToken({
   stanzaIndex,
   disabled,
 }: DraggableVariantTokenProps) {
+  const addCell = useNotebookStore((s) => s.addCell);
+  const [clicked, setClicked] = React.useState(false);
+  const justDraggedRef = React.useRef(false);
+
   const pos = normalizePartOfSpeechTag(token.partOfSpeech);
   const dragData: DragData = {
     id: `variant-${variantId}-line-${lineNumber}-${token.position}-${token.translation}`,
@@ -867,6 +638,10 @@ function DraggableVariantToken({
       disabled: disabled || !token.translation,
     });
 
+  React.useEffect(() => {
+    if (isDragging) justDraggedRef.current = true;
+  }, [isDragging]);
+
   const style: React.CSSProperties | undefined = transform
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
     : undefined;
@@ -881,9 +656,11 @@ function DraggableVariantToken({
       className={cn(
         "px-3 py-2 rounded-lg border text-sm font-medium transition-all bg-white shadow-sm flex flex-col",
         "select-none touch-none",
-        !disabled && "cursor-move hover:-translate-y-0.5 hover:shadow",
+        !disabled && "cursor-pointer hover:-translate-y-0.5 hover:shadow",
         isDragging && "opacity-60 scale-95 cursor-grabbing",
         disabled && "opacity-40 cursor-not-allowed",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300",
+        clicked && "scale-[1.03] ring-2 ring-green-200",
         POS_COLORS[pos]
       )}
       title={
@@ -891,9 +668,37 @@ function DraggableVariantToken({
           ? `Original: ${token.original}\nTranslation: ${token.translation}`
           : token.translation
       }
+      aria-label={
+        disabled
+          ? undefined
+          : `Add "${token.translation}" (from "${
+              token.original || token.translation
+            }") to notebook`
+      }
+      onPointerDown={() => {
+        // Reset so a normal click isn't blocked by a prior drag.
+        justDraggedRef.current = false;
+      }}
       onClick={(e) => {
-        // Stop propagation to prevent card selection when clicking (not dragging)
         e.stopPropagation();
+        if (disabled || !token.translation) return;
+        // If the user just dragged, browsers can fire a click on mouseup—ignore once.
+        if (justDraggedRef.current) {
+          justDraggedRef.current = false;
+          return;
+        }
+        addCell(createCellFromDragData(dragData));
+        setClicked(true);
+        window.setTimeout(() => setClicked(false), 250);
+      }}
+      onKeyDown={(e) => {
+        if (disabled || !token.translation) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          addCell(createCellFromDragData(dragData));
+          setClicked(true);
+          window.setTimeout(() => setClicked(false), 250);
+        }
       }}
       role="button"
       tabIndex={disabled ? -1 : 0}
@@ -906,134 +711,6 @@ function DraggableVariantToken({
           {token.original}
         </span>
       )}
-    </div>
-  );
-}
-
-function WordColumn({
-  word,
-  pos,
-  isSelected,
-  selectedValue,
-  onSelectOption,
-}: WordColumnProps) {
-  const [showCustomInput, setShowCustomInput] = React.useState(false);
-  const [customValue, setCustomValue] = React.useState("");
-  const customInputRef = React.useRef<HTMLInputElement>(null);
-  const selectedLineIndex = useWorkshopStore((s) => s.selectedLineIndex);
-
-  React.useEffect(() => {
-    if (showCustomInput) {
-      customInputRef.current?.focus();
-    }
-  }, [showCustomInput]);
-
-  const handleCustomSubmit = () => {
-    if (customValue.trim()) {
-      onSelectOption(customValue.trim());
-      setCustomValue("");
-      setShowCustomInput(false);
-    }
-  };
-
-  return (
-    <div className="flex flex-col items-center min-w-[140px] max-w-[180px]">
-      {/* Original Word Header */}
-      <div className="mb-3 text-center">
-        <div className="flex items-center justify-center gap-1.5 mb-1">
-          <h3 className="text-lg font-semibold text-gray-800">
-            {word.original}
-          </h3>
-          {isSelected && (
-            <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
-          )}
-        </div>
-        <Badge
-          variant="secondary"
-          className={`${POS_COLORS[pos]} text-[10px] font-medium px-2 py-0.5 border`}
-        >
-          {POS_LABELS[pos]}
-        </Badge>
-      </div>
-
-      {/* Divider */}
-      <div className="w-full h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent mb-3" />
-
-      {/* Translation Options */}
-      <div className="w-full space-y-2">
-        {word.options.map((opt, i) => {
-          const isThisSelected = selectedValue === opt;
-
-          return (
-            <DraggableWordOption
-              key={i}
-              word={word}
-              option={opt}
-              pos={pos}
-              isSelected={isThisSelected}
-              sourceLineNumber={selectedLineIndex ?? 0}
-              onClick={() => onSelectOption(opt)}
-            />
-          );
-        })}
-
-        {/* Custom Translation Input */}
-        {showCustomInput ? (
-          <div className="pt-1">
-            <input
-              ref={customInputRef}
-              type="text"
-              value={customValue}
-              onChange={(e) => setCustomValue(e.target.value)}
-              placeholder="Type here..."
-              className="w-full text-sm text-center px-2 py-2 border-2 border-dashed border-blue-400 rounded-lg focus:outline-none focus:border-blue-600 bg-blue-50"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  handleCustomSubmit();
-                } else if (e.key === "Escape") {
-                  setShowCustomInput(false);
-                  setCustomValue("");
-                }
-              }}
-              onBlur={() => {
-                if (!customValue.trim()) {
-                  setShowCustomInput(false);
-                }
-              }}
-            />
-            <div className="flex gap-1 mt-1">
-              <Button
-                size="sm"
-                variant="ghost"
-                className="flex-1 h-7 text-xs"
-                onClick={handleCustomSubmit}
-              >
-                Add
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="flex-1 h-7 text-xs"
-                onClick={() => {
-                  setShowCustomInput(false);
-                  setCustomValue("");
-                }}
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setShowCustomInput(true)}
-            className="w-full text-center text-xs text-gray-500 hover:text-blue-600 py-2 border-2 border-dashed border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50/50 transition-all"
-          >
-            <Edit3 className="w-3 h-3 inline mr-1" />
-            Custom
-          </button>
-        )}
-      </div>
     </div>
   );
 }
