@@ -149,6 +149,9 @@ export function ProfileForm() {
           <option value="hi">हिन्दी (Hindi)</option>
           <option value="ar">العربية (Arabic)</option>
           <option value="zh">中文 (Mandarin)</option>
+          <option value="ta">தமிழ் (Tamil)</option>
+          <option value="te">తెలుగు (Telugu)</option>
+          <option value="ml">മലയാളം (Malayalam)</option>
         </select>
       </div>
 
