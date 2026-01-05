@@ -128,7 +128,7 @@ export function LineClickHandler({
       <div className="flex items-center justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="text-xs text-gray-600 mb-1">
-            Line {lineNumber} of Chunk {stanzaNumber}
+            Line {lineNumber} of Segment {stanzaNumber}
           </div>
           <div className="font-medium truncate">{lineText}</div>
         </div>

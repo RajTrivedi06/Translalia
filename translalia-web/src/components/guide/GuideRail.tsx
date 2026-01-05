@@ -1,7 +1,16 @@
 "use client";
 
 import { ChangeEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
-import { FileText, UploadCloud, X, Info, ChevronLeft } from "lucide-react";
+import {
+  FileText,
+  UploadCloud,
+  X,
+  Info,
+  ChevronLeft,
+  ChevronDown,
+  ChevronUp,
+  Check,
+} from "lucide-react";
 import { useRouter } from "@/i18n/routing";
 import { useTranslations, useLocale } from "next-intl";
 
@@ -88,6 +97,10 @@ export function GuideRail({
     translationIntent,
     setTranslationIntent,
     submitTranslationIntent,
+    viewpointRangeMode,
+    setViewpointRangeMode,
+    translationModel,
+    setTranslationModel,
     reset,
     hydrated,
     checkGuideComplete,
@@ -137,6 +150,11 @@ export function GuideRail({
   const [isSavingZone, setIsSavingZone] = useState(false);
   const [isSavingIntent, setIsSavingIntent] = useState(false);
   const [isSavingVariety, setIsSavingVariety] = useState(false);
+  const [isSavingViewpointMode, setIsSavingViewpointMode] = useState(false);
+  const [isSavingTranslationModel, setIsSavingTranslationModel] =
+    useState(false);
+  const [isTranslationModelExpanded, setIsTranslationModelExpanded] =
+    useState(false);
   const [userHasManuallySetFormatting, setUserHasManuallySetFormatting] =
     useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
@@ -306,6 +324,44 @@ export function GuideRail({
       setIntentError(t("intentErrorSave"));
     } finally {
       setIsSavingIntent(false);
+    }
+  };
+
+  const handleSaveViewpointMode = async () => {
+    if (!threadId) {
+      return;
+    }
+
+    setIsSavingViewpointMode(true);
+    try {
+      await saveTranslationIntent.mutateAsync({
+        threadId,
+        questionKey: "viewpointRangeMode",
+        value: viewpointRangeMode,
+      });
+    } catch (error) {
+      console.error("[handleSaveViewpointMode] Error:", error);
+    } finally {
+      setIsSavingViewpointMode(false);
+    }
+  };
+
+  const handleSaveTranslationModel = async () => {
+    if (!threadId) {
+      return;
+    }
+
+    setIsSavingTranslationModel(true);
+    try {
+      await saveTranslationIntent.mutateAsync({
+        threadId,
+        questionKey: "translationModel",
+        value: translationModel,
+      });
+    } catch (error) {
+      console.error("[handleSaveTranslationModel] Error:", error);
+    } finally {
+      setIsSavingTranslationModel(false);
     }
   };
 
@@ -711,19 +767,7 @@ export function GuideRail({
           )}
 
           {canEditVariety && !isSourceVarietySubmitted && (
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <button
-                type="button"
-                onClick={handleSaveSourceVariety}
-                disabled={!threadId || isSavingVariety}
-                className="inline-flex items-center justify-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isSavingVariety
-                  ? t("saving")
-                  : sourceVarietyText.trim().length > 0
-                  ? t("continue")
-                  : t("skipStandardVariety")}
-              </button>
+            <div className="mt-3 flex items-center justify-between">
               <button
                 type="button"
                 onClick={() => {
@@ -731,9 +775,17 @@ export function GuideRail({
                   void handleSaveSourceVariety();
                 }}
                 disabled={!threadId || isSavingVariety}
-                className="text-sm font-medium text-gray-600 transition hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+                className="text-sm font-medium text-gray-600 transition hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {t("skipStandardVariety")}
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveSourceVariety}
+                disabled={!threadId || isSavingVariety}
+                className="inline-flex items-center justify-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSavingVariety ? t("saving") : "Save"}
               </button>
             </div>
           )}
@@ -897,6 +949,154 @@ export function GuideRail({
           </div>
         </div>
       </section>
+
+      {/* Viewpoint Range Mode - After Translation Intent */}
+      <section className="rounded-2xl border bg-white shadow-sm">
+        <div className="px-4 py-3">
+          <label className="text-sm font-semibold text-gray-900">
+            {t("viewpointRange")}
+          </label>
+          <p className="text-xs text-gray-500">{t("viewpointRangeHelper")}</p>
+        </div>
+        <div className="px-4 pb-3 flex gap-2">
+          {(["focused", "balanced", "adventurous"] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setViewpointRangeMode(mode)}
+              className={cn(
+                "flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                viewpointRangeMode === mode
+                  ? "bg-gray-900 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              )}
+            >
+              {t(`viewpointMode.${mode}`)}
+            </button>
+          ))}
+        </div>
+        <div className="px-4 pb-3">
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={handleSaveViewpointMode}
+              disabled={!threadId || isSavingViewpointMode}
+              className="inline-flex items-center justify-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isSavingViewpointMode ? t("saving") : "Save"}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* Translation Model Selection - After Viewpoint Range */}
+      <section className="rounded-2xl border bg-white shadow-sm overflow-hidden">
+        <button
+          type="button"
+          onClick={() =>
+            setIsTranslationModelExpanded(!isTranslationModelExpanded)
+          }
+          className={cn(
+            "w-full px-4 flex items-center justify-between text-left hover:bg-gray-50 transition-all",
+            isTranslationModelExpanded ? "py-3" : "py-2"
+          )}
+        >
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <label className="text-sm font-semibold text-gray-900">
+                {t("translationModel")}:
+              </label>
+              <span className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-2.5 py-1 text-sm font-semibold text-white shadow-sm flex-shrink-0">
+                <Check className="h-3.5 w-3.5" />
+                {translationModel}
+              </span>
+              <span className="text-xs text-gray-500 flex-shrink-0">
+                {translationModel === "gpt-4o" && "(Default - Balanced)"}
+                {translationModel === "gpt-4o-mini" && "(Fast, Cost-effective)"}
+                {translationModel === "gpt-4-turbo" && "(Higher quality)"}
+                {translationModel === "gpt-5" && "(Latest, Best quality)"}
+                {translationModel === "gpt-5-mini" && "(Fast GPT-5)"}
+              </span>
+            </div>
+          </div>
+          {isTranslationModelExpanded ? (
+            <ChevronUp className="h-4 w-4 text-gray-400 ml-2 flex-shrink-0" />
+          ) : (
+            <ChevronDown className="h-4 w-4 text-gray-400 ml-2 flex-shrink-0" />
+          )}
+        </button>
+        {isTranslationModelExpanded && (
+          <>
+            <div className="px-4 pb-2 pt-1">
+              <p className="text-xs text-gray-500">
+                {t("translationModelHelper")}
+              </p>
+            </div>
+            <div className="px-4 pb-3 flex flex-col gap-2">
+              {(
+                [
+                  "gpt-4o",
+                  "gpt-4o-mini",
+                  "gpt-4-turbo",
+                  "gpt-5",
+                  "gpt-5-mini",
+                ] as const
+              ).map((model) => (
+                <button
+                  key={model}
+                  type="button"
+                  onClick={() => setTranslationModel(model)}
+                  className={cn(
+                    "rounded-lg px-3 py-2 text-sm font-medium transition-colors text-left",
+                    translationModel === model
+                      ? "bg-gray-900 text-white"
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  )}
+                >
+                  <span className="font-semibold">{model}</span>
+                  {model === "gpt-4o" && (
+                    <span className="ml-2 text-xs opacity-75">
+                      (Default - Balanced)
+                    </span>
+                  )}
+                  {model === "gpt-4o-mini" && (
+                    <span className="ml-2 text-xs opacity-75">
+                      (Fast, Cost-effective)
+                    </span>
+                  )}
+                  {model === "gpt-4-turbo" && (
+                    <span className="ml-2 text-xs opacity-75">
+                      (Higher quality)
+                    </span>
+                  )}
+                  {model === "gpt-5" && (
+                    <span className="ml-2 text-xs opacity-75">
+                      (Latest, Best quality)
+                    </span>
+                  )}
+                  {model === "gpt-5-mini" && (
+                    <span className="ml-2 text-xs opacity-75">
+                      (Fast GPT-5)
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+            <div className="px-4 pb-3">
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleSaveTranslationModel}
+                  disabled={!threadId || isSavingTranslationModel}
+                  className="inline-flex items-center justify-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isSavingTranslationModel ? t("saving") : "Save"}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </section>
     </div>
   );
 
@@ -949,20 +1149,20 @@ export function GuideRail({
 
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <button
-                id="start-workshop-btn"
-                type="button"
-                onClick={handleStartWorkshop}
-                className="inline-flex w-full items-center justify-center rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-              >
-                {t("startWorkshop")}
-              </button>
-              <button
                 id="clear-guide-btn"
                 type="button"
                 onClick={handleResetAll}
                 className="w-full rounded-lg border border-transparent px-3 py-2 text-xs font-semibold text-gray-600 transition hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 sm:w-auto"
               >
                 {t("clearInputs")}
+              </button>
+              <button
+                id="start-workshop-btn"
+                type="button"
+                onClick={handleStartWorkshop}
+                className="inline-flex w-full items-center justify-center rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+              >
+                {t("startWorkshop")}
               </button>
             </div>
             <div className="sr-only" aria-live="polite">

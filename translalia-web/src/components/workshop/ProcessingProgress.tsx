@@ -99,7 +99,7 @@ export function ProcessingProgress({
               {statusLabel}
             </p>
             <p className="text-[11px] text-gray-500">
-              {progress.completed} / {progress.total} chunks · {statusSubtext}
+              {progress.completed} / {progress.total} segments · {statusSubtext}
             </p>
           </div>
         </div>
@@ -185,7 +185,7 @@ export function ProcessingProgress({
           {hasFailed && onRetry && (
             <div className="mt-3 flex items-center justify-between p-2 bg-red-100 border border-red-300 rounded">
               <p className="text-xs text-red-700">
-                ⚠️ {progress.failed} chunk{progress.failed !== 1 ? "s" : ""}{" "}
+                ⚠️ {progress.failed} segment{progress.failed !== 1 ? "s" : ""}{" "}
                 failed to process
               </p>
               <button
@@ -200,7 +200,7 @@ export function ProcessingProgress({
           {/* Processing indicator */}
           {isProcessing && !isComplete && (
             <div className="mt-3 text-xs text-blue-700 p-2 bg-blue-100 border border-blue-300 rounded">
-              ⏳ Translation in progress. Chunks are being processed in the
+              ⏳ Translation in progress. Segments are being processed in the
               background.
             </div>
           )}
@@ -208,7 +208,7 @@ export function ProcessingProgress({
           {/* Success indicator */}
           {isComplete && (
             <div className="mt-3 text-xs text-green-700 p-2 bg-green-100 border border-green-300 rounded">
-              ✅ All chunks have been translated successfully!
+              ✅ All segments have been translated successfully!
             </div>
           )}
         </div>

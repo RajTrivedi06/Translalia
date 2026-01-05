@@ -12,7 +12,7 @@
  *
  * Add new translations:
  *   1. Add the key to messages/en.json with the English text
- *   2. Add the same key to all other locale files (es.json, hi.json, ar.json, zh.json, ta.json, te.json, ml.json)
+ *   2. Add the same key to all other locale files (es.json, es-AR.json, hi.json, ar.json, zh.json, ta.json, te.json, ml.json)
  *   3. Run `npm run lint:i18n` to verify completeness
  */
 
@@ -21,7 +21,7 @@ const path = require("path");
 
 const MESSAGES_DIR = path.join(__dirname, "../../messages");
 const CANONICAL_LOCALE = "en";
-const SUPPORTED_LOCALES = ["en", "es", "hi", "ar", "zh", "ta", "te", "ml"];
+const SUPPORTED_LOCALES = ["en", "es", "es-AR", "hi", "ar", "zh", "ta", "te", "ml"];
 
 /**
  * Recursively flatten a nested object into dot-notation keys

@@ -10,7 +10,7 @@ import { qkNotebookCells } from "@/lib/queryKeys";
 import { Check } from "lucide-react";
 
 interface CompilationFooterProps {
-  /** Lines in the current stanza/chunk */
+  /** Lines in the current stanza/segment */
   stanzaLines?: string[];
   /** Global line offset for the current stanza */
   globalLineOffset?: number;

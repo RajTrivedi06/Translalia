@@ -1,5 +1,5 @@
-import createMiddleware from 'next-intl/middleware';
-import { routing } from './src/i18n/routing';
+import createMiddleware from "next-intl/middleware";
+import { routing } from "./src/i18n/routing";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
@@ -28,7 +28,9 @@ export async function middleware(req: NextRequest) {
       }
     );
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
     if (user) {
       // Get user's locale preference from profile
@@ -41,16 +43,17 @@ export async function middleware(req: NextRequest) {
       if (profile?.locale && routing.locales.includes(profile.locale as any)) {
         const { pathname } = req.nextUrl;
         // Extract current locale from pathname (e.g., /en/workspaces -> en)
-        const pathSegments = pathname.split('/').filter(Boolean);
+        const pathSegments = pathname.split("/").filter(Boolean);
         const currentLocale = pathSegments[0] || routing.defaultLocale;
 
         // If user's preferred locale differs from current locale, redirect
         if (profile.locale !== currentLocale) {
           // Replace the locale in the pathname
-          const newPath = pathSegments.length > 1
-            ? `/${profile.locale}/${pathSegments.slice(1).join('/')}`
-            : `/${profile.locale}`;
-          
+          const newPath =
+            pathSegments.length > 1
+              ? `/${profile.locale}/${pathSegments.slice(1).join("/")}`
+              : `/${profile.locale}`;
+
           const url = new URL(newPath, req.nextUrl.origin);
           url.search = req.nextUrl.search; // Preserve query params
           return NextResponse.redirect(url);
@@ -59,7 +62,7 @@ export async function middleware(req: NextRequest) {
     }
   } catch (error) {
     // If there's an error (e.g., database connection), just continue with default behavior
-    console.error('[middleware] Error checking user locale:', error);
+    console.error("[middleware] Error checking user locale:", error);
   }
 
   return res;
@@ -68,5 +71,5 @@ export async function middleware(req: NextRequest) {
 export const config = {
   // Match only internationalized pathnames
   // Skip internal paths: _next, api, static files
-  matcher: ['/((?!api|_next|_vercel|.*\\..*).*)']
+  matcher: ["/((?!api|_next|_vercel|.*\\..*).*)"],
 };

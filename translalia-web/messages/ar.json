@@ -188,7 +188,16 @@
     "confirmDialogTitle": "هل أنت مستعد لبدء الورشة؟",
     "confirmDialogDescription": "قصيدتك ومنطقة الترجمة ونية الترجمة مضبوطة. يمكنك إجراء تغييرات في أي وقت. انقر على 'بدء الورشة' للبدء في الترجمة.",
     "confirmDialogConfirm": "بدء الورشة",
-    "confirmDialogCancel": "إلغاء"
+    "confirmDialogCancel": "إلغاء",
+    "viewpointRange": "نطاق وجهات النظر",
+    "viewpointRangeHelper": "تحكم في مدى اختلاف نسخ الترجمة",
+    "viewpointMode": {
+      "focused": "مركّز",
+      "balanced": "متوازن",
+      "adventurous": "مغامر"
+    },
+    "translationModel": "نموذج الترجمة",
+    "translationModelHelper": "اختر نموذج OpenAI للاستخدام في معالجة الترجمة"
   },
   "Workshop": {
     "chunkSelection": "اختيار الجزء",

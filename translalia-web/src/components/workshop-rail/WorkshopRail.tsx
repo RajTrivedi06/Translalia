@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import { useGuideStore } from "@/store/guideSlice";
 import { useWorkshopStore } from "@/store/workshopSlice";
 import { useThreadId } from "@/hooks/useThreadId";
@@ -22,6 +23,7 @@ interface WorkshopRailProps {
 }
 
 export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
+  const t = useTranslations("Workshop");
   const threadId = useThreadId();
   const poem = useGuideStore((s) => s.poem);
   const guideStep = useGuideStore((s) => s.currentStep);
@@ -83,7 +85,7 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
 
     console.log("[WorkshopRail] Checking for saved translations on mount...");
 
-    // Iterate through all chunks/stanzas to collect already-translated lines
+    // Iterate through all segments/stanzas to collect already-translated lines
     Object.values(chunkOrStanzaStates).forEach((chunk) => {
       if (chunk.lines && Array.isArray(chunk.lines)) {
         chunk.lines.forEach((line) => {
@@ -214,7 +216,7 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
     const statuses: Record<number, TranslationStanzaStatus> = {};
     let globalLineIndex = 0;
 
-    // Use chunks (new) or stanzas (legacy) for compatibility
+    // Use segments (new) or stanzas (legacy) for compatibility
     const chunkStates =
       translationProgress.chunks || translationProgress.stanzas || {};
 
@@ -222,7 +224,7 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
     poemStanzas.stanzas.forEach((stanza, stanzaIdx) => {
       const stanzaState = chunkStates[stanzaIdx];
       if (!stanzaState) {
-        // Chunk not yet processed - all lines are pending
+        // Segment not yet processed - all lines are pending
         stanza.lines.forEach(() => {
           statuses[globalLineIndex] = "pending";
           globalLineIndex++;
@@ -277,7 +279,7 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
     const hydratedLines: Record<number, string> = {};
     let hasNewTranslations = false;
 
-    // Iterate through all chunks/stanzas to collect translated lines
+    // Iterate through all segments/stanzas to collect translated lines
     Object.values(chunkOrStanzaStates).forEach((chunk) => {
       if (chunk.lines && Array.isArray(chunk.lines)) {
         chunk.lines.forEach((line) => {
@@ -371,7 +373,7 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
     );
   }
 
-  // Show welcome message if no poem or chunks
+  // Show welcome message if no poem or segments
   if (!poem.text || !poemStanzas || poemStanzas.totalStanzas === 0) {
     return (
       <div className="h-full flex flex-col">
@@ -391,7 +393,7 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
     );
   }
 
-  // STEP 1: If no chunk selected, show chunk selector
+  // STEP 1: If no segment selected, show segment selector
   if (selectedStanzaIndex === null) {
     return (
       <div className="h-full flex flex-col">
@@ -416,19 +418,19 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
 
         <div className="flex-1 overflow-y-auto p-4">
           <WorkshopNavigationToggle
-            title="Chunk selection"
-            subtitle="Step 1 • Choose a chunk"
+            title={t("chunkSelection")}
+            subtitle={t("step1ChooseChunk")}
             activeTab="chunks"
             onChunksClick={() => {}}
             onLinesClick={() => {}}
             disableChunks
             disableLines
-            lineLabel="Lines (select a chunk first)"
+            lineLabel={t("linesSelectChunkFirst")}
           />
-          <h2 className="text-xl font-bold mb-4">Select a Chunk</h2>
+          <h2 className="text-xl font-bold mb-4">{t("selectChunk")}</h2>
           <div className="space-y-2">
             {poemStanzas.stanzas.map((stanza, idx) => {
-              // ✅ Get real chunk status from translation progress (use chunks or stanzas)
+              // ✅ Get real segment status from translation progress (use chunks or stanzas)
               const progressChunks =
                 translationProgress?.chunks || translationProgress?.stanzas;
               const stanzaStatus: TranslationStanzaStatus =
@@ -440,7 +442,7 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
                   key={idx}
                   onClick={() => {
                     setSelectedStanzaIndex(idx);
-                    // Reset line selection when switching chunks
+                    // Reset line selection when switching segments
                     if (selectedLineIndex !== null) {
                       deselectLine();
                     }
@@ -449,7 +451,7 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
                 >
                   <div className="flex items-center justify-between mb-2">
                     <div className="font-semibold text-lg">
-                      Chunk {stanza.number}
+                      {t("chunk", { number: stanza.number })}
                     </div>
                     {statusMeta && (
                       <span
@@ -476,7 +478,7 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
     );
   }
 
-  // STEP 2: Chunk is selected, show lines within that chunk
+  // STEP 2: Segment is selected, show lines within that segment
   const currentStanza = poemStanzas.stanzas[selectedStanzaIndex];
   const stanzaLines = currentStanza.lines;
 
@@ -510,18 +512,20 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
 
       <div className="flex-1 overflow-y-auto p-4">
         <WorkshopNavigationToggle
-          title={`Chunk ${currentStanza.number}`}
+          title={t("chunk", { number: currentStanza.number })}
           subtitle={
             selectedLineIndex === null
-              ? "Step 2 • Choose a line"
-              : `Line ${currentLineNumber} in focus`
+              ? t("step2ChooseLine")
+              : t("lineInFocus", { number: currentLineNumber })
           }
           activeTab="lines"
           onChunksClick={goToChunkSelection}
           onLinesClick={showLineSelection}
         />
-        {/* Current chunk title */}
-        <h2 className="text-xl font-bold mb-4">Chunk {currentStanza.number}</h2>
+        {/* Current segment title */}
+        <h2 className="text-xl font-bold mb-4">
+          {t("chunk", { number: currentStanza.number })}
+        </h2>
 
         {/* Line selector */}
         {selectedLineIndex === null ? (
@@ -604,7 +608,7 @@ function WorkshopNavigationToggle({
   activeTab,
   onChunksClick,
   onLinesClick,
-  chunkLabel = "Chunks",
+  chunkLabel = "Segments",
   lineLabel = "Lines",
   disableChunks = false,
   disableLines = false,
