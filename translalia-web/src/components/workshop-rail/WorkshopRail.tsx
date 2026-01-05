@@ -516,7 +516,7 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
           subtitle={
             selectedLineIndex === null
               ? t("step2ChooseLine")
-              : t("lineInFocus", { number: currentLineNumber })
+              : t("lineInFocus", { number: currentLineNumber! })
           }
           activeTab="lines"
           onChunksClick={goToChunkSelection}
