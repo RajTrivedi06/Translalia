@@ -190,14 +190,14 @@
     "confirmDialogConfirm": "Iniciar Taller",
     "confirmDialogCancel": "Cancelar",
     "viewpointRange": "Rango de perspectiva",
-    "viewpointRangeHelper": "Controla qué tan diferentes serán tus variantes de traducción",
+    "viewpointRangeHelper": "Controlá qué tan diferentes serán tus variantes de traducción",
     "viewpointMode": {
       "focused": "Enfocado",
       "balanced": "Equilibrado",
-      "adventurous": "Aventurero"
+      "adventurous": "Aventurado"
     },
     "translationModel": "Modelo de traducción",
-    "translationModelHelper": "Elige qué modelo de OpenAI usar para el procesamiento de traducción"
+    "translationModelHelper": "Elegí qué modelo de OpenAI usar para el procesamiento de traducción"
   },
   "Workshop": {
     "chunkSelection": "Selección de segmento",

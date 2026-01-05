@@ -22,6 +22,25 @@ export interface GuideAnswers {
   sourceLanguageVariety?: string | null;
 
   /**
+   * Viewpoint range mode for prismatic variants.
+   * - focused: tight, high relevance
+   * - balanced: default, best overall
+   * - adventurous: wide range, still guarded
+   */
+  viewpointRangeMode?: "focused" | "balanced" | "adventurous";
+
+  /**
+   * Translation model selection for processing.
+   * Allows users to choose which OpenAI model to use for translation.
+   */
+  translationModel?:
+    | "gpt-4o"
+    | "gpt-4o-mini"
+    | "gpt-4-turbo"
+    | "gpt-5"
+    | "gpt-5-mini";
+
+  /**
    * Legacy structured fields are kept optional so previously saved
    * projects keep loading without errors. New flows won't populate these.
    */
@@ -80,6 +99,16 @@ export interface GuideState {
   width: number;
   isWorkshopUnlocked: boolean;
 
+  // Viewpoint range mode for prismatic variants
+  viewpointRangeMode: "focused" | "balanced" | "adventurous";
+  // Translation model selection
+  translationModel:
+    | "gpt-4o"
+    | "gpt-4o-mini"
+    | "gpt-4-turbo"
+    | "gpt-5"
+    | "gpt-5-mini";
+
   // Actions
   setPoem: (text: string) => void;
   submitPoem: () => void;
@@ -92,6 +121,10 @@ export interface GuideState {
   submitTranslationZone: () => void;
   setTranslationIntent: (intent: string) => void;
   submitTranslationIntent: () => void;
+  setViewpointRangeMode: (mode: "focused" | "balanced" | "adventurous") => void;
+  setTranslationModel: (
+    model: "gpt-4o" | "gpt-4o-mini" | "gpt-4-turbo" | "gpt-5" | "gpt-5-mini"
+  ) => void;
   mergeAnswers: (updates: Partial<GuideAnswers>) => void;
   toggleCollapse: () => void;
   setWidth: (width: number) => void;
@@ -113,6 +146,8 @@ const initialState: Pick<
   | "isCollapsed"
   | "width"
   | "isWorkshopUnlocked"
+  | "viewpointRangeMode"
+  | "translationModel"
 > = {
   currentStep: "setup",
   poem: {
@@ -137,6 +172,8 @@ const initialState: Pick<
   isCollapsed: false,
   width: 320,
   isWorkshopUnlocked: false,
+  viewpointRangeMode: "balanced",
+  translationModel: "gpt-4o",
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -257,6 +294,26 @@ export const useGuideStore = create<GuideState>()(
           answers: {
             ...state.answers,
             translationIntent: state.translationIntent.text,
+          },
+        })),
+
+      setViewpointRangeMode: (mode: "focused" | "balanced" | "adventurous") =>
+        set((state) => ({
+          viewpointRangeMode: mode,
+          answers: {
+            ...state.answers,
+            viewpointRangeMode: mode,
+          },
+        })),
+
+      setTranslationModel: (
+        model: "gpt-4o" | "gpt-4o-mini" | "gpt-4-turbo" | "gpt-5" | "gpt-5-mini"
+      ) =>
+        set((state) => ({
+          translationModel: model,
+          answers: {
+            ...state.answers,
+            translationModel: model,
           },
         })),
 

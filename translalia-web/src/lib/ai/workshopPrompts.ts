@@ -939,3 +939,259 @@ CRITICAL: Return ONLY valid JSON. No preamble, no markdown, no explanations outs
     user: userPrompt,
   };
 }
+
+// =============================================================================
+// Recipe-Aware Prismatic Prompt Builders
+// =============================================================================
+
+import type { VariantRecipe, VariantRecipesBundle } from "./variantRecipes";
+
+/**
+ * Build a prompt block that describes the variant recipes.
+ * Includes inline meaning anchor instruction (no heuristic extraction).
+ * Mode-aware comparison strategy enforcement.
+ */
+export function buildRecipePromptBlock(
+  recipes: VariantRecipe[],
+  sourceText: string,
+  mode?: "focused" | "balanced" | "adventurous"
+): string {
+  const recipeBlocks = recipes
+    .map(
+      (r) => `
+VARIANT ${r.label}: ${r.directive}
+  Lens: imagery=${r.lens.imagery}, voice=${r.lens.voice}, sound=${r.lens.sound}, syntax=${r.lens.syntax}, cultural=${r.lens.cultural}
+  Unusualness budget: ${r.unusualnessBudget}`
+    )
+    .join("\n");
+
+  const mustRules = recipes
+    .map((r) => {
+      const rules: string[] = [];
+
+      // Voice-driven structural constraints
+      if (r.lens.voice === "collective") {
+        rules.push("MUST use a collective subject (we/our/us or equivalent).");
+      } else if (r.lens.voice === "intimate") {
+        rules.push(
+          "MUST use intimate address (you/your or an equivalent direct address)."
+        );
+      } else if (r.lens.voice === "shift") {
+        rules.push(
+          "MUST shift grammatical perspective (e.g., passive, impersonal, or different subject) vs other variants."
+        );
+      }
+
+      // Syntax-driven structural constraints
+      if (r.lens.syntax === "fragment") {
+        rules.push(
+          "MUST use fragmented syntax (sentence fragments, dashes/line-break-like rhythm). Avoid full template sentences."
+        );
+      } else if (r.lens.syntax === "invert") {
+        rules.push(
+          "MUST use inversion: begin with a prepositional phrase/object and delay the subject."
+        );
+      } else if (r.lens.syntax === "adapt") {
+        rules.push(
+          "MUST vary clause structure vs other variants (change opener, re-order clauses, or change verb aspect)."
+        );
+      } else if (r.lens.syntax === "preserve") {
+        rules.push(
+          "MUST stay structurally close to the source, but still differ in wording from other variants."
+        );
+      }
+
+      // Imagery constraints (impact structure by forcing different comparison styles)
+      if (r.lens.imagery === "transform") {
+        rules.push(
+          "MUST transform the imagery: do NOT keep the same comparison template as the source."
+        );
+      } else if (r.lens.imagery === "substitute") {
+        rules.push(
+          "MUST substitute at least one central image with a culturally/locally resonant analogue."
+        );
+      }
+
+      // Unusualness-driven constraints
+      if (r.unusualnessBudget === "high") {
+        rules.push(
+          "MUST avoid the safest literal template. Take a clearly different structural approach."
+        );
+      }
+
+      return `VARIANT ${r.label} MUST RULES:\n- ${rules.join("\n- ")}`;
+    })
+    .join("\n\n");
+
+  // Detect if source contains comparison marker (simile trap detection)
+  const hasComparisonMarker =
+    /\b(comme|like|as if|as though|as|como|come)\b/i.test(sourceText);
+
+  // Build comparison strategy rule (mode-scaled)
+  let comparisonRule = "";
+  if (hasComparisonMarker) {
+    if (mode === "balanced" || mode === "adventurous") {
+      comparisonRule = `
+⚠️ COMPARISON STRATEGY CONSTRAINT (source contains simile/comparison marker):
+- At most ONE variant may use an explicit comparison marker (like/as/comme/como/as if).
+- Remaining variants MUST express the relation using:
+  * Direct metaphor ("Rain is a thought…")
+  * Plain statement ("Walking in rain feels…")
+  * Fragment/ellipsis without comparison marker
+- This rule is MANDATORY for ${mode?.toUpperCase()} mode.`;
+    } else if (mode === "focused") {
+      comparisonRule = `
+ℹ️ COMPARISON STRATEGY (source contains simile/comparison marker):
+- Focused mode allows simile reuse, but still prefer at least one variant without comparison marker for diversity.`;
+    }
+  }
+
+  return `
+═══════════════════════════════════════════════════════════════
+VARIANT RECIPES (Your Three Viewpoints)
+═══════════════════════════════════════════════════════════════
+${recipeBlocks}
+
+═══════════════════════════════════════════════════════════════
+HARD STRUCTURAL DIVERGENCE (NON-NEGOTIABLE)
+═══════════════════════════════════════════════════════════════
+${mustRules}
+
+GLOBAL DIVERGENCE RULES:
+- No two variants may start with the same first 2 non-stopword tokens.
+- If any two drafts share the same sentence template, rewrite one BEFORE responding.
+- Do NOT reuse the same key wording across variants unless it's in must_keep constraints.${comparisonRule}
+
+MEANING ANCHORS INSTRUCTION (SEMANTIC, NOT LEXICAL):
+Before generating each variant, internally identify 2-4 meaning anchors (core semantic facts/images, NOT exact tokens). ALL variants must preserve these semantic anchors, but you MUST use DIFFERENT surface realizations (lexical divergence) across variants. Anchors are semantic concepts, not word templates to copy. Do NOT output the anchors separately—just ensure the semantic content appears in each translation with varied wording.
+
+CRITICAL: Each variant must be OBSERVABLY DIFFERENT in surface form (word choice, syntax, voice) while preserving the semantic meaning anchors.
+`.trim();
+}
+
+/**
+ * Build a recipe-aware prismatic generation prompt.
+ *
+ * @param params - Parameters for prompt generation
+ * @returns System and user prompts for the LLM
+ */
+export function buildRecipeAwarePrismaticPrompt(params: {
+  sourceText: string;
+  recipes: VariantRecipesBundle;
+  personality: TranslatorPersonality;
+  currentTranslation?: string;
+  context?: string;
+}): { system: string; user: string } {
+  const { sourceText, recipes, personality, currentTranslation, context } =
+    params;
+
+  const systemPrompt = `You are a translation variant generator following specific recipes.
+
+Generate 3 distinct translation variants (A, B, C) for a single line of poetry.
+Each variant MUST follow its assigned recipe exactly.
+
+IMPORTANT RULES:
+- Return ONLY valid JSON (no markdown, no explanations)
+- Each variant must be OBSERVABLY DIFFERENT from the others
+- ALL variants must honor the translator personality
+- Preserve semantic meaning anchors (NOT exact wording) across all variants
+
+SILENT SELF-CHECK (do NOT mention this in output):
+1) Draft all 3 variants.
+2) If any two share the same opening structure or comparison template, rewrite one until they differ.
+3) Check comparison strategy constraints based on mode.
+4) Ensure semantic anchors are preserved but with lexical diversity.
+5) Only then output JSON.
+
+Output format:
+{
+  "variants": [
+    { "label": "A", "text": "translation", "rationale": "brief explanation", "confidence": 0.0-1.0 },
+    { "label": "B", "text": "translation", "rationale": "brief explanation", "confidence": 0.0-1.0 },
+    { "label": "C", "text": "translation", "rationale": "brief explanation", "confidence": 0.0-1.0 }
+  ]
+}`;
+
+  const userPromptParts: string[] = [];
+
+  // Translator personality section
+  userPromptParts.push(
+    `
+═══════════════════════════════════════════════════════════════
+TRANSLATOR PERSONALITY
+═══════════════════════════════════════════════════════════════
+Domain: ${personality.domain}
+Purpose: ${personality.purpose}
+Approach: ${personality.approach_summary}
+Literalness: ${personality.literalness}/100
+Register: ${
+      personality.register.length > 0
+        ? personality.register.join(", ")
+        : "neutral"
+    }
+Priority: ${personality.priority}
+${
+  personality.sacred_terms.length > 0
+    ? `MUST use: ${personality.sacred_terms.join(", ")}`
+    : ""
+}
+${
+  personality.forbidden_terms.length > 0
+    ? `NEVER use: ${personality.forbidden_terms.join(", ")}`
+    : ""
+}
+`.trim()
+  );
+
+  // Recipe block with anchors instruction (pass sourceText and mode)
+  userPromptParts.push(
+    buildRecipePromptBlock(recipes.recipes, sourceText, recipes.mode)
+  );
+
+  // Context section
+  if (context) {
+    userPromptParts.push(
+      `
+═══════════════════════════════════════════════════════════════
+CONTEXT
+═══════════════════════════════════════════════════════════════
+${context}
+`.trim()
+    );
+  }
+
+  // Source line section
+  userPromptParts.push(
+    `
+═══════════════════════════════════════════════════════════════
+SOURCE LINE TO TRANSLATE
+═══════════════════════════════════════════════════════════════
+"${sourceText}"
+${
+  currentTranslation
+    ? `\nCurrent translation (for reference): "${currentTranslation}"`
+    : ""
+}
+`.trim()
+  );
+
+  // Task reminder
+  userPromptParts.push(
+    `
+═══════════════════════════════════════════════════════════════
+TASK
+═══════════════════════════════════════════════════════════════
+Generate 3 variants following the recipes above.
+- Variant A: Follow Recipe A (${recipes.recipes[0].directive.slice(0, 50)}...)
+- Variant B: Follow Recipe B (${recipes.recipes[1].directive.slice(0, 50)}...)
+- Variant C: Follow Recipe C (${recipes.recipes[2].directive.slice(0, 50)}...)
+
+Return ONLY valid JSON.
+`.trim()
+  );
+
+  return {
+    system: systemPrompt,
+    user: userPromptParts.join("\n\n"),
+  };
+}

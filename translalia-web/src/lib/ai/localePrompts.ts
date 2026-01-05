@@ -3,12 +3,41 @@
  * Ensures AI responds in the user's selected language
  */
 
-type LanguageKey = 'en' | 'es' | 'hi' | 'ar' | 'zh';
+type LanguageKey = 'en' | 'es' | 'hi' | 'ar' | 'zh' | 'ta' | 'te' | 'ml';
+
+const supportedLocales: LanguageKey[] = [
+  'en',
+  'es',
+  'hi',
+  'ar',
+  'zh',
+  'ta',
+  'te',
+  'ml',
+];
+
+function normalizeLocale(locale?: string | null): LanguageKey {
+  const rawLocale = locale?.toLowerCase?.() || 'en';
+  if (rawLocale.startsWith('es-')) return 'es';
+  return supportedLocales.includes(rawLocale as LanguageKey)
+    ? (rawLocale as LanguageKey)
+    : 'en';
+}
+
+const interviewPromptEn = `You rewrite a single clarifying question for a translation interview.
+Return ONLY valid JSON: {"question": "<concise>"}.
+Be culturally respectful. Avoid prescriptive standardization.`;
+
+const journeyFeedbackPromptEn = `You are a supportive teacher providing brief, encouraging feedback on a student's translation reflection.
+Keep feedback to 2-3 sentences. Be warm and constructive.
+Return ONLY valid JSON: {"feedback": "<text>"}`;
+
+const journeyReflectionPromptEn = `You help students reflect deeply on their translation choices and creative decisions.
+Ask thoughtful, open-ended questions that encourage metacognition and growth.
+Respond with warm, encouraging language in valid JSON: {"reflection": "<text>"}`;
 
 export const interviewSystemPrompts: Record<LanguageKey, string> = {
-  en: `You rewrite a single clarifying question for a translation interview.
-Return ONLY valid JSON: {"question": "<concise>"}.
-Be culturally respectful. Avoid prescriptive standardization.`,
+  en: interviewPromptEn,
   
   es: `Reescribe una única pregunta aclaratoria para una entrevista de traducción.
 Devuelve SOLO JSON válido: {"question": "<concise>"}.
@@ -25,12 +54,19 @@ Sé respetuoso culturalmente. Evita la estandarización prescriptiva.`,
   zh: `您为翻译访谈重写一个澄清问题。
 仅返回有效JSON: {"question": "<concise>"}.
 要具有文化尊重。避免规范性标准化。`,
+
+  ta: `${interviewPromptEn}
+Respond in Tamil.`,
+
+  te: `${interviewPromptEn}
+Respond in Telugu.`,
+
+  ml: `${interviewPromptEn}
+Respond in Malayalam.`,
 };
 
 export const journeyFeedbackSystemPrompts: Record<LanguageKey, string> = {
-  en: `You are a supportive teacher providing brief, encouraging feedback on a student's translation reflection.
-Keep feedback to 2-3 sentences. Be warm and constructive.
-Return ONLY valid JSON: {"feedback": "<text>"}`,
+  en: journeyFeedbackPromptEn,
   
   es: `Eres un maestro solidario que proporciona retroalimentación breve y alentadora sobre la reflexión de traducción de un estudiante.
 Mantén la retroalimentación a 2-3 oraciones. Sé cálido y constructivo.
@@ -47,12 +83,19 @@ Devuelve SOLO JSON válido: {"feedback": "<text>"}`,
   zh: `您是一位支持性教师，对学生的翻译反思提供简短、鼓励的反馈。
 将反馈保持在2-3句话。要温暖和建设性。
 仅返回有效JSON: {"feedback": "<text>"}`,
+
+  ta: `${journeyFeedbackPromptEn}
+Respond in Tamil.`,
+
+  te: `${journeyFeedbackPromptEn}
+Respond in Telugu.`,
+
+  ml: `${journeyFeedbackPromptEn}
+Respond in Malayalam.`,
 };
 
 export const journeyReflectionSystemPrompts: Record<LanguageKey, string> = {
-  en: `You help students reflect deeply on their translation choices and creative decisions.
-Ask thoughtful, open-ended questions that encourage metacognition and growth.
-Respond with warm, encouraging language in valid JSON: {"reflection": "<text>"}`,
+  en: journeyReflectionPromptEn,
   
   es: `Ayudas a los estudiantes a reflexionar profundamente sobre sus elecciones de traducción y decisiones creativas.
 Haz preguntas reflexivas y abiertas que fomenten la metacognición y el crecimiento.
@@ -69,17 +112,22 @@ Responde con lenguaje cálido y alentador en JSON válido: {"reflection": "<text
   zh: `您帮助学生深入思考他们的翻译选择和创意决策。
 提出深思熟虑的开放式问题，鼓励元认知和成长。
 用温暖、鼓励的语言用有效JSON响应: {"reflection": "<text>"}`,
+
+  ta: `${journeyReflectionPromptEn}
+Respond in Tamil.`,
+
+  te: `${journeyReflectionPromptEn}
+Respond in Telugu.`,
+
+  ml: `${journeyReflectionPromptEn}
+Respond in Malayalam.`,
 };
 
 export function getSystemPrompt(
   type: 'interview' | 'journeyFeedback' | 'journeyReflection',
   locale?: string | null
 ): string {
-  const lang = (locale?.toLowerCase?.() as LanguageKey) || 'en';
-
-  // Validate that the locale is supported
-  const supportedLocales: LanguageKey[] = ['en', 'es', 'hi', 'ar', 'zh'];
-  const validLang = supportedLocales.includes(lang) ? lang : 'en';
+  const validLang = normalizeLocale(locale);
 
   switch (type) {
     case 'interview':
@@ -94,7 +142,7 @@ export function getSystemPrompt(
 }
 
 export function getLanguageInstruction(locale?: string | null): string {
-  const lang = (locale?.toLowerCase?.() as LanguageKey) || 'en';
+  const lang = normalizeLocale(locale);
 
   const instructions: Record<LanguageKey, string> = {
     en: 'Respond in English.',
@@ -102,10 +150,9 @@ export function getLanguageInstruction(locale?: string | null): string {
     hi: 'हिंदी में जवाब दें।',
     ar: 'أجब باللغة العربية.',
     zh: '用中文回复。',
+    ta: 'தமிழில் பதிலளிக்கவும்.',
+    te: 'తెలుగులో సమాధానం ఇవ్వండి.',
+    ml: 'മലയാളത്തിൽ മറുപടി നൽകുക.',
   };
-
-  const supportedLocales: LanguageKey[] = ['en', 'es', 'hi', 'ar', 'zh'];
-  const validLang = supportedLocales.includes(lang) ? lang : 'en';
-
-  return instructions[validLang];
+  return instructions[lang];
 }
