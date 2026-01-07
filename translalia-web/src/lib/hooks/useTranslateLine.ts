@@ -1,5 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
 import type { LineTranslationResponse } from "@/types/lineTranslation";
+import { useGuideStore } from "@/store/guideSlice";
 
 export interface TranslateLineParams {
   threadId: string;
@@ -14,15 +15,28 @@ export interface TranslateLineParams {
 /**
  * Hook to trigger line-level translation with alignment.
  *
- * This replaces the old per-word workflow with a single API call
- * that generates 3 full-line translation variants with sub-token alignment.
+ * Routes to different endpoints based on the selected translation method:
+ * - method-1: P1 Literalness Spectrum (/api/workshop/translate-line)
+ * - method-2: P6-P8 Recipe-Driven Variants (/api/workshop/translate-line-with-recipes)
+ *
+ * Both endpoints return identical LineTranslationResponse structure with word-level alignments.
  */
 export function useTranslateLine() {
+  const translationMethod = useGuideStore(
+    (s) => s.answers.translationMethod ?? "method-1"
+  );
+
   return useMutation({
     mutationFn: async (
       params: TranslateLineParams
     ): Promise<LineTranslationResponse> => {
-      const response = await fetch("/api/workshop/translate-line", {
+      // Route to appropriate endpoint based on translation method
+      const endpoint =
+        translationMethod === "method-2"
+          ? "/api/workshop/translate-line-with-recipes"
+          : "/api/workshop/translate-line";
+
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

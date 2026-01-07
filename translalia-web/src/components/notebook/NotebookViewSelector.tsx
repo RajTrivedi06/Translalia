@@ -30,9 +30,9 @@ const viewOptions: ViewOption[] = [
   },
   {
     value: "studio",
-    label: "Translation Studio",
+    label: "Notebook",
     icon: FileText,
-    description: "Edit and refine complete translation",
+    description: "Review and refine your full translation",
   },
   {
     value: "suggestions",

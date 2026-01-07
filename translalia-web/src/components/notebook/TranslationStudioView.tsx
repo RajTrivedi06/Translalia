@@ -4,7 +4,8 @@ import React from "react";
 import { ComparisonView } from "./ComparisonView";
 
 export function TranslationStudioView() {
-  // Translation Studio is essentially ComparisonView but always open in embedded mode
+  // Legacy: previously a dedicated view that embedded ComparisonView.
+  // The primary Notebook surface now owns the workflow; keep this only for backwards compatibility.
   return (
     <div className="h-full">
       <ComparisonView

@@ -132,15 +132,22 @@ export async function translateLineInternal(
     guideAnswers,
     sourceLanguage,
     targetLanguage,
-    cacheKey = `workshop:translate-line:${threadId}:line:${lineIndex}`,
+    cacheKey,
     forceRefresh = false,
     audit,
     modelOverride,
     fallbackMode = false,
   } = options;
 
+  // Include model in cache key so switching models doesn't accidentally reuse a
+  // prior translation (and so the model badge matches what actually ran).
+  const requestedModel = modelOverride ?? TRANSLATOR_MODEL;
+  const effectiveCacheKey =
+    cacheKey ??
+    `workshop:translate-line:${threadId}:line:${lineIndex}:model:${requestedModel}`;
+
   if (!forceRefresh) {
-    const cached = await cacheGet<LineTranslationResponse>(cacheKey);
+    const cached = await cacheGet<LineTranslationResponse>(effectiveCacheKey);
     if (cached) {
       return cached;
     }
@@ -351,11 +358,11 @@ export async function translateLineInternal(
       modelUsed: model,
     };
 
-    await cacheSet(cacheKey, fallbackResponse, 3600);
+    await cacheSet(effectiveCacheKey, fallbackResponse, 3600);
     return fallbackResponse;
   }
 
   const result = responseValidation.data;
-  await cacheSet(cacheKey, result, 3600);
+  await cacheSet(effectiveCacheKey, result, 3600);
   return result;
 }

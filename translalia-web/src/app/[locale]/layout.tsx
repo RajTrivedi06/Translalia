@@ -39,6 +39,7 @@ export default async function LocaleLayout({
   setRequestLocale(locale);
 
   // Providing all messages to the client
+  // Explicitly pass locale to ensure messages are loaded correctly
   const messages = await getMessages();
 
   // Determine direction

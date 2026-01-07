@@ -1,25 +1,27 @@
 "use client";
 
+import * as React from "react";
 import { ChangeEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
-import {
-  FileText,
-  UploadCloud,
-  X,
-  Info,
-  ChevronLeft,
-  ChevronDown,
-  ChevronUp,
-  Check,
-} from "lucide-react";
+import { ChevronLeft, Info } from "lucide-react";
 import { useRouter } from "@/i18n/routing";
-import { useTranslations, useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 
 import { useGuideStore } from "@/store/guideSlice";
 import { useWorkshopStore } from "@/store/workshopSlice";
 import { useThreadId } from "@/hooks/useThreadId";
 import { cn } from "@/lib/utils";
-import { useSaveAnswer, useSavePoemState } from "@/lib/hooks/useGuideFlow";
+import {
+  useSaveAnswer,
+  useSaveMultipleAnswers,
+  useSavePoemState,
+} from "@/lib/hooks/useGuideFlow";
+
 import { ConfirmationDialog } from "@/components/guide/ConfirmationDialog";
+import { GuideSteps } from "@/components/guide/GuideSteps";
+import {
+  SegmentEditor,
+  type CustomSegmentation,
+} from "@/components/guide/SegmentEditor";
 
 interface GuideRailProps {
   className?: string;
@@ -31,39 +33,7 @@ interface GuideRailProps {
   showHeading?: boolean;
 }
 
-type UploadChip = {
-  id: string;
-  name: string;
-  size: number;
-};
-
 const POEM_CHAR_LIMIT = 5000;
-
-function toChip(file: File): UploadChip {
-  return {
-    id: `${file.name}-${file.size}-${file.lastModified}`,
-    name: file.name,
-    size: file.size,
-  };
-}
-
-function formatFileSize(size: number) {
-  if (size >= 1024 * 1024) {
-    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-  }
-  if (size >= 1024) {
-    return `${(size / 1024).toFixed(1)} KB`;
-  }
-  return `${size} B`;
-}
-
-function mergeChips(existing: UploadChip[], incoming: UploadChip[]) {
-  const map = new Map(existing.map((chip) => [chip.id, chip]));
-  for (const chip of incoming) {
-    map.set(chip.id, chip);
-  }
-  return Array.from(map.values());
-}
 
 /**
  * Detects if the poem text contains blank lines (lines that are empty or only whitespace)
@@ -83,10 +53,10 @@ export function GuideRail({
 }: GuideRailProps) {
   const t = useTranslations("Guide");
   const tThread = useTranslations("Thread");
+
   const locale = useLocale();
   const router = useRouter();
 
-  // Determine text direction for inputs
   const dir = locale === "ar" ? "rtl" : "ltr";
 
   const {
@@ -94,6 +64,7 @@ export function GuideRail({
     setPoem,
     submitPoem,
     setPreserveFormatting,
+    setCustomSegmentation,
     translationIntent,
     setTranslationIntent,
     submitTranslationIntent,
@@ -101,10 +72,14 @@ export function GuideRail({
     setViewpointRangeMode,
     translationModel,
     setTranslationModel,
+    translationMethod,
+    setTranslationMethod,
     reset,
     hydrated,
     checkGuideComplete,
     unlockWorkshop,
+    isWorkshopUnlocked,
+    editSourceLanguageVariety,
   } = useGuideStore();
 
   const translationZone = useGuideStore((s) => s.translationZone);
@@ -118,9 +93,66 @@ export function GuideRail({
   const submitSourceLanguageVariety = useGuideStore(
     (s) => s.submitSourceLanguageVariety
   );
-  const editSourceLanguageVariety = useGuideStore(
-    (s) => s.editSourceLanguageVariety
+
+  const workshopReset = useWorkshopStore((s) => s.reset);
+  const completedLines = useWorkshopStore((s) => s.completedLines);
+  const draftLines = useWorkshopStore((s) => s.draftLines);
+  const lineTranslations = useWorkshopStore((s) => s.lineTranslations);
+
+  const threadIdFromHook = useThreadId();
+  const threadId = propThreadId || threadIdFromHook;
+
+  const previousThreadId = useRef<string | null>(null);
+
+  const saveTranslationIntent = useSaveAnswer();
+  const saveMultipleAnswers = useSaveMultipleAnswers();
+  const savePoemState = useSavePoemState();
+
+  const [intentError, setIntentError] = useState<string | null>(null);
+  const [zoneError, setZoneError] = useState<string | null>(null);
+  const [varietyError, setVarietyError] = useState<string | null>(null);
+  const [showClearConfirmation, setShowClearConfirmation] = useState(false);
+
+  // Accordion state for auto-opening next step after save
+  const [accordionValue, setAccordionValue] = useState<string | undefined>(
+    undefined
   );
+
+  const [editingZone, setEditingZone] = useState(false);
+  const [editingIntent, setEditingIntent] = useState(false);
+
+  const [isSavingZone, setIsSavingZone] = useState(false);
+  const [isSavingIntent, setIsSavingIntent] = useState(false);
+  const [isSavingVariety, setIsSavingVariety] = useState(false);
+  const [isSavingViewpointMode, setIsSavingViewpointMode] = useState(false);
+  const [isSavingTranslationModel, setIsSavingTranslationModel] =
+    useState(false);
+  const [isSavingTranslationMethod, setIsSavingTranslationMethod] =
+    useState(false);
+
+  const [userHasManuallySetFormatting, setUserHasManuallySetFormatting] =
+    useState(false);
+
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [showGuideHints, setShowGuideHints] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [showSegmentEditor, setShowSegmentEditor] = useState(false);
+
+  const poemTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    if (
+      threadId &&
+      previousThreadId.current &&
+      threadId !== previousThreadId.current
+    ) {
+      reset();
+      workshopReset();
+      setUserHasManuallySetFormatting(false);
+    }
+
+    if (threadId) previousThreadId.current = threadId;
+  }, [threadId, reset, workshopReset]);
 
   const translationZoneRaw = translationZone.text;
   const translationZoneText =
@@ -132,58 +164,10 @@ export function GuideRail({
     typeof sourceVarietyRaw === "string" ? sourceVarietyRaw : "";
   const isSourceVarietySubmitted = sourceLanguageVariety.isSubmitted;
 
-  const workshopReset = useWorkshopStore((s) => s.reset);
-  const completedLines = useWorkshopStore((s) => s.completedLines);
-  const threadIdFromHook = useThreadId();
-  const threadId = propThreadId || threadIdFromHook;
-  const previousThreadId = useRef<string | null>(null);
-  const saveTranslationIntent = useSaveAnswer();
-  const savePoemState = useSavePoemState();
-
-  const [corpusFiles, setCorpusFiles] = useState<UploadChip[]>([]);
-  const [showCorpus, setShowCorpus] = useState(false);
-  const [intentError, setIntentError] = useState<string | null>(null);
-  const [editingZone, setEditingZone] = useState(false);
-  const [editingIntent, setEditingIntent] = useState(false);
-  const [zoneError, setZoneError] = useState<string | null>(null);
-  const [varietyError, setVarietyError] = useState<string | null>(null);
-  const [isSavingZone, setIsSavingZone] = useState(false);
-  const [isSavingIntent, setIsSavingIntent] = useState(false);
-  const [isSavingVariety, setIsSavingVariety] = useState(false);
-  const [isSavingViewpointMode, setIsSavingViewpointMode] = useState(false);
-  const [isSavingTranslationModel, setIsSavingTranslationModel] =
-    useState(false);
-  const [isTranslationModelExpanded, setIsTranslationModelExpanded] =
-    useState(false);
-  const [userHasManuallySetFormatting, setUserHasManuallySetFormatting] =
-    useState(false);
-  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
-  const [showGuideHints, setShowGuideHints] = useState(false);
-  const [validationError, setValidationError] = useState<string | null>(null);
-  const poemTextareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const corpusFileInputRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    if (
-      threadId &&
-      previousThreadId.current &&
-      threadId !== previousThreadId.current
-    ) {
-      reset();
-      workshopReset();
-      setCorpusFiles([]);
-      setShowCorpus(false);
-      setUserHasManuallySetFormatting(false);
-    }
-
-    if (threadId) {
-      previousThreadId.current = threadId;
-    }
-  }, [threadId, reset, workshopReset]);
-
   const poemText = poem.text ?? "";
   const poemCharCount = poemText.length;
   const isSubmitDisabled = !poemText.trim();
+
   const translationIntentRaw = translationIntent?.text;
   const translationIntentText =
     typeof translationIntentRaw === "string" ? translationIntentRaw : "";
@@ -191,27 +175,75 @@ export function GuideRail({
   const isTranslationIntentSubmitted =
     translationIntent?.isSubmitted && isTranslationIntentFilled;
 
-  const readyForWorkshop = poem.isSubmitted && isTranslationIntentSubmitted;
+  const isPoemSubmitted = poem.isSubmitted;
 
-  // Safety check for formatting toggle
+  // Check if there's any workshop progress (must be before canEditSteps)
+  const hasWorkshopProgress = React.useMemo(() => {
+    const hasCompletedLines = Object.keys(completedLines).length > 0;
+    const hasDraftLines = Object.keys(draftLines).length > 0;
+    const hasLineTranslations = Object.keys(lineTranslations).length > 0;
+    return hasCompletedLines || hasDraftLines || hasLineTranslations;
+  }, [completedLines, draftLines, lineTranslations]);
+
+  // Allow editing if workshop hasn't started yet
+  const canEditSteps = !isWorkshopUnlocked && !hasWorkshopProgress;
+
+  const canEditVariety = isPoemSubmitted;
+  const canEditZone = isPoemSubmitted && isSourceVarietySubmitted;
+  const canEditIntent =
+    isPoemSubmitted && isSourceVarietySubmitted && isTranslationZoneSubmitted;
+
+  // Handlers to enable editing for each step
+  const handleEditStep = React.useCallback(
+    (stepIndex: number) => {
+      switch (stepIndex) {
+        case 0: // Source Language Variety
+          editSourceLanguageVariety();
+          setAccordionValue("step-1");
+          break;
+        case 1: // Translation Zone
+          // Reset submission state by setting the zone again (this clears isSubmitted)
+          setTranslationZone(translationZone.text);
+          setEditingZone(true);
+          setAccordionValue("step-2");
+          break;
+        case 2: // Translation Intent
+          setEditingIntent(true);
+          setAccordionValue("step-3");
+          break;
+        case 3: // Translation Method
+          setAccordionValue("step-4");
+          break;
+        case 4: // Translation Model
+          setAccordionValue("step-5");
+          break;
+      }
+    },
+    [
+      setAccordionValue,
+      setEditingZone,
+      setEditingIntent,
+      editSourceLanguageVariety,
+      setTranslationZone,
+      translationZone.text,
+    ]
+  );
+
   const hasStartedWork = Object.keys(completedLines).length > 0;
+
   const hasBlankLinesDetected =
     hasBlankLines(poem.text ?? "") && !hasStartedWork;
 
   // Auto-detect blank lines and set preserveFormatting accordingly
   // Only auto-set if user hasn't manually changed it
   useEffect(() => {
-    if (!poem.text || hasStartedWork || userHasManuallySetFormatting) {
-      return;
-    }
+    if (!poem.text || hasStartedWork || userHasManuallySetFormatting) return;
 
     const hasBlanks = hasBlankLines(poem.text);
-    // Auto-preserve if blank lines detected, otherwise auto-collapse
-    if (hasBlanks && !poem.preserveFormatting) {
-      setPreserveFormatting(true);
-    } else if (!hasBlanks && poem.preserveFormatting) {
+
+    if (hasBlanks && !poem.preserveFormatting) setPreserveFormatting(true);
+    else if (!hasBlanks && poem.preserveFormatting)
       setPreserveFormatting(false);
-    }
   }, [
     poem.text,
     poem.preserveFormatting,
@@ -220,18 +252,171 @@ export function GuideRail({
     setPreserveFormatting,
   ]);
 
-  // Don't render until store is hydrated
-  if (!hydrated) {
-    return null;
-  }
+  // Get poem lines for segment editor (must be before early returns)
+  const poemLines = React.useMemo(() => {
+    if (!poem.text) return [];
+    return poem.text
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+  }, [poem.text]);
 
-  const ariaAnnouncement = readyForWorkshop
-    ? t("ariaAnnouncementComplete")
-    : t("ariaAnnouncementProgress");
+  // Get initial segmentation if exists (must be before early returns)
+  const initialSegmentation = React.useMemo(() => {
+    if (!poem.customSegmentation) return undefined;
+    const lineToSegmentMap = new Map(
+      Object.entries(poem.customSegmentation.lineToSegment).map(([k, v]) => [
+        Number(k),
+        v,
+      ])
+    );
+    return {
+      lineToSegment: lineToSegmentMap,
+      totalSegments: poem.customSegmentation.totalSegments,
+    };
+  }, [poem.customSegmentation]);
+
+  // Don't render until store is hydrated
+  if (!hydrated) return null;
+
+  const ariaAnnouncement =
+    isPoemSubmitted && isTranslationIntentSubmitted
+      ? t("ariaAnnouncementComplete")
+      : t("ariaAnnouncementProgress");
+
+  const isViewpointOk =
+    translationMethod !== "method-2" || !!viewpointRangeMode;
+
+  const isMethodOk =
+    translationMethod === "method-1" ||
+    (translationMethod === "method-2" && isViewpointOk);
+
+  const isGuideCompleteUI =
+    isPoemSubmitted &&
+    isSourceVarietySubmitted &&
+    isTranslationZoneSubmitted &&
+    isTranslationIntentSubmitted &&
+    isMethodOk &&
+    !!translationModel;
+
+  const ui = {
+    panel: cn(
+      "flex h-full flex-col overflow-hidden rounded-2xl",
+      "border border-slate-200 bg-white shadow-sm"
+    ),
+
+    panelHeader: cn(
+      "flex flex-row items-start justify-between gap-3",
+      "px-5 py-4",
+      "border-b border-slate-100"
+    ),
+
+    panelTitle: "truncate text-base font-semibold text-slate-900 lg:text-lg",
+    panelSubtitle: "mt-1 text-sm text-slate-500",
+
+    iconButton: cn(
+      "flex-shrink-0 rounded-lg p-2",
+      "text-slate-400 transition",
+      "hover:bg-slate-50 hover:text-slate-600",
+      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+    ),
+
+    scrollRegion: cn(
+      "flex-1 min-h-0 max-h-[calc(100vh-200px)] overflow-y-auto overflow-x-hidden",
+      "bg-slate-50/60",
+      "px-4 py-5 md:px-5 md:py-6"
+    ),
+
+    footer: cn("bg-white px-5 py-4", "border-t border-slate-100"),
+
+    card: cn("rounded-2xl border bg-white shadow-sm", "transition-colors"),
+
+    cardHeader: cn(
+      "flex items-start justify-between gap-4",
+      "px-5 py-4",
+      "border-b border-slate-100"
+    ),
+
+    cardBody: cn("px-5 py-5"),
+
+    label: "text-sm font-semibold text-slate-900",
+    helper: "mt-1 text-sm text-slate-500",
+    subtle: "text-xs text-slate-500",
+    subtleItalic: "text-xs text-slate-400 italic",
+
+    pill: cn(
+      "inline-flex items-center gap-2 rounded-full",
+      "bg-slate-100 px-3 py-1",
+      "text-xs font-medium text-slate-600"
+    ),
+
+    input: cn(
+      "w-full rounded-xl border border-slate-300 bg-white",
+      "px-4 py-2.5 text-sm text-slate-900",
+      "shadow-sm",
+      "placeholder:text-slate-400",
+      "focus:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-100",
+      "disabled:bg-slate-50 disabled:text-slate-500"
+    ),
+
+    textarea: cn(
+      "w-full rounded-xl border border-slate-300 bg-white",
+      "px-4 py-3 text-sm text-slate-900",
+      "leading-relaxed",
+      "shadow-sm",
+      "placeholder:text-slate-400",
+      "focus:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-100",
+      "disabled:bg-slate-50 disabled:text-slate-500"
+    ),
+
+    primaryBtn: cn(
+      "inline-flex items-center justify-center rounded-lg",
+      "bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white",
+      "shadow-sm transition",
+      "hover:bg-slate-800",
+      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200",
+      "disabled:cursor-not-allowed disabled:opacity-60"
+    ),
+
+    blueBtn: cn(
+      "inline-flex items-center justify-center rounded-lg",
+      "bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white",
+      "shadow-sm transition",
+      "hover:bg-blue-700",
+      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200",
+      "disabled:cursor-not-allowed disabled:opacity-60"
+    ),
+
+    ghostBtn: cn(
+      "inline-flex items-center justify-center rounded-lg",
+      "border border-slate-200 bg-white px-4 py-2.5",
+      "text-sm font-medium text-slate-700",
+      "transition",
+      "hover:bg-slate-50",
+      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200",
+      "disabled:cursor-not-allowed disabled:opacity-60"
+    ),
+
+    textBtn: cn(
+      "text-sm font-semibold text-slate-600 transition",
+      "hover:text-slate-900",
+      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200",
+      "rounded"
+    ),
+
+    errorBox: cn(
+      "rounded-xl border border-red-200 bg-red-50",
+      "px-4 py-3 text-sm text-red-700"
+    ),
+
+    infoBox: cn(
+      "rounded-xl border border-blue-200 bg-blue-50",
+      "px-4 py-3 text-sm text-blue-800"
+    ),
+  };
 
   const handlePoemChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
     setPoem(event.target.value.slice(0, POEM_CHAR_LIMIT));
-    // Reset manual flag when text changes significantly (user is pasting new content)
     setUserHasManuallySetFormatting(false);
   };
 
@@ -243,11 +428,31 @@ export function GuideRail({
   };
 
   const handlePoemSubmit = () => {
-    if (!poem.text?.trim()) {
-      return;
-    }
-    // Just mark as submitted (stanzas already computed in setPoem)
+    if (!poem.text?.trim()) return;
+    // Show segment editor before submitting
+    setShowSegmentEditor(true);
+  };
+
+  const handleSegmentEditorConfirm = (segmentation: CustomSegmentation) => {
+    // Convert Map to Record for storage
+    const lineToSegmentRecord: Record<number, number> = {};
+    segmentation.lineToSegment.forEach((seg, lineIdx) => {
+      lineToSegmentRecord[lineIdx] = seg;
+    });
+
+    // Save custom segmentation
+    setCustomSegmentation({
+      lineToSegment: lineToSegmentRecord,
+      totalSegments: segmentation.totalSegments,
+    });
+
+    // Close editor and submit poem
+    setShowSegmentEditor(false);
     submitPoem();
+  };
+
+  const handleSegmentEditorCancel = () => {
+    setShowSegmentEditor(false);
   };
 
   const handleSaveZone = async () => {
@@ -262,14 +467,18 @@ export function GuideRail({
     }
 
     setIsSavingZone(true);
+
     try {
       await saveTranslationIntent.mutateAsync({
         threadId,
         questionKey: "translationZone",
         value: translationZoneText.trim(),
       });
+
       submitTranslationZone();
       setEditingZone(false);
+      // Auto-open next step (step 3: Translation Intent)
+      setAccordionValue("step-3");
     } catch {
       setZoneError(t("zoneErrorSave"));
     } finally {
@@ -283,16 +492,20 @@ export function GuideRail({
       return;
     }
 
-    // Optional: allow empty -> treat as skip
     const trimmed = sourceVarietyText.trim();
+
     setIsSavingVariety(true);
+
     try {
       await saveTranslationIntent.mutateAsync({
         threadId,
         questionKey: "sourceLanguageVariety",
         value: trimmed.length > 0 ? trimmed : null,
       });
+
       submitSourceLanguageVariety();
+      // Auto-open next step (step 2: Translation Zone)
+      setAccordionValue("step-2");
     } catch {
       setVarietyError(t("zoneErrorSave"));
     } finally {
@@ -312,14 +525,18 @@ export function GuideRail({
     }
 
     setIsSavingIntent(true);
+
     try {
       await saveTranslationIntent.mutateAsync({
         threadId,
         questionKey: "translationIntent",
         value: translationIntentText.trim(),
       });
+
       submitTranslationIntent();
       setEditingIntent(false);
+      // Auto-open next step (step 4: Translation Method)
+      setAccordionValue("step-4");
     } catch {
       setIntentError(t("intentErrorSave"));
     } finally {
@@ -327,17 +544,18 @@ export function GuideRail({
     }
   };
 
-  const handleSaveViewpointMode = async () => {
-    if (!threadId) {
-      return;
-    }
+  const handleSaveViewpointMode = async (
+    nextMode: "focused" | "balanced" | "adventurous"
+  ) => {
+    if (!threadId) return;
 
     setIsSavingViewpointMode(true);
+
     try {
       await saveTranslationIntent.mutateAsync({
         threadId,
         questionKey: "viewpointRangeMode",
-        value: viewpointRangeMode,
+        value: nextMode,
       });
     } catch (error) {
       console.error("[handleSaveViewpointMode] Error:", error);
@@ -346,17 +564,18 @@ export function GuideRail({
     }
   };
 
-  const handleSaveTranslationModel = async () => {
-    if (!threadId) {
-      return;
-    }
+  const handleSaveTranslationModel = async (
+    nextModel: "gpt-4o" | "gpt-4o-mini" | "gpt-4-turbo" | "gpt-5" | "gpt-5-mini"
+  ) => {
+    if (!threadId) return;
 
     setIsSavingTranslationModel(true);
+
     try {
       await saveTranslationIntent.mutateAsync({
         threadId,
         questionKey: "translationModel",
-        value: translationModel,
+        value: nextModel,
       });
     } catch (error) {
       console.error("[handleSaveTranslationModel] Error:", error);
@@ -365,97 +584,111 @@ export function GuideRail({
     }
   };
 
-  const handleCorpusFileSelection = (fileList: FileList | null) => {
-    if (!fileList || fileList.length === 0) {
-      return;
+  const handleSaveTranslationMethod = async (
+    nextMethod: "method-1" | "method-2"
+  ) => {
+    if (!threadId) return;
+
+    setIsSavingTranslationMethod(true);
+
+    try {
+      await saveTranslationIntent.mutateAsync({
+        threadId,
+        questionKey: "translationMethod",
+        value: nextMethod,
+      });
+      // Auto-open next step (step 5: Translation Model)
+      setAccordionValue("step-5");
+    } catch (error) {
+      console.error("[handleSaveTranslationMethod] Error:", error);
+    } finally {
+      setIsSavingTranslationMethod(false);
     }
-    const chips = Array.from(fileList).map(toChip);
-    setCorpusFiles((prev) => mergeChips(prev, chips));
   };
-
-  const removeCorpusFile = (id: string) => {
-    setCorpusFiles((prev) => prev.filter((chip) => chip.id !== id));
-  };
-
-  const clearCorpusFiles = () => setCorpusFiles([]);
 
   const handleResetAll = () => {
+    // If there's workshop progress, show confirmation dialog
+    if (hasWorkshopProgress) {
+      setShowClearConfirmation(true);
+      return;
+    }
+
+    // No progress, clear immediately
+    performReset();
+  };
+
+  const performReset = () => {
     reset();
     workshopReset();
-    setCorpusFiles([]);
-    setShowCorpus(false);
+
     setIntentError(null);
+    setZoneError(null);
     setVarietyError(null);
+
     setUserHasManuallySetFormatting(false);
+    setShowClearConfirmation(false);
   };
 
   const handleStartWorkshop = () => {
-    // Validate all fields are complete
     const isComplete = checkGuideComplete();
 
     if (!isComplete) {
-      // Show validation error message
       setValidationError(t("validationError"));
       return;
     }
 
-    // All fields are valid, show confirmation dialog
     setValidationError(null);
     setShowConfirmDialog(true);
   };
 
   const handleConfirmWorkshop = async () => {
-    // Validation
     if (!threadId) {
       setValidationError(t("validationErrorThread"));
       return;
     }
+
     if (!poem.text || !poem.stanzas) {
       setValidationError(t("validationErrorPoem"));
       return;
     }
 
-    // ✅ IMMEDIATE UI UPDATE: Close dialog, unlock workshop, and navigate
-    // Don't wait for API calls - let them happen in background
     setShowConfirmDialog(false);
     setValidationError(null);
     unlockWorkshop();
 
-    // Only auto-collapse if this is a fresh start (no existing workshop data)
-    // OR if user has explicitly set auto-collapse preference
     const hasExistingWork = Object.keys(completedLines || {}).length > 0;
-    if (!hasExistingWork) {
-      onAutoCollapse?.();
-    }
 
-    // Navigate immediately so user sees stanza selector right away
-    // Fix: Use correct projectId and threadId
+    if (!hasExistingWork) onAutoCollapse?.();
+
     router.push(`/workspaces/${projectId}/threads/${threadId}`);
 
-    // ✅ BACKGROUND: Fire off API calls asynchronously (don't block UI)
-    // These will start translation processing in the background
-    // User can already interact with stanzas while this happens
     (async () => {
       try {
-        // Step 1: Save poem and stanzas to thread state
-        // We already validated that poem.stanzas is not null above
         if (!poem.stanzas) {
           console.error("Poem stanzas missing - this should not happen");
           return;
         }
+
+        // Persist the latest guide answers (including model + method + viewpoint mode)
+        // before background translations start, so the backend doesn't fall back to
+        // env defaults (e.g. TRANSLATOR_MODEL=gpt-4o).
+        await saveMultipleAnswers.mutateAsync({
+          threadId,
+          updates: useGuideStore.getState().answers,
+        });
+
         await savePoemState.mutateAsync({
           threadId,
           rawPoem: poem.text,
           stanzas: poem.stanzas,
         });
 
-        // Step 2: Initialize translation job in background
         const response = await fetch("/api/workshop/initialize-translations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             threadId,
-            runInitialTick: true, // Start processing immediately
+            runInitialTick: true,
           }),
         });
 
@@ -465,90 +698,43 @@ export function GuideRail({
             "Failed to initialize translations:",
             errorData.error || "Unknown error"
           );
-          // Note: We don't show error to user here since they're already in workshop
-          // Translation processing will just be delayed/retried
         }
       } catch (error) {
         console.error(
           "Error starting background translation processing:",
           error
         );
-        // Background error - don't block user from using workshop
-        // Translation processing can be retried later
       }
     })();
   };
 
-  const renderFileChips = (
-    chips: UploadChip[],
-    onRemove: (id: string) => void
-  ) => {
-    if (chips.length === 0) {
-      return null;
-    }
-
-    return (
-      <div className="mt-3 flex flex-wrap gap-2 text-left" aria-live="polite">
-        {chips.map((chip) => (
-          <span
-            key={chip.id}
-            className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600"
-          >
-            <FileText
-              className="h-3.5 w-3.5 text-gray-500"
-              aria-hidden="true"
-            />
-            <span className="max-w-[140px] truncate">{chip.name}</span>
-            <span className="text-[10px] text-gray-400">
-              {formatFileSize(chip.size)}
-            </span>
-            <button
-              type="button"
-              onClick={() => onRemove(chip.id)}
-              className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-gray-200 text-gray-700 transition hover:bg-gray-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
-            >
-              <X className="h-3 w-3" aria-hidden="true" />
-              <span className="sr-only">
-                {t("removeFile", { name: chip.name })}
-              </span>
-            </button>
-          </span>
-        ))}
-      </div>
-    );
-  };
-
-  const isPoemSubmitted = poem.isSubmitted;
-  const canEditVariety = isPoemSubmitted;
-  const canEditZone = isPoemSubmitted && isSourceVarietySubmitted;
-  const canEditIntent =
-    isPoemSubmitted && isSourceVarietySubmitted && isTranslationZoneSubmitted;
-
   const renderSetup = () => (
-    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 lg:grid-rows-3">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:grid-rows-3 lg:h-full lg:min-h-0">
       {/* Card 1: Poem Input */}
       <section
         className={cn(
-          "rounded-2xl border bg-white shadow-sm transition-all duration-200",
-          "lg:row-span-3 flex h-full flex-col",
+          ui.card,
+          "lg:row-span-3 flex flex-col h-full min-h-0",
           !isPoemSubmitted
-            ? "border-blue-500 ring-2 ring-blue-100"
-            : "border-gray-200 opacity-75"
+            ? "border-blue-500 ring-4 ring-blue-100"
+            : "border-slate-200"
         )}
         aria-labelledby="poem-section-title"
       >
-        <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-          <div>
+        <div className={ui.cardHeader}>
+          <div className="min-w-0">
             <label
               id="poem-section-title"
               htmlFor="poem-input"
-              className="text-sm font-semibold text-gray-900"
+              className={ui.label}
             >
               {t("poemTitle")} {isPoemSubmitted && "✓"}
             </label>
-            <p className="mt-1 text-xs text-gray-500">{t("poemHelper")}</p>
+
+            <p className={ui.helper}>{t("poemHelper")}</p>
           </div>
-          <span className="text-xs font-medium text-gray-500">
+
+          <span className={ui.pill}>
             {t("characterCount", {
               current: poemCharCount,
               limit: POEM_CHAR_LIMIT,
@@ -556,12 +742,17 @@ export function GuideRail({
           </span>
         </div>
 
-        <div className="px-4 py-3 flex-1 min-h-0 flex flex-col">
-          <div className="mt-1 flex-1 min-h-0 flex flex-col gap-3">
+        <div
+          className={cn(
+            ui.cardBody,
+            "flex-1 min-h-0 flex flex-col overflow-hidden"
+          )}
+        >
+          <div className="flex-1 min-h-0 flex flex-col gap-5 overflow-y-auto">
             <textarea
               id="poem-input"
               ref={poemTextareaRef}
-              rows={5}
+              rows={10}
               maxLength={POEM_CHAR_LIMIT}
               value={poemText}
               onChange={handlePoemChange}
@@ -570,43 +761,62 @@ export function GuideRail({
               aria-describedby="poem-helper poem-error"
               lang={locale}
               dir={dir}
-              className="w-full flex-1 min-h-[420px] resize-none rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm leading-tight text-gray-900 shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
-              style={{ overflowY: "auto" }}
+              className={cn(ui.textarea, "flex-1 min-h-[200px] resize-none")}
             />
-            <p id="poem-helper" className="text-xs text-gray-500">
+
+            {/* Keep element for aria-describedby, but avoid duplicating the helper visually */}
+            <p id="poem-helper" className="sr-only">
               {t("poemHelper")}
             </p>
+
             {(poem.stanzas?.totalStanzas ?? 0) > 0 || hasBlankLinesDetected ? (
-              <div className="mb-3">
+              <div className="space-y-3">
                 <button
                   type="button"
                   onClick={() => setShowGuideHints((prev) => !prev)}
-                  className="inline-flex items-center gap-2 text-xs font-semibold text-blue-600 transition hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 rounded"
+                  className={cn(
+                    "inline-flex items-center gap-2",
+                    "text-sm font-semibold text-blue-700",
+                    "transition hover:text-blue-800",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200",
+                    "rounded"
+                  )}
                 >
                   <Info className="h-4 w-4" aria-hidden="true" />
+
                   {showGuideHints
                     ? t("hideDetectionNotes")
                     : t("showDetectionNotes")}
                 </button>
+
                 {showGuideHints && (
-                  <div className="mt-2 space-y-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-3 text-xs text-blue-700">
+                  <div className={cn(ui.infoBox, "space-y-3")}>
                     {poem.stanzas && poem.stanzas.totalStanzas > 0 && (
-                      <p>
+                      <p className="text-sm">
                         {t("chunksDetected", {
                           count: poem.stanzas.totalStanzas,
                         })}
                       </p>
                     )}
+
                     {hasBlankLinesDetected && (
-                      <div className="flex items-center justify-between gap-3">
-                        <span>{t("blankLinesDetected")}</span>
+                      <div className="flex items-center justify-between gap-4">
+                        <span className="text-sm">
+                          {t("blankLinesDetected")}
+                        </span>
+
                         <button
                           type="button"
                           onClick={() => {
                             setUserHasManuallySetFormatting(true);
                             setPreserveFormatting(!poem.preserveFormatting);
                           }}
-                          className="text-xs font-medium text-blue-600 underline transition hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 rounded"
+                          className={cn(
+                            "text-sm font-semibold text-blue-700 underline",
+                            "transition hover:text-blue-800",
+                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200",
+                            "rounded"
+                          )}
                         >
                           {poem.preserveFormatting
                             ? t("collapseBlanks")
@@ -618,421 +828,384 @@ export function GuideRail({
                 )}
               </div>
             ) : null}
+
+            <div className="pt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className={ui.subtle}>
+                {!isPoemSubmitted && t("submitShortcut")}
+              </div>
+
+              <button
+                id="add-poem-btn"
+                type="button"
+                onClick={handlePoemSubmit}
+                disabled={isSubmitDisabled || isPoemSubmitted}
+                className={ui.primaryBtn}
+              >
+                {isPoemSubmitted ? t("poemSubmitted") : t("submitPoem")}
+              </button>
+            </div>
           </div>
+        </div>
+      </section>
 
-          <button
-            id="corpus-trigger"
-            type="button"
-            onClick={() => setShowCorpus((prev) => !prev)}
-            className="mt-4 text-sm font-semibold text-gray-600 transition hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
-          >
-            {t("addReferenceCorpus")}
-          </button>
+      {/* 5-Step Accordion */}
+      <GuideSteps
+        className="lg:row-span-3 h-full min-h-0"
+        stepTitles={[
+          t("sourceLanguageVarietyTitle"),
+          t("translationZone"),
+          t("translationIntent"),
+          "Translation Method",
+          t("translationModel"),
+        ]}
+        stepCompletions={[
+          isSourceVarietySubmitted,
+          isTranslationZoneSubmitted,
+          isTranslationIntentSubmitted,
+          !!translationMethod && isMethodOk,
+          !!translationModel,
+        ]}
+        value={accordionValue}
+        onValueChange={setAccordionValue}
+        onEditStep={handleEditStep}
+        canEditSteps={canEditSteps}
+      >
+        {[
+          // Step 1: Source Language Variety
+          <div key="step-1" className="space-y-4">
+            <div className="space-y-2">
+              <p className={ui.subtle}>{t("sourceLanguageVarietyHelper")}</p>
+              <p className={ui.subtleItalic}>
+                {t("sourceLanguageVarietyExamples")}
+              </p>
+            </div>
 
-          {showCorpus && (
-            <div className="corpus-popover mt-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-xl">
-              <div className="flex items-start justify-between gap-4">
-                <p className="text-sm text-gray-600">
-                  {t("corpusDescription")}
-                </p>
+            <input
+              id="source-language-variety-input"
+              value={sourceVarietyText}
+              onChange={(e) => {
+                setSourceLanguageVariety(e.target.value);
+                setVarietyError(null);
+              }}
+              disabled={!canEditVariety || isSourceVarietySubmitted}
+              placeholder={t("sourceLanguageVarietyPlaceholder")}
+              className={ui.input}
+              dir={dir}
+              lang={locale}
+            />
+
+            {varietyError && (
+              <p className="text-sm text-red-700">{varietyError}</p>
+            )}
+
+            {canEditVariety && !isSourceVarietySubmitted && (
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <button
                   type="button"
                   onClick={() => {
-                    setShowCorpus(false);
+                    setSourceLanguageVariety("");
+                    void handleSaveSourceVariety();
                   }}
-                  className="rounded-full p-1 text-gray-500 transition hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
-                  aria-label={t("closeCorpusUploader")}
+                  disabled={!threadId || isSavingVariety}
+                  className={cn(ui.textBtn, "text-left")}
                 >
-                  <X className="h-4 w-4" aria-hidden="true" />
+                  {t("skipStandardVariety")}
                 </button>
-              </div>
 
-              <input
-                ref={corpusFileInputRef}
-                id="corpus-file-input"
-                type="file"
-                className="hidden"
-                accept=".txt,.md,.doc,.docx,.pdf"
-                multiple
-                onChange={(event) =>
-                  handleCorpusFileSelection(event.target.files)
-                }
-              />
-
-              <div className="mt-3 flex items-center justify-between">
                 <button
                   type="button"
-                  id="corpus-upload-btn"
-                  onClick={() => corpusFileInputRef.current?.click()}
-                  className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+                  onClick={handleSaveSourceVariety}
+                  disabled={!threadId || isSavingVariety}
+                  className={ui.primaryBtn}
                 >
-                  <UploadCloud className="h-4 w-4" aria-hidden="true" />
-                  {t("uploadFiles")}
-                </button>
-                <button
-                  type="button"
-                  id="corpus-help-link"
-                  className="text-sm font-medium text-blue-600 transition hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
-                  title={t("corpusHelpTooltip")}
-                >
-                  {t("corpusHelp")}
+                  {isSavingVariety ? t("saving") : "Save"}
                 </button>
               </div>
-
-              {renderFileChips(corpusFiles, removeCorpusFile)}
-
-              <button
-                type="button"
-                onClick={clearCorpusFiles}
-                className="mt-3 text-xs font-medium text-gray-500 transition hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
-              >
-                {t("clearCorpusFiles")}
-              </button>
-            </div>
-          )}
-
-          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-xs text-gray-500">
-              {!isPoemSubmitted && t("submitShortcut")}
-            </div>
-            <button
-              id="add-poem-btn"
-              type="button"
-              onClick={handlePoemSubmit}
-              disabled={isSubmitDisabled || isPoemSubmitted}
-              className="inline-flex items-center justify-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isPoemSubmitted ? t("poemSubmitted") : t("submitPoem")}
-            </button>
-          </div>
-        </div>
-      </section>
-
-      {/* Card 2: Source Language Variety (Optional) */}
-      <section
-        className={cn(
-          "rounded-2xl border bg-white shadow-sm transition-all duration-200",
-          !canEditVariety && "opacity-60",
-          canEditVariety && !isSourceVarietySubmitted
-            ? "border-blue-500 ring-2 ring-blue-100"
-            : "border-gray-200"
-        )}
-        aria-labelledby="source-language-variety-title"
-      >
-        <div className="border-b border-gray-100 px-4 py-2">
-          <div className="flex items-center justify-between">
-            <label
-              id="source-language-variety-title"
-              htmlFor="source-language-variety-input"
-              className="text-sm font-semibold text-gray-900"
-            >
-              {t("sourceLanguageVarietyTitle")}{" "}
-              {isSourceVarietySubmitted && "✓"}
-            </label>
-            {canEditVariety && isSourceVarietySubmitted && (
-              <button
-                type="button"
-                onClick={editSourceLanguageVariety}
-                className="text-sm text-blue-600 hover:text-blue-700"
-              >
-                {t("edit")}
-              </button>
             )}
-          </div>
-          <p className="mt-1 text-xs text-gray-500">
-            {t("sourceLanguageVarietyHelper")}
-          </p>
-          <p className="text-xs text-gray-400 italic">
-            {t("sourceLanguageVarietyExamples")}
-          </p>
-        </div>
+          </div>,
 
-        <div className="px-4 py-2 space-y-2">
-          <input
-            id="source-language-variety-input"
-            value={sourceVarietyText}
-            onChange={(e) => {
-              setSourceLanguageVariety(e.target.value);
-              setVarietyError(null);
-            }}
-            disabled={!canEditVariety || isSourceVarietySubmitted}
-            placeholder={t("sourceLanguageVarietyPlaceholder")}
-            className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm leading-tight text-gray-900 shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-500"
-            dir={dir}
-            lang={locale}
-          />
+          // Step 2: Translation Zone
+          <div key="step-2" className="space-y-4">
+            <div className="space-y-2">
+              <p className={ui.subtle}>{t("translationZoneHelper")}</p>
+              <p className={ui.subtleItalic}>{t("translationZoneExamples")}</p>
+            </div>
 
-          {varietyError && (
-            <p className="text-xs text-red-600">{varietyError}</p>
-          )}
+            <textarea
+              id="translation-zone-input"
+              rows={4}
+              value={translationZoneText}
+              onChange={(e) => {
+                setTranslationZone(e.target.value);
+                setZoneError(null);
+              }}
+              disabled={
+                !canEditZone || (isTranslationZoneSubmitted && !editingZone)
+              }
+              placeholder={t("translationZonePlaceholder")}
+              lang={locale}
+              dir={dir}
+              className={cn(ui.textarea, "resize-y")}
+            />
 
-          {canEditVariety && !isSourceVarietySubmitted && (
-            <div className="mt-3 flex items-center justify-between">
+            {zoneError && <p className="text-sm text-red-700">{zoneError}</p>}
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={handleSaveZone}
+                disabled={
+                  !canEditZone || !translationZoneText.trim() || isSavingZone
+                }
+                className={ui.primaryBtn}
+              >
+                {isSavingZone
+                  ? t("saving")
+                  : editingZone
+                  ? t("updateZone")
+                  : t("saveZone")}
+              </button>
+            </div>
+          </div>,
+
+          // Step 3: Translation Intent
+          <div key="step-3" className="space-y-4">
+            <div className="space-y-2">
+              <p className={ui.subtle}>{t("translationIntentHelper")}</p>
+              <p className={ui.subtleItalic}>
+                {t("translationIntentExamples")}
+              </p>
+            </div>
+
+            <textarea
+              id="translation-intent-input"
+              rows={4}
+              value={translationIntentText}
+              onChange={(e) => {
+                setTranslationIntent(e.target.value);
+                setIntentError(null);
+              }}
+              disabled={
+                !canEditIntent ||
+                (isTranslationIntentSubmitted && !editingIntent)
+              }
+              placeholder={t("translationIntentPlaceholder")}
+              lang={locale}
+              dir={dir}
+              className={cn(ui.textarea, "resize-y")}
+            />
+
+            {intentError && (
+              <p className="text-sm text-red-700">{intentError}</p>
+            )}
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={handleSaveIntent}
+                disabled={
+                  !canEditIntent ||
+                  !translationIntentText.trim() ||
+                  isSavingIntent
+                }
+                className={ui.primaryBtn}
+              >
+                {isSavingIntent
+                  ? t("saving")
+                  : editingIntent
+                  ? t("updateIntent")
+                  : t("saveIntent")}
+              </button>
+            </div>
+          </div>,
+
+          // Step 4: Translation Method
+          <div key="step-4" className="space-y-5">
+            <p className="text-sm text-slate-600 leading-relaxed">
+              Choose which AI approach to use for generating translation
+              variants. Both methods produce word-level alignments for the
+              Workshop interface.
+            </p>
+
+            <div className="space-y-4">
+              {/* Method 1 */}
               <button
                 type="button"
                 onClick={() => {
-                  setSourceLanguageVariety("");
-                  void handleSaveSourceVariety();
+                  setTranslationMethod("method-1");
+                  void handleSaveTranslationMethod("method-1");
                 }}
-                disabled={!threadId || isSavingVariety}
-                className="text-sm font-medium text-gray-600 transition hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-60"
+                className={cn(
+                  "w-full rounded-xl border-2 px-5 py-4 text-left",
+                  "transition",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200",
+                  translationMethod === "method-1"
+                    ? "border-slate-900 bg-slate-50"
+                    : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                )}
+                aria-pressed={translationMethod === "method-1"}
               >
-                {t("skipStandardVariety")}
+                <div className="flex items-start gap-4">
+                  <div
+                    className={cn(
+                      "mt-1 flex h-5 w-5 items-center justify-center rounded-full border-2",
+                      "transition",
+                      translationMethod === "method-1"
+                        ? "border-slate-900 bg-slate-900"
+                        : "border-slate-300 bg-white"
+                    )}
+                  >
+                    {translationMethod === "method-1" && (
+                      <div className="h-2 w-2 rounded-full bg-white" />
+                    )}
+                  </div>
+
+                  <div className="flex-1 min-w-0 space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-semibold text-slate-900">
+                        Method 1: Literalness Spectrum
+                      </span>
+
+                      {translationMethod === "method-1" && (
+                        <span className="text-xs font-medium text-slate-500">
+                          (Selected)
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="text-sm text-slate-600 leading-relaxed">
+                      Generates three variants along a literalness spectrum:
+                      literal → balanced → creative. Fast and reliable approach
+                      with proven results.
+                    </p>
+                  </div>
+                </div>
               </button>
-              <button
-                type="button"
-                onClick={handleSaveSourceVariety}
-                disabled={!threadId || isSavingVariety}
-                className="inline-flex items-center justify-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-60"
+
+              {/* Method 2 */}
+              <div
+                className={cn(
+                  "rounded-xl border-2 transition",
+                  translationMethod === "method-2"
+                    ? "border-slate-900 bg-slate-50"
+                    : "border-slate-200 bg-white"
+                )}
               >
-                {isSavingVariety ? t("saving") : "Save"}
-              </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTranslationMethod("method-2");
+                    void handleSaveTranslationMethod("method-2");
+                  }}
+                  className={cn(
+                    "w-full px-5 py-4 text-left",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200",
+                    translationMethod !== "method-2" && "hover:bg-slate-50"
+                  )}
+                  aria-pressed={translationMethod === "method-2"}
+                >
+                  <div className="flex items-start gap-4">
+                    <div
+                      className={cn(
+                        "mt-1 flex h-5 w-5 items-center justify-center rounded-full border-2",
+                        "transition",
+                        translationMethod === "method-2"
+                          ? "border-slate-900 bg-slate-900"
+                          : "border-slate-300 bg-white"
+                      )}
+                    >
+                      {translationMethod === "method-2" && (
+                        <div className="h-2 w-2 rounded-full bg-white" />
+                      )}
+                    </div>
+
+                    <div className="flex-1 min-w-0 space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-semibold text-slate-900">
+                          Method 2: Recipe-Driven Prismatic Variants
+                        </span>
+
+                        {translationMethod === "method-2" && (
+                          <span className="text-xs font-semibold text-blue-700">
+                            (Selected)
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-sm text-slate-600 leading-relaxed">
+                        Uses sophisticated &ldquo;recipes&rdquo; with lens
+                        configurations (imagery, voice, sound, syntax,
+                        cultural). Explores diverse translation strategies with
+                        quality gates.
+                      </p>
+                    </div>
+                  </div>
+                </button>
+
+                {/* Viewpoint Range Selector - Only shown when Method 2 is selected */}
+                {translationMethod === "method-2" && (
+                  <div className="px-5 pb-5 pt-4 border-t border-slate-200 space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-slate-900 block">
+                        {t("viewpointRange")}{" "}
+                        <span className="text-red-500">*</span>
+                      </label>
+
+                      <p className={ui.subtle}>{t("viewpointRangeHelper")}</p>
+                    </div>
+
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      {(["focused", "balanced", "adventurous"] as const).map(
+                        (mode) => (
+                          <button
+                            key={mode}
+                            type="button"
+                            onClick={() => {
+                              setViewpointRangeMode(mode);
+                              void handleSaveViewpointMode(mode);
+                            }}
+                            disabled={isSavingViewpointMode}
+                            className={cn(
+                              "flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold",
+                              "transition",
+                              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200",
+                              viewpointRangeMode === mode
+                                ? "bg-slate-900 text-white"
+                                : "bg-slate-100 text-slate-700 hover:bg-slate-200",
+                              isSavingViewpointMode && "opacity-70"
+                            )}
+                            aria-pressed={viewpointRangeMode === mode}
+                          >
+                            {t(`viewpointMode.${mode}`)}
+                          </button>
+                        )
+                      )}
+                    </div>
+
+                    {!viewpointRangeMode && (
+                      <p className="text-sm text-red-700">
+                        {t("viewpointRangeRequired", {
+                          defaultValue:
+                            "Please select a viewpoint range to continue",
+                        })}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-          )}
-        </div>
-      </section>
 
-      {/* Card 2: Translation Zone */}
-      <section
-        className={cn(
-          "rounded-2xl border bg-white shadow-sm transition-all duration-200",
-          !canEditZone && "opacity-60",
-          canEditZone && !isTranslationZoneSubmitted
-            ? "border-blue-500 ring-2 ring-blue-100"
-            : "border-gray-200"
-        )}
-        aria-labelledby="translation-zone-title"
-      >
-        <div className="border-b border-gray-100 px-4 py-2">
-          <div className="flex items-center justify-between">
-            <label
-              id="translation-zone-title"
-              htmlFor="translation-zone-input"
-              className="text-sm font-semibold text-gray-900"
-            >
-              {t("translationZone")} {isTranslationZoneSubmitted && "✓"}
-            </label>
-            {canEditZone && isTranslationZoneSubmitted && (
-              <button
-                type="button"
-                onClick={() => setEditingZone(true)}
-                className="text-sm text-blue-600 hover:text-blue-700"
-              >
-                {t("edit")}
-              </button>
-            )}
-          </div>
-          <p className="mt-1 text-xs text-gray-500">
-            {t("translationZoneHelper")}
-          </p>
-          <p className="text-xs text-gray-400 italic">
-            {t("translationZoneExamples")}
-          </p>
-        </div>
+            {/* keep state usage visible (no deletions), but also reflect saving */}
+            {isSavingTranslationMethod && <p className={ui.subtle}>Saving…</p>}
+          </div>,
 
-        <div className="px-4 py-2">
-          <textarea
-            id="translation-zone-input"
-            rows={1}
-            value={translationZoneText}
-            onChange={(e) => {
-              setTranslationZone(e.target.value);
-              setZoneError(null);
-            }}
-            disabled={
-              !canEditZone || (isTranslationZoneSubmitted && !editingZone)
-            }
-            placeholder={t("translationZonePlaceholder")}
-            lang={locale}
-            dir={dir}
-            className="w-full resize-y rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm leading-tight text-gray-900 shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-500"
-            style={{ maxHeight: "30vh", overflowY: "auto" }}
-          />
+          // Step 5: Translation Model
+          <div key="step-5" className="space-y-4">
+            <p className="text-sm text-slate-600 leading-relaxed">
+              {t("translationModelHelper")}
+            </p>
 
-          {zoneError && <p className="text-xs text-red-600">{zoneError}</p>}
-
-          <div className="mt-3 flex justify-end">
-            <button
-              type="button"
-              onClick={handleSaveZone}
-              disabled={
-                !canEditZone || !translationZoneText.trim() || isSavingZone
-              }
-              className="inline-flex items-center justify-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isSavingZone
-                ? t("saving")
-                : editingZone
-                ? t("updateZone")
-                : t("saveZone")}
-            </button>
-          </div>
-        </div>
-      </section>
-
-      {/* Card 3: Translation Intent */}
-      <section
-        className={cn(
-          "rounded-2xl border bg-white shadow-sm transition-all duration-200",
-          !canEditIntent && "opacity-60",
-          canEditIntent && !isTranslationIntentSubmitted
-            ? "border-blue-500 ring-2 ring-blue-100"
-            : "border-gray-200"
-        )}
-        aria-labelledby="translation-intent-title"
-      >
-        <div className="border-b border-gray-100 px-4 py-2">
-          <div className="flex items-center justify-between">
-            <label
-              id="translation-intent-title"
-              htmlFor="translation-intent-input"
-              className="text-sm font-semibold text-gray-900"
-            >
-              {t("translationIntent")} {isTranslationIntentSubmitted && "✓"}
-            </label>
-            {canEditIntent && isTranslationIntentSubmitted && (
-              <button
-                type="button"
-                onClick={() => setEditingIntent(true)}
-                className="text-sm text-blue-600 hover:text-blue-700"
-              >
-                {t("edit")}
-              </button>
-            )}
-          </div>
-          <p className="mt-1 text-xs text-gray-500">
-            {t("translationIntentHelper")}
-          </p>
-          <p className="text-xs text-gray-400 italic">
-            {t("translationIntentExamples")}
-          </p>
-        </div>
-
-        <div className="px-4 py-2">
-          <textarea
-            id="translation-intent-input"
-            rows={2}
-            value={translationIntentText}
-            onChange={(e) => {
-              setTranslationIntent(e.target.value);
-              setIntentError(null);
-            }}
-            disabled={
-              !canEditIntent || (isTranslationIntentSubmitted && !editingIntent)
-            }
-            placeholder={t("translationIntentPlaceholder")}
-            lang={locale}
-            dir={dir}
-            className="w-full resize-y rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm leading-tight text-gray-900 shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:bg-gray-50 disabled:text-gray-500"
-            style={{ maxHeight: "30vh", overflowY: "auto" }}
-          />
-
-          {intentError && <p className="text-xs text-red-600">{intentError}</p>}
-
-          <div className="mt-3 flex justify-end">
-            <button
-              type="button"
-              onClick={handleSaveIntent}
-              disabled={
-                !canEditIntent ||
-                !translationIntentText.trim() ||
-                isSavingIntent
-              }
-              className="inline-flex items-center justify-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isSavingIntent
-                ? t("saving")
-                : editingIntent
-                ? t("updateIntent")
-                : t("saveIntent")}
-            </button>
-          </div>
-        </div>
-      </section>
-
-      {/* Viewpoint Range Mode - After Translation Intent */}
-      <section className="rounded-2xl border bg-white shadow-sm">
-        <div className="px-4 py-3">
-          <label className="text-sm font-semibold text-gray-900">
-            {t("viewpointRange")}
-          </label>
-          <p className="text-xs text-gray-500">{t("viewpointRangeHelper")}</p>
-        </div>
-        <div className="px-4 pb-3 flex gap-2">
-          {(["focused", "balanced", "adventurous"] as const).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              onClick={() => setViewpointRangeMode(mode)}
-              className={cn(
-                "flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                viewpointRangeMode === mode
-                  ? "bg-gray-900 text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              )}
-            >
-              {t(`viewpointMode.${mode}`)}
-            </button>
-          ))}
-        </div>
-        <div className="px-4 pb-3">
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={handleSaveViewpointMode}
-              disabled={!threadId || isSavingViewpointMode}
-              className="inline-flex items-center justify-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isSavingViewpointMode ? t("saving") : "Save"}
-            </button>
-          </div>
-        </div>
-      </section>
-
-      {/* Translation Model Selection - After Viewpoint Range */}
-      <section className="rounded-2xl border bg-white shadow-sm overflow-hidden">
-        <button
-          type="button"
-          onClick={() =>
-            setIsTranslationModelExpanded(!isTranslationModelExpanded)
-          }
-          className={cn(
-            "w-full px-4 flex items-center justify-between text-left hover:bg-gray-50 transition-all",
-            isTranslationModelExpanded ? "py-3" : "py-2"
-          )}
-        >
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <label className="text-sm font-semibold text-gray-900">
-                {t("translationModel")}:
-              </label>
-              <span className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 px-2.5 py-1 text-sm font-semibold text-white shadow-sm flex-shrink-0">
-                <Check className="h-3.5 w-3.5" />
-                {translationModel}
-              </span>
-              <span className="text-xs text-gray-500 flex-shrink-0">
-                {translationModel === "gpt-4o" && "(Default - Balanced)"}
-                {translationModel === "gpt-4o-mini" && "(Fast, Cost-effective)"}
-                {translationModel === "gpt-4-turbo" && "(Higher quality)"}
-                {translationModel === "gpt-5" && "(Latest, Best quality)"}
-                {translationModel === "gpt-5-mini" && "(Fast GPT-5)"}
-              </span>
-            </div>
-          </div>
-          {isTranslationModelExpanded ? (
-            <ChevronUp className="h-4 w-4 text-gray-400 ml-2 flex-shrink-0" />
-          ) : (
-            <ChevronDown className="h-4 w-4 text-gray-400 ml-2 flex-shrink-0" />
-          )}
-        </button>
-        {isTranslationModelExpanded && (
-          <>
-            <div className="px-4 pb-2 pt-1">
-              <p className="text-xs text-gray-500">
-                {t("translationModelHelper")}
-              </p>
-            </div>
-            <div className="px-4 pb-3 flex flex-col gap-2">
+            <div className="flex flex-col gap-2">
               {(
                 [
                   "gpt-4o",
@@ -1045,58 +1218,55 @@ export function GuideRail({
                 <button
                   key={model}
                   type="button"
-                  onClick={() => setTranslationModel(model)}
+                  onClick={() => {
+                    setTranslationModel(model);
+                    void handleSaveTranslationModel(model);
+                  }}
+                  disabled={isSavingTranslationModel}
                   className={cn(
-                    "rounded-lg px-3 py-2 text-sm font-medium transition-colors text-left",
+                    "rounded-xl px-4 py-3 text-left",
+                    "transition",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200",
                     translationModel === model
-                      ? "bg-gray-900 text-white"
-                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      ? "bg-slate-900 text-white"
+                      : "bg-slate-100 text-slate-800 hover:bg-slate-200",
+                    isSavingTranslationModel && "opacity-70"
                   )}
+                  aria-pressed={translationModel === model}
                 >
-                  <span className="font-semibold">{model}</span>
-                  {model === "gpt-4o" && (
-                    <span className="ml-2 text-xs opacity-75">
-                      (Default - Balanced)
-                    </span>
-                  )}
-                  {model === "gpt-4o-mini" && (
-                    <span className="ml-2 text-xs opacity-75">
-                      (Fast, Cost-effective)
-                    </span>
-                  )}
-                  {model === "gpt-4-turbo" && (
-                    <span className="ml-2 text-xs opacity-75">
-                      (Higher quality)
-                    </span>
-                  )}
-                  {model === "gpt-5" && (
-                    <span className="ml-2 text-xs opacity-75">
-                      (Latest, Best quality)
-                    </span>
-                  )}
-                  {model === "gpt-5-mini" && (
-                    <span className="ml-2 text-xs opacity-75">
-                      (Fast GPT-5)
-                    </span>
-                  )}
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="font-semibold">{model}</span>
+
+                    {model === "gpt-4o" && (
+                      <span className="text-xs opacity-80">
+                        (Default - Balanced)
+                      </span>
+                    )}
+                    {model === "gpt-4o-mini" && (
+                      <span className="text-xs opacity-80">
+                        (Fast, Cost-effective)
+                      </span>
+                    )}
+                    {model === "gpt-4-turbo" && (
+                      <span className="text-xs opacity-80">
+                        (Higher quality)
+                      </span>
+                    )}
+                    {model === "gpt-5" && (
+                      <span className="text-xs opacity-80">
+                        (Latest, Best quality)
+                      </span>
+                    )}
+                    {model === "gpt-5-mini" && (
+                      <span className="text-xs opacity-80">(Fast GPT-5)</span>
+                    )}
+                  </div>
                 </button>
               ))}
             </div>
-            <div className="px-4 pb-3">
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={handleSaveTranslationModel}
-                  disabled={!threadId || isSavingTranslationModel}
-                  className="inline-flex items-center justify-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isSavingTranslationModel ? t("saving") : "Save"}
-                </button>
-              </div>
-            </div>
-          </>
-        )}
-      </section>
+          </div>,
+        ]}
+      </GuideSteps>
     </div>
   );
 
@@ -1105,66 +1275,65 @@ export function GuideRail({
       <aside
         id="panel-guide"
         data-panel="guide"
-        className={cn(
-          "flex h-full flex-col overflow-hidden rounded-2xl bg-white shadow-sm",
-          className
-        )}
+        className={cn(ui.panel, className)}
       >
         <div id="context-panel" className="flex h-full flex-col">
           {showHeading && (
-            <div className="flex flex-row items-start justify-between gap-2 px-4 py-3">
+            <div className={ui.panelHeader}>
               <div className="min-w-0 flex-1">
-                <h2 className="truncate text-base font-semibold text-gray-900 lg:text-lg">
-                  {t("title")}
-                </h2>
-                <p className="mt-1 text-xs text-slate-500 lg:text-sm">
-                  {t("subtitle")}
-                </p>
+                <h2 className={ui.panelTitle}>{t("title")}</h2>
+                <p className={ui.panelSubtitle}>{t("subtitle")}</p>
               </div>
+
               <button
                 type="button"
                 onClick={onCollapseToggle}
-                className="flex-shrink-0 rounded-lg p-1 text-gray-400 hover:bg-gray-50 hover:text-gray-600"
+                className={ui.iconButton}
                 title={tThread("collapseGuidePanel")}
               >
-                <ChevronLeft className="h-4 w-4" />
+                <ChevronLeft className="h-5 w-5" />
               </button>
             </div>
           )}
 
-          <div
-            id="guide-scroll-region"
-            className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 md:p-4"
-          >
+          <div id="guide-scroll-region" className={ui.scrollRegion}>
             {renderSetup()}
           </div>
 
-          <div className="bg-white px-4 py-3">
-            {/* Validation error message */}
+          <div className={ui.footer}>
             {validationError && (
-              <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-                {validationError}
+              <div className="mb-4">
+                <div className={ui.errorBox}>{validationError}</div>
               </div>
             )}
 
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <button
                 id="clear-guide-btn"
                 type="button"
                 onClick={handleResetAll}
-                className="w-full rounded-lg border border-transparent px-3 py-2 text-xs font-semibold text-gray-600 transition hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 sm:w-auto"
+                className={cn(
+                  "w-full rounded-lg px-4 py-2.5 text-sm font-semibold",
+                  "text-slate-700 transition",
+                  "hover:bg-slate-50 hover:text-slate-900",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200",
+                  "sm:w-auto"
+                )}
               >
                 {t("clearInputs")}
               </button>
+
               <button
                 id="start-workshop-btn"
                 type="button"
                 onClick={handleStartWorkshop}
-                className="inline-flex w-full items-center justify-center rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                disabled={!isGuideCompleteUI}
+                className={cn(ui.blueBtn, "w-full sm:w-auto")}
               >
                 {t("startWorkshop")}
               </button>
             </div>
+
             <div className="sr-only" aria-live="polite">
               {ariaAnnouncement}
             </div>
@@ -1181,14 +1350,38 @@ export function GuideRail({
             confirmText={t("confirmDialogConfirm")}
             cancelText={t("confirmDialogCancel")}
           />
+
+          {/* Clear Inputs Confirmation Dialog */}
+          <ConfirmationDialog
+            open={showClearConfirmation}
+            onOpenChange={setShowClearConfirmation}
+            onConfirm={performReset}
+            isLoading={false}
+            title="Clear All Inputs?"
+            description="Warning: This will clear all your progress in both the 'Let's Get Started' section and the Workshop area. All completed translations, drafts, and line translations will be lost. This action cannot be undone."
+            confirmText="Yes, Clear Everything"
+            cancelText="Cancel"
+          />
+
+          {/* Segment Editor */}
+          {showSegmentEditor && (
+            <SegmentEditor
+              poemLines={poemLines}
+              initialSegmentation={initialSegmentation}
+              onConfirm={handleSegmentEditorConfirm}
+              onCancel={handleSegmentEditorCancel}
+            />
+          )}
         </div>
       </aside>
     );
   } catch (error) {
     return (
-      <div className={`h-full p-4 bg-red-100 ${className}`}>
-        <h1 className="text-2xl font-bold">Error in GuideRail</h1>
-        <pre className="text-xs">{String(error)}</pre>
+      <div
+        className={cn("h-full p-6 bg-red-50 border border-red-200", className)}
+      >
+        <h1 className="text-xl font-bold text-red-900">Error in GuideRail</h1>
+        <pre className="mt-3 text-xs text-red-900/80">{String(error)}</pre>
       </div>
     );
   }

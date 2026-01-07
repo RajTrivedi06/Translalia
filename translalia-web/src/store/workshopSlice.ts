@@ -11,8 +11,8 @@ export interface WorkshopState {
   // Thread metadata
   meta: { threadId: string | null };
 
-  // Active line
-  selectedLineIndex: number | null;
+  // Active line (renamed from selectedLineIndex for consistency)
+  currentLineIndex: number | null;
 
   // Line-level translations (new workflow) - lineIndex -> LineTranslationResponse
   lineTranslations: Record<number, LineTranslationResponse | null>;
@@ -26,30 +26,33 @@ export interface WorkshopState {
   // Poem lines (from Guide Rail)
   poemLines: string[];
 
-  // Compiled translations (lineIndex -> translated line)
+  // Completed/finalized translations (lineIndex -> translated line)
   completedLines: Record<number, string>;
 
   /**
-   * Translation Studio drafts (lineIndex -> edited translation text).
-   * This is intentionally separate from `completedLines` because `completedLines`
-   * can be hydrated from background variants, while the Studio should default
-   * to showing only confirmed-saved lines.
+   * UNIFIED draft system (lineIndex -> draft translation text).
+   * Single source of truth for all work-in-progress translations.
+   * Replaces: notebookSlice.draftTranslations + workshopSlice.studioDraftLines
    */
-  studioDraftLines: Record<number, string>;
+  draftLines: Record<number, string>;
 
   // AI model used for current generation
   modelUsed: string | null;
 
   // Actions
   selectLine: (index: number) => void;
+  setCurrentLineIndex: (index: number | null) => void;
   deselectLine: () => void;
   setIsApplying: (isApplying: boolean) => void;
   setPoemLines: (lines: string[]) => void;
   setCompletedLine: (index: number, translation: string) => void;
   setCompletedLines: (lines: Record<number, string>) => void;
-  setStudioDraftLine: (index: number, translation: string) => void;
-  setStudioDraftLines: (lines: Record<number, string>) => void;
-  // New line translation actions
+  setDraft: (index: number, translation: string) => void;
+  setDraftLines: (lines: Record<number, string>) => void;
+  appendToDraft: (lineIndex: number, text: string) => void;
+  clearDraft: (lineIndex: number) => void;
+  getDisplayText: (lineIndex: number) => string;
+  // Line translation actions
   setLineTranslation: (
     lineIndex: number,
     translation: LineTranslationResponse | null
@@ -62,11 +65,11 @@ export interface WorkshopState {
 }
 
 const initialState = {
-  selectedLineIndex: null,
+  currentLineIndex: null,
   isApplying: false,
   poemLines: [],
   completedLines: {},
-  studioDraftLines: {},
+  draftLines: {},
   modelUsed: null,
   lineTranslations: {},
   selectedVariant: {},
@@ -74,20 +77,25 @@ const initialState = {
 
 export const useWorkshopStore = create<WorkshopState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       hydrated: false,
       meta: { threadId: null }, // ✅ Safe default - will be set by component
       ...initialState,
 
       selectLine: (index: number) =>
         set({
-          selectedLineIndex: index,
+          currentLineIndex: index,
           // Don't clear line translations/variants - they persist per line
+        }),
+
+      setCurrentLineIndex: (index: number | null) =>
+        set({
+          currentLineIndex: index,
         }),
 
       deselectLine: () =>
         set({
-          selectedLineIndex: null,
+          currentLineIndex: null,
           // Don't clear line translations - they persist
         }),
 
@@ -100,30 +108,58 @@ export const useWorkshopStore = create<WorkshopState>()(
         }),
 
       setCompletedLine: (index: number, translation: string) =>
-        set((state) => ({
-          completedLines: {
-            ...state.completedLines,
-            [index]: translation,
-          },
-        })),
+        set((state) => {
+          // Clear draft when completing a line
+          const { [index]: _, ...remainingDrafts } = state.draftLines;
+          return {
+            completedLines: {
+              ...state.completedLines,
+              [index]: translation,
+            },
+            draftLines: remainingDrafts,
+          };
+        }),
 
       setCompletedLines: (lines: Record<number, string>) =>
         set({
           completedLines: lines,
         }),
 
-      setStudioDraftLine: (index: number, translation: string) =>
+      setDraft: (index: number, translation: string) =>
         set((state) => ({
-          studioDraftLines: {
-            ...state.studioDraftLines,
+          draftLines: {
+            ...state.draftLines,
             [index]: translation,
           },
         })),
 
-      setStudioDraftLines: (lines: Record<number, string>) =>
+      setDraftLines: (lines: Record<number, string>) =>
         set({
-          studioDraftLines: lines,
+          draftLines: lines,
         }),
+
+      appendToDraft: (lineIndex: number, text: string) => {
+        const state = get();
+        const current = state.draftLines[lineIndex] ?? state.completedLines[lineIndex] ?? "";
+        const separator = current.trim() ? " " : "";
+        set({
+          draftLines: {
+            ...state.draftLines,
+            [lineIndex]: current + separator + text,
+          },
+        });
+      },
+
+      clearDraft: (lineIndex: number) =>
+        set((state) => {
+          const { [lineIndex]: _, ...rest } = state.draftLines;
+          return { draftLines: rest };
+        }),
+
+      getDisplayText: (lineIndex: number) => {
+        const state = get();
+        return state.draftLines[lineIndex] ?? state.completedLines[lineIndex] ?? "";
+      },
 
       setLineTranslation: (
         lineIndex: number,
@@ -203,18 +239,24 @@ export const useWorkshopStore = create<WorkshopState>()(
           return { ...current, hydrated: true, meta: { threadId: tid } };
         }
 
-        // Restore persisted state
+        // Restore persisted state with migration support
+        // Support both new (currentLineIndex) and old (selectedLineIndex) field names
+        const pWithMigration = p as Partial<WorkshopState> & { selectedLineIndex?: number | null; studioDraftLines?: Record<number, string> };
+        const persistedCurrentLineIndex = pWithMigration.currentLineIndex ?? pWithMigration.selectedLineIndex;
+        const persistedDraftLines = pWithMigration.draftLines ?? pWithMigration.studioDraftLines ?? {};
+
         return {
           ...current,
-          selectedLineIndex:
-            typeof p.selectedLineIndex === "number" ||
-            p.selectedLineIndex === null
-              ? p.selectedLineIndex
-              : current.selectedLineIndex,
+          currentLineIndex:
+            typeof persistedCurrentLineIndex === "number" ||
+            persistedCurrentLineIndex === null
+              ? persistedCurrentLineIndex
+              : current.currentLineIndex,
           poemLines: Array.isArray(p.poemLines)
             ? p.poemLines
             : current.poemLines,
           completedLines: p.completedLines ?? current.completedLines,
+          draftLines: persistedDraftLines,
           modelUsed:
             typeof p.modelUsed === "string" || p.modelUsed === null
               ? p.modelUsed
@@ -234,9 +276,9 @@ export const useWorkshopStore = create<WorkshopState>()(
         meta: state.meta,
         poemLines: state.poemLines,
         completedLines: state.completedLines,
-        studioDraftLines: state.studioDraftLines,
+        draftLines: state.draftLines,
         modelUsed: state.modelUsed,
-        selectedLineIndex: state.selectedLineIndex,
+        currentLineIndex: state.currentLineIndex,
         lineTranslations: state.lineTranslations,
         selectedVariant: state.selectedVariant,
       }),

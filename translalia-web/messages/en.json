@@ -107,8 +107,8 @@
     "deleteError": "Failed to delete chat"
   },
   "Thread": {
-    "title": "Poetry Translation Studio",
-    "description": "Drag options, refine lines, and keep every decision in one calm space.",
+    "title": "Poetry Translation",
+    "description": "Build your translation line by line and keep every decision in one calm space.",
     "threadLabel": "Thread",
     "gettingStarted": "Let's get started",
     "workshop": "Workshop",
@@ -191,6 +191,7 @@
     "confirmDialogCancel": "Cancel",
     "viewpointRange": "Viewpoint Range",
     "viewpointRangeHelper": "Control how different your translation variants will be",
+    "viewpointRangeRequired": "Please select a viewpoint range to continue",
     "viewpointMode": {
       "focused": "Focused",
       "balanced": "Balanced",

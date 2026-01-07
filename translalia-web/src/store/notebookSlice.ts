@@ -3,129 +3,55 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { getActiveThreadId, threadStorage } from "@/lib/threadStorage";
-import { NotebookCell, NotebookFilter } from "@/types/notebook";
-import {
-  HistoryManager,
-  createInitialHistory,
-  addToHistory,
-  undo as undoHistory,
-  redo as redoHistory,
-  canUndo,
-  canRedo,
-} from "@/lib/notebook/historyManager";
 
-export type NotebookMode = "arrange" | "edit";
+/** A single undo entry for text-based editing */
+export interface UndoEntry {
+  lineIndex: number;
+  text: string;
+  timestamp: number;
+}
+
+/** Font size options for notebook display */
+export type NotebookFontSize = 'small' | 'medium' | 'large';
 
 export interface NotebookState {
-  // Hydration flag
+  // Thread isolation
   hydrated: boolean;
-  // Thread metadata
   meta: { threadId: string | null };
 
-  // Cells
-  cells: NotebookCell[];
+  // Session metadata
+  lastEditedLine: number | null;
+  sessionStartTime: Date | null;
+  autoSaveTimestamp: Date | null;
 
-  // Focus
-  focusedCellIndex: number | null;
+  // UI preferences
+  showLineNumbers: boolean;
+  fontSize: NotebookFontSize;
 
-  // UI
-  view: {
-    showPrismatic: boolean;
-    showLineNumbers: boolean;
-    compareMode: boolean;
-  };
-  filter: NotebookFilter;
-
-  // Editing
-  editingCellIndex: number | null;
-  isDirty: boolean;
-
-  // Drag and Drop state
-  droppedCells: NotebookCell[];
-  currentLineIndex: number | null;
-
-  // Mode Management (Phase 4)
-  mode: NotebookMode;
-  modifiedCells: Set<string>; // Track which cells have been modified
-
-  // History Management (Phase 4)
-  history: HistoryManager;
-
-  // Phase 6: Line Progression & Poem Assembly
-  draftTranslations: Map<number, string>; // Work-in-progress translations per line
-  lastEditedLine: number | null; // Track where user left off
-  sessionStartTime: Date | null; // For analytics
-  autoSaveTimestamp: Date | null; // Track last auto-save
-  showPoemAssembly: boolean; // Toggle poem assembly view
+  // Simple undo stack (text-based, not cell-based)
+  undoStack: UndoEntry[];
 
   // Actions
-  setCells: (cells: NotebookCell[]) => void;
-  updateCell: (index: number, updates: Partial<NotebookCell>) => void;
-  focusCell: (index: number) => void;
-  startEditing: (index: number) => void;
-  stopEditing: () => void;
-  togglePrismatic: () => void;
-  setFilter: (filter: NotebookFilter) => void;
-  addNote: (cellIndex: number, note: string) => void;
-  toggleLock: (cellIndex: number, wordPosition: number) => void;
+  setLastEditedLine: (lineIndex: number | null) => void;
+  updateAutoSaveTimestamp: () => void;
+  setFontSize: (size: NotebookFontSize) => void;
   setShowLineNumbers: (show: boolean) => void;
-  setCompareMode: (enabled: boolean) => void;
-
-  // Drag and Drop actions
-  addCell: (cell: NotebookCell, position?: number) => void;
-  removeCell: (cellId: string) => void;
-  reorderCells: (startIndex: number, endIndex: number) => void;
-  updateCellText: (cellId: string, text: string) => void;
-  setCurrentLineIndex: (index: number | null) => void;
-
-  // Mode Management actions (Phase 4)
-  setMode: (mode: NotebookMode) => void;
-  toggleMode: () => void;
-  markCellModified: (cellId: string) => void;
-  clearModifiedCells: () => void;
-
-  // History Management actions (Phase 4)
-  undo: () => void;
-  redo: () => void;
-  canUndo: () => boolean;
-  canRedo: () => boolean;
-
-  // Phase 6: Line Progression actions
-  saveDraftTranslation: (lineIndex: number, translation: string) => void;
-  finalizeCurrentLine: () => void;
-  navigateToLine: (lineIndex: number) => void;
-  resetLine: (lineIndex: number) => void;
-  togglePoemAssembly: () => void;
-  setAutoSaveTimestamp: () => void;
-  startSession: () => void;
-
+  pushUndo: (lineIndex: number, text: string) => void;
+  popUndo: () => UndoEntry | null;
+  clearUndoStack: () => void;
+  resetSession: () => void;
   reset: () => void;
   resetToDefaults: () => void;
   setThreadId: (threadId: string | null) => void;
 }
 
 const initialState = {
-  cells: [],
-  focusedCellIndex: null,
-  view: {
-    showPrismatic: false,
-    showLineNumbers: true,
-    compareMode: false,
-  },
-  filter: "all" as NotebookFilter,
-  editingCellIndex: null,
-  isDirty: false,
-  droppedCells: [],
-  currentLineIndex: null,
-  mode: "arrange" as NotebookMode,
-  modifiedCells: new Set<string>(),
-  history: createInitialHistory([]),
-  // Phase 6
-  draftTranslations: new Map<number, string>(),
   lastEditedLine: null,
   sessionStartTime: null,
   autoSaveTimestamp: null,
-  showPoemAssembly: false,
+  showLineNumbers: true,
+  fontSize: 'medium' as NotebookFontSize,
+  undoStack: [],
 };
 
 export const useNotebookStore = create<NotebookState>()(
@@ -135,298 +61,42 @@ export const useNotebookStore = create<NotebookState>()(
       meta: { threadId: null }, // ✅ Safe default - will be set by component
       ...initialState,
 
-      setCells: (cells: NotebookCell[]) =>
-        set({
-          cells,
-          meta: { threadId: getActiveThreadId() },
-        }),
+      setLastEditedLine: (lineIndex: number | null) =>
+        set({ lastEditedLine: lineIndex }),
 
-      updateCell: (index: number, updates: Partial<NotebookCell>) =>
-        set((state) => {
-          const cells = [...state.cells];
-          if (cells[index]) {
-            cells[index] = { ...cells[index], ...updates };
-          }
-          return { cells, isDirty: true };
-        }),
+      updateAutoSaveTimestamp: () =>
+        set({ autoSaveTimestamp: new Date() }),
 
-      focusCell: (index: number) => set({ focusedCellIndex: index }),
-
-      startEditing: (index: number) => set({ editingCellIndex: index }),
-
-      stopEditing: () => set({ editingCellIndex: null, isDirty: false }),
-
-      togglePrismatic: () =>
-        set((state) => ({
-          view: {
-            ...state.view,
-            showPrismatic: !state.view.showPrismatic,
-          },
-        })),
-
-      setFilter: (filter: NotebookFilter) => set({ filter }),
-
-      addNote: (cellIndex: number, note: string) =>
-        set((state) => {
-          const cells = [...state.cells];
-          if (cells[cellIndex]) {
-            const existingNotes = cells[cellIndex].notes || [];
-            cells[cellIndex] = {
-              ...cells[cellIndex],
-              notes: [...existingNotes, note],
-            };
-          }
-          return { cells, isDirty: true };
-        }),
-
-      toggleLock: (cellIndex: number, wordPosition: number) =>
-        set((state) => {
-          const cells = [...state.cells];
-          if (cells[cellIndex]) {
-            const lockedWords = cells[cellIndex].translation.lockedWords || [];
-            const isLocked = lockedWords.includes(wordPosition);
-
-            cells[cellIndex] = {
-              ...cells[cellIndex],
-              translation: {
-                ...cells[cellIndex].translation,
-                lockedWords: isLocked
-                  ? lockedWords.filter((p) => p !== wordPosition)
-                  : [...lockedWords, wordPosition],
-              },
-            };
-          }
-          return { cells, isDirty: true };
-        }),
+      setFontSize: (size: NotebookFontSize) =>
+        set({ fontSize: size }),
 
       setShowLineNumbers: (show: boolean) =>
+        set({ showLineNumbers: show }),
+
+      pushUndo: (lineIndex: number, text: string) =>
         set((state) => ({
-          view: {
-            ...state.view,
-            showLineNumbers: show,
-          },
+          undoStack: [
+            ...state.undoStack.slice(-19), // Keep last 20
+            { lineIndex, text, timestamp: Date.now() }
+          ]
         })),
 
-      setCompareMode: (enabled: boolean) =>
-        set((state) => ({
-          view: {
-            ...state.view,
-            compareMode: enabled,
-          },
-        })),
-
-      // Drag and Drop actions
-      addCell: (cell: NotebookCell, position?: number) =>
-        set((state) => {
-          const newDroppedCells = [...state.droppedCells];
-          if (
-            position !== undefined &&
-            position >= 0 &&
-            position <= newDroppedCells.length
-          ) {
-            newDroppedCells.splice(position, 0, cell);
-          } else {
-            newDroppedCells.push(cell);
-          }
-          const newHistory = addToHistory(state.history, newDroppedCells);
-          return {
-            droppedCells: newDroppedCells,
-            history: newHistory,
-            isDirty: true,
-          };
-        }),
-
-      removeCell: (cellId: string) =>
-        set((state) => {
-          const newDroppedCells = state.droppedCells.filter(
-            (c) => c.id !== cellId
-          );
-          const newHistory = addToHistory(state.history, newDroppedCells);
-          return {
-            droppedCells: newDroppedCells,
-            history: newHistory,
-            isDirty: true,
-          };
-        }),
-
-      reorderCells: (startIndex: number, endIndex: number) =>
-        set((state) => {
-          const newDroppedCells = [...state.droppedCells];
-          const [removed] = newDroppedCells.splice(startIndex, 1);
-          newDroppedCells.splice(endIndex, 0, removed);
-          const newHistory = addToHistory(state.history, newDroppedCells);
-          return {
-            droppedCells: newDroppedCells,
-            history: newHistory,
-            isDirty: true,
-          };
-        }),
-
-      updateCellText: (cellId: string, text: string) =>
-        set((state) => {
-          const newDroppedCells = state.droppedCells.map((cell) =>
-            cell.id === cellId
-              ? {
-                  ...cell,
-                  translation: {
-                    ...cell.translation,
-                    text,
-                  },
-                }
-              : cell
-          );
-          const newHistory = addToHistory(state.history, newDroppedCells);
-          return {
-            droppedCells: newDroppedCells,
-            history: newHistory,
-            isDirty: true,
-          };
-        }),
-
-      setCurrentLineIndex: (index: number | null) =>
-        set({ currentLineIndex: index }),
-
-      // Mode Management actions (Phase 4)
-      setMode: (mode: NotebookMode) => set({ mode }),
-
-      toggleMode: () =>
-        set((state) => ({
-          mode: state.mode === "arrange" ? "edit" : "arrange",
-        })),
-
-      markCellModified: (cellId: string) =>
-        set((state) => {
-          const newModifiedCells = new Set(state.modifiedCells);
-          newModifiedCells.add(cellId);
-          return { modifiedCells: newModifiedCells };
-        }),
-
-      clearModifiedCells: () => set({ modifiedCells: new Set() }),
-
-      // History Management actions (Phase 4)
-      undo: () =>
-        set((state) => {
-          const newHistory = undoHistory(state.history);
-          if (!newHistory) return {}; // Nothing to undo
-
-          return {
-            history: newHistory,
-            droppedCells: newHistory.present.droppedCells,
-          };
-        }),
-
-      redo: () =>
-        set((state) => {
-          const newHistory = redoHistory(state.history);
-          if (!newHistory) return {}; // Nothing to redo
-
-          return {
-            history: newHistory,
-            droppedCells: newHistory.present.droppedCells,
-          };
-        }),
-
-      canUndo: () => {
+      popUndo: () => {
         const state = get();
-        return canUndo(state.history);
+        if (state.undoStack.length === 0) return null;
+        const last = state.undoStack[state.undoStack.length - 1];
+        set({ undoStack: state.undoStack.slice(0, -1) });
+        return last;
       },
 
-      canRedo: () => {
-        const state = get();
-        return canRedo(state.history);
-      },
+      clearUndoStack: () =>
+        set({ undoStack: [] }),
 
-      // Phase 6: Line Progression actions
-      saveDraftTranslation: (lineIndex: number, translation: string) =>
-        set((state) => {
-          const draftTranslations = new Map(state.draftTranslations);
-          if (translation.trim()) {
-            draftTranslations.set(lineIndex, translation);
-          } else {
-            draftTranslations.delete(lineIndex);
-          }
-          return {
-            draftTranslations,
-            lastEditedLine: lineIndex,
-            isDirty: true,
-          };
-        }),
-
-      finalizeCurrentLine: () =>
-        set((state) => {
-          if (state.currentLineIndex === null) return {};
-
-          const draftTranslations = new Map(state.draftTranslations);
-          draftTranslations.delete(state.currentLineIndex);
-
-          return {
-            draftTranslations,
-            isDirty: false,
-            lastEditedLine: state.currentLineIndex,
-          };
-        }),
-
-      navigateToLine: (lineIndex: number) =>
-        set((state) => {
-          console.log(`[notebookSlice.navigateToLine] Called with lineIndex: ${lineIndex}`);
-          console.log(`[notebookSlice.navigateToLine] Current state.currentLineIndex: ${state.currentLineIndex}`);
-
-          // Save current work as draft if exists
-          if (state.currentLineIndex !== null) {
-            const currentTranslation = state.droppedCells
-              .map((cell) => cell.translation.text)
-              .filter(Boolean)
-              .join(" ");
-
-            console.log(`[notebookSlice.navigateToLine] Current translation: "${currentTranslation}"`);
-
-            if (currentTranslation.trim()) {
-              const draftTranslations = new Map(state.draftTranslations);
-              draftTranslations.set(state.currentLineIndex, currentTranslation);
-              console.log(`[notebookSlice.navigateToLine] Saving draft and navigating to ${lineIndex}`);
-              return {
-                currentLineIndex: lineIndex,
-                draftTranslations,
-                droppedCells: [], // Clear cells for new line
-                isDirty: false,
-              };
-            }
-          }
-
-          console.log(`[notebookSlice.navigateToLine] Navigating to ${lineIndex} without saving draft`);
-          return {
-            currentLineIndex: lineIndex,
-            droppedCells: [], // Clear cells for new line
-            isDirty: false,
-          };
-        }),
-
-      resetLine: (lineIndex: number) =>
-        set((state) => {
-          const draftTranslations = new Map(state.draftTranslations);
-          draftTranslations.delete(lineIndex);
-
-          return {
-            draftTranslations,
-            droppedCells:
-              state.currentLineIndex === lineIndex ? [] : state.droppedCells,
-            isDirty: false,
-          };
-        }),
-
-      togglePoemAssembly: () =>
-        set((state) => ({
-          showPoemAssembly: !state.showPoemAssembly,
-        })),
-
-      setAutoSaveTimestamp: () =>
-        set({
-          autoSaveTimestamp: new Date(),
-        }),
-
-      startSession: () =>
+      resetSession: () =>
         set({
           sessionStartTime: new Date(),
+          autoSaveTimestamp: null,
+          undoStack: [],
         }),
 
       reset: () =>
@@ -439,7 +109,7 @@ export const useNotebookStore = create<NotebookState>()(
         }));
       },
 
-      // ADD THIS NEW METHOD: Reset to defaults for new thread
+      // Reset to defaults for new thread
       resetToDefaults: () => {
         const tid = getActiveThreadId();
         set({
@@ -451,11 +121,20 @@ export const useNotebookStore = create<NotebookState>()(
     }),
     {
       name: "notebook-storage",
-      version: 1,
+      version: 2, // Increment version due to breaking changes
       storage: createJSONStorage(() => threadStorage),
+      migrate: (persistedState: unknown, version: number) => {
+        // Migration from version 1 (old cell-based) to version 2 (simplified)
+        // Just return empty state - old data is incompatible
+        if (version < 2) {
+          console.log('[notebookSlice] Migrating from v1 to v2 - clearing old cell-based data');
+          return initialState;
+        }
+        return persistedState as NotebookState;
+      },
       // If the persisted payload is for a different thread, ignore it
       merge: (persisted, current) => {
-        const p = persisted as NotebookState;
+        const p = persisted as Partial<NotebookState> | undefined;
 
         // No persisted data - return current
         if (!p) {
@@ -478,25 +157,14 @@ export const useNotebookStore = create<NotebookState>()(
         }
 
         // Restore persisted state
-        // Note: Maps and Sets need special handling
-        const restored: NotebookState = {
+        return {
           ...current,
-          ...p,
+          lastEditedLine: p.lastEditedLine ?? current.lastEditedLine,
+          showLineNumbers: p.showLineNumbers ?? current.showLineNumbers,
+          fontSize: p.fontSize ?? current.fontSize,
           hydrated: true,
           meta: { threadId: tid ?? p.meta?.threadId ?? null },
         };
-
-        // Restore Map and Set types properly
-        if (p.draftTranslations) {
-          restored.draftTranslations = new Map(
-            Object.entries(p.draftTranslations).map(([k, v]) => [Number(k), v])
-          );
-        }
-        if (p.modifiedCells) {
-          restored.modifiedCells = new Set(p.modifiedCells);
-        }
-
-        return restored;
       },
       onRehydrateStorage: () => (state) => {
         if (state && !state.hydrated) {
@@ -505,21 +173,10 @@ export const useNotebookStore = create<NotebookState>()(
       },
       partialize: (state) => ({
         meta: state.meta,
-        focusedCellIndex: state.focusedCellIndex,
-        view: state.view,
-        filter: state.filter,
-        // ADD CRITICAL FIELDS:
-        cells: state.cells,
-        droppedCells: state.droppedCells,
-        currentLineIndex: state.currentLineIndex,
-        mode: state.mode,
-        // Serialize Map and Set to plain objects/arrays for persistence
-        draftTranslations: Object.fromEntries(state.draftTranslations),
-        modifiedCells: Array.from(state.modifiedCells),
-        // Limit history to last 10 entries to avoid localStorage bloat
-        history: state.history,
+        showLineNumbers: state.showLineNumbers,
+        fontSize: state.fontSize,
         lastEditedLine: state.lastEditedLine,
-        showPoemAssembly: state.showPoemAssembly,
+        // Don't persist undoStack (session-only), sessionStartTime, autoSaveTimestamp
       }),
     }
   )

@@ -60,8 +60,8 @@ export const VariantRecipeSchema = z.object({
   label: z.enum(["A", "B", "C"]),
   /** Lens configuration for this variant */
   lens: LensSchema,
-  /** Short imperative directive (1-2 lines) */
-  directive: z.string().max(200),
+  /** Short imperative directive (1-2 lines) - truncated to 200 chars if LLM returns longer */
+  directive: z.string().transform((s) => s.slice(0, 200)),
   /** How unusual/creative this variant is allowed to be */
   unusualnessBudget: UnusualnessBudgetSchema,
   /** Which mode created this recipe */
@@ -352,8 +352,10 @@ import { openai } from "./openai";
 import { TRANSLATOR_MODEL } from "@/lib/models";
 
 /** Constants for lock retry */
-const MAX_LOCK_ATTEMPTS = 6;
-const BASE_BACKOFF_MS = 150;
+// Increased to handle worst-case recipe generation (30-60s)
+const MAX_LOCK_ATTEMPTS = 15;
+const BASE_BACKOFF_MS = 500;
+const LOCK_TTL_SECONDS = 90; // Must exceed worst-case generation time
 
 /** Thread state shape (partial) */
 interface ThreadState {
@@ -403,7 +405,9 @@ async function generateRecipesLLM(
     mode
   );
 
-  let modelToUse = TRANSLATOR_MODEL;
+  // Respect user-selected translation model when generating recipes.
+  // (Falls back to env TRANSLATOR_MODEL if not provided.)
+  const modelToUse = guideAnswers.translationModel ?? TRANSLATOR_MODEL;
   const isGpt5 = modelToUse.startsWith("gpt-5");
   const temperature =
     mode === "focused" ? 0.6 : mode === "adventurous" ? 0.95 : 0.8;
@@ -660,7 +664,7 @@ export async function getOrCreateVariantRecipes(
 
   for (let attempt = 0; attempt < MAX_LOCK_ATTEMPTS; attempt++) {
     // Try atomic lock acquisition
-    const acquired = await lockHelper.acquire(lockKey, 30);
+    const acquired = await lockHelper.acquire(lockKey, LOCK_TTL_SECONDS);
 
     if (acquired) {
       try {
@@ -746,8 +750,8 @@ export async function getOrCreateVariantRecipes(
 
     // Lock not acquired: another request is generating
     // Wait with exponential backoff + jitter, then re-check DB
-    const backoff = Math.min(BASE_BACKOFF_MS * Math.pow(2, attempt), 2000);
-    const jitter = Math.random() * 100;
+    const backoff = Math.min(BASE_BACKOFF_MS * Math.pow(2, attempt), 8000);
+    const jitter = Math.random() * 500;
     await sleep(backoff + jitter);
 
     // Check if another request finished while we waited

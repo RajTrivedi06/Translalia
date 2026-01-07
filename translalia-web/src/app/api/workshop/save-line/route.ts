@@ -203,7 +203,9 @@ export async function POST(req: Request) {
         lineIndex
       );
 
-      const verificationUrl = `$${"{"}${"process"}.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}$${"}"}/api/verification/grade-line`;
+      const verificationUrl = `${
+        process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+      }/api/verification/grade-line`;
       console.log("[save-line] DEBUG: Verification URL:", verificationUrl);
 
       // Fire and forget with comprehensive error handling

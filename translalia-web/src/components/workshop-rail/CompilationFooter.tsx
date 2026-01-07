@@ -25,7 +25,7 @@ export function CompilationFooter({
 }: CompilationFooterProps) {
   const queryClient = useQueryClient();
   const threadId = useThreadId() || undefined;
-  const selectedLineIndex = useWorkshopStore((s) => s.selectedLineIndex)!;
+  const currentLineIndex = useWorkshopStore((s) => s.currentLineIndex);
   const poemLines = useWorkshopStore((s) => s.poemLines);
   const lineTranslations = useWorkshopStore((s) => s.lineTranslations);
   const selectedVariant = useWorkshopStore((s) => s.selectedVariant);
@@ -37,9 +37,9 @@ export function CompilationFooter({
 
   // Check if using new line translation format
   const currentLineTranslation =
-    selectedLineIndex !== null ? lineTranslations[selectedLineIndex] : null;
+    currentLineIndex !== null ? lineTranslations[currentLineIndex] : null;
   const currentSelectedVariant =
-    selectedLineIndex !== null ? selectedVariant[selectedLineIndex] : null;
+    currentLineIndex !== null ? selectedVariant[currentLineIndex] : null;
 
   // Compiled line comes from the selected variant (line-level only)
   const compiledLine = React.useMemo(() => {
@@ -59,14 +59,15 @@ export function CompilationFooter({
 
   function apply() {
     if (!threadId) return;
+    if (currentLineIndex === null) return;
 
     if (!currentLineTranslation || !currentSelectedVariant) return;
 
     saveLine(
       {
         threadId,
-        lineIndex: selectedLineIndex,
-        originalLine: poemLines[selectedLineIndex],
+        lineIndex: currentLineIndex,
+        originalLine: poemLines[currentLineIndex],
         variant: currentSelectedVariant,
         lineTranslation: currentLineTranslation,
       },
@@ -123,9 +124,9 @@ export function CompilationFooter({
           setTimeout(() => setShowSuccess(false), 2000);
 
           // Auto-advance to next line after showing success message
-          if (stanzaLines && selectedLineIndex !== null) {
+          if (stanzaLines && currentLineIndex !== null) {
             // Calculate next line index within the current stanza
-            const currentIndexInStanza = selectedLineIndex - globalLineOffset;
+            const currentIndexInStanza = currentLineIndex - globalLineOffset;
             const nextIndexInStanza = currentIndexInStanza + 1;
 
             setTimeout(() => {
@@ -167,10 +168,8 @@ export function CompilationFooter({
         <Button
           variant="outline"
           onClick={() => {
-            if (selectedLineIndex !== null) {
-              useWorkshopStore
-                .getState()
-                .selectVariant(selectedLineIndex, null);
+            if (currentLineIndex !== null) {
+              useWorkshopStore.getState().selectVariant(currentLineIndex, null);
             }
           }}
           disabled={isPending}
