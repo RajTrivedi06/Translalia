@@ -191,6 +191,7 @@
     "confirmDialogCancel": "Cancelar",
     "viewpointRange": "Rango de perspectiva",
     "viewpointRangeHelper": "Controla qué tan diferentes serán tus variantes de traducción",
+    "viewpointRangeRequired": "Por favor selecciona un rango de perspectiva para continuar",
     "viewpointMode": {
       "focused": "Enfocado",
       "balanced": "Equilibrado",

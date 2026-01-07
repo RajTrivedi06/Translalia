@@ -160,6 +160,9 @@ export async function processStanza({
     }
 
     // Translate the line with error handling (Feature 9)
+    // Use user-selected model from guideAnswers (not env default)
+    const selectedModel = guideAnswers.translationModel;
+
     try {
       const lineTranslation = await translateLineInternal({
         threadId,
@@ -172,6 +175,7 @@ export async function processStanza({
         guideAnswers,
         sourceLanguage,
         targetLanguage,
+        modelOverride: selectedModel, // ← Use user-selected model for background translations
         audit:
           auditUserId !== undefined
             ? {

@@ -191,6 +191,7 @@
     "confirmDialogCancel": "ரத்து",
     "viewpointRange": "கண்ணோட்ட வரம்பு",
     "viewpointRangeHelper": "உங்கள் மொழிபெயர்ப்பு மாறுபாடுகள் எவ்வளவு வேறுபட்டதாக இருக்கும் என்பதைக் கட்டுப்படுத்துங்கள்",
+    "viewpointRangeRequired": "தொடர கண்ணோட்ட வரம்பைத் தேர்ந்தெடுக்கவும்",
     "viewpointMode": {
       "focused": "கவனம்",
       "balanced": "சமநிலை",

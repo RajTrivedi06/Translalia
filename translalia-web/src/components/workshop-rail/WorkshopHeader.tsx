@@ -10,18 +10,18 @@ interface WorkshopHeaderProps {
 
 export function WorkshopHeader({ showTitle = true }: WorkshopHeaderProps) {
   const total = useWorkshopStore((s) => s.poemLines.length);
-  const selectedLineIndex = useWorkshopStore((s) => s.selectedLineIndex);
+  const currentLineIndex = useWorkshopStore((s) => s.currentLineIndex);
   const selectedVariant = useWorkshopStore((s) => s.selectedVariant);
   const currentVariant =
-    selectedLineIndex !== null ? selectedVariant[selectedLineIndex] : null;
+    currentLineIndex !== null ? selectedVariant[currentLineIndex] : null;
 
   return (
     <div className="flex items-center justify-between border-b px-3 py-2 bg-white">
       <div className="flex items-center gap-2">
         {showTitle && <h2 className="text-sm font-semibold">Workshop</h2>}
-        {selectedLineIndex !== null ? (
+        {currentLineIndex !== null ? (
           <span className="text-xs text-neutral-500">
-            Line {selectedLineIndex + 1} of {total}
+            Line {currentLineIndex + 1} of {total}
           </span>
         ) : null}
       </div>

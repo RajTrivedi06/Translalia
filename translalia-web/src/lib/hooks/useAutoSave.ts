@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
-import { useNotebookStore } from "@/store/notebookSlice";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { useDebounce } from "./useDebounce";
 
 /**
@@ -32,10 +31,7 @@ export function useAutoSave(
   } = {}
 ) {
   const { debounceMs = 3000, enabled = true, onSave, onError } = options;
-
-  const saveDraftTranslation = useNotebookStore((s) => s.saveDraftTranslation);
-  const setAutoSaveTimestamp = useNotebookStore((s) => s.setAutoSaveTimestamp);
-  const isDirty = useNotebookStore((s) => s.isDirty);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
   const lastSavedContent = useRef<string>("");
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -51,18 +47,8 @@ export function useAutoSave(
         return;
       }
 
-      // Check if online
-      if (!navigator.onLine) {
-        throw new Error(
-          "You're offline. Changes will be saved when you reconnect."
-        );
-      }
-
-      // Save to store
-      saveDraftTranslation(currentLineIndex, translation);
-      setAutoSaveTimestamp();
-
       lastSavedContent.current = translation;
+      setLastSaved(new Date());
 
       onSave?.(translation);
     } catch (error) {
@@ -70,25 +56,19 @@ export function useAutoSave(
       onError?.(err);
       console.error("[useAutoSave] Save failed:", err);
     }
-  }, [
-    enabled,
-    currentLineIndex,
-    getCurrentTranslation,
-    saveDraftTranslation,
-    setAutoSaveTimestamp,
-    onSave,
-    onError,
-  ]);
+  }, [enabled, currentLineIndex, getCurrentTranslation, onSave, onError]);
 
   // Debounced save
   const debouncedSave = useDebounce(performSave, debounceMs);
 
   // Trigger save when content changes
   useEffect(() => {
-    if (enabled && isDirty && currentLineIndex !== null) {
+    if (!enabled || currentLineIndex === null) return;
+    const content = getCurrentTranslation();
+    if (content !== lastSavedContent.current) {
       debouncedSave();
     }
-  }, [enabled, isDirty, currentLineIndex, debouncedSave]);
+  }, [enabled, currentLineIndex, debouncedSave, getCurrentTranslation]);
 
   // Save on unmount if there are unsaved changes
   useEffect(() => {
@@ -97,11 +77,11 @@ export function useAutoSave(
         clearTimeout(saveTimeoutRef.current);
       }
       // Perform immediate save on unmount if dirty
-      if (isDirty && currentLineIndex !== null) {
+      if (currentLineIndex !== null) {
         performSave();
       }
     };
-  }, [isDirty, currentLineIndex, performSave]);
+  }, [currentLineIndex, performSave]);
 
   // Manual save function
   const saveNow = useCallback(async () => {
@@ -113,7 +93,7 @@ export function useAutoSave(
 
   return {
     saveNow,
-    lastSaved: useNotebookStore((s) => s.autoSaveTimestamp),
+    lastSaved,
   };
 }
 

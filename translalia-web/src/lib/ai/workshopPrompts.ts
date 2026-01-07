@@ -1115,6 +1115,21 @@ Output format:
   const userPromptParts: string[] = [];
 
   // Translator personality section
+  const sourceContext =
+    personality.source_language_variety &&
+    personality.source_language_variety.trim().length > 0
+      ? `
+
+SOURCE LANGUAGE CONTEXT:
+${personality.source_language_notes ?? "Source language variety provided by user."}
+
+⚠️ IMPORTANT: The source text is in ${personality.source_language_variety}.
+- Be aware of dialect-/variety-specific expressions and idioms
+- Don't mistake regional usage for errors
+- Preserve cultural/regional flavor where appropriate
+`
+      : "";
+
   userPromptParts.push(
     `
 ═══════════════════════════════════════════════════════════════
@@ -1140,6 +1155,7 @@ ${
     ? `NEVER use: ${personality.forbidden_terms.join(", ")}`
     : ""
 }
+${sourceContext}
 `.trim()
   );
 

@@ -191,6 +191,7 @@
     "confirmDialogCancel": "റദ്ദാക്കുക",
     "viewpointRange": "കാഴ്ചപ്പാട് പരിധി",
     "viewpointRangeHelper": "നിങ്ങളുടെ പരിഭാഷ വേരിയന്റുകൾ എത്ര വ്യത്യസ്തമായിരിക്കുമെന്ന് നിയന്ത്രിക്കുക",
+    "viewpointRangeRequired": "തുടരാൻ ദയവായി ഒരു കാഴ്ചപ്പാട് പരിധി തിരഞ്ഞെടുക്കുക",
     "viewpointMode": {
       "focused": "കേന്ദ്രീകൃതം",
       "balanced": "സന്തുലിതം",

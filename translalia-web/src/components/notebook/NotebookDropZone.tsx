@@ -2,54 +2,38 @@
 
 import * as React from "react";
 import { useDroppable } from "@dnd-kit/core";
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-  horizontalListSortingStrategy,
-} from "@dnd-kit/sortable";
 import { cn } from "@/lib/utils";
-import {
-  TranslationCell,
-  TranslationCellData,
-  CellMode,
-} from "./TranslationCell";
 import { Package, ArrowDown, Sparkles } from "lucide-react";
 
 interface NotebookDropZoneProps {
-  cells: TranslationCellData[];
-  mode: CellMode;
-  onEditCell: (cellId: string) => void;
-  onSaveCell: (cellId: string, text: string) => void;
-  onCancelEdit: (cellId: string) => void;
-  onRemoveCell: (cellId: string) => void;
-  onToggleLock: (cellId: string) => void;
   canDrop?: boolean;
   isActive?: boolean;
   inactiveTitle?: string;
   inactiveDescription?: string;
   inactiveAction?: React.ReactNode;
+  className?: string;
+  children?: React.ReactNode;
+  dropzoneId?: string;
 }
 
+/**
+ * Simplified NotebookDropZone - Phase 2
+ * No longer uses cells, just a drop target that appends text to drafts
+ */
 export function NotebookDropZone({
-  cells,
-  mode,
-  onEditCell,
-  onSaveCell,
-  onCancelEdit,
-  onRemoveCell,
-  onToggleLock,
   canDrop = true,
   isActive = false,
   inactiveTitle = "Select a line to translate",
-  inactiveDescription = "Choose a line from the Workshop panel to begin dropping words.",
+  inactiveDescription = "Choose a line from the Workshop panel to begin translating.",
   inactiveAction,
+  className,
+  children,
+  dropzoneId = "notebook-dropzone",
 }: NotebookDropZoneProps) {
   const { isOver, setNodeRef } = useDroppable({
-    id: "notebook-dropzone",
+    id: dropzoneId,
     disabled: !canDrop,
   });
-
-  const isEmpty = cells.length === 0;
 
   return (
     <div
@@ -57,13 +41,16 @@ export function NotebookDropZone({
       className={cn(
         "relative rounded-xl border-2 border-dashed transition-all duration-200",
         "flex flex-col items-center justify-center text-center",
-        "min-h-[50px] p-2", // Increased height/padding for more space
+        "min-h-[80px] p-4",
         isOver
           ? "border-blue-400 bg-blue-50/50 scale-[1.02]"
-          : "border-slate-200 bg-slate-50/50 hover:border-slate-300 hover:bg-slate-100/50"
+          : "border-slate-200 bg-slate-50/50 hover:border-slate-300 hover:bg-slate-100/50",
+        className
       )}
     >
-      {!canDrop ? (
+      {children ? (
+        children
+      ) : !canDrop ? (
         <div className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto space-y-3">
           <div className="p-4 rounded-full bg-white border border-gray-200">
             <Sparkles className="w-10 h-10 text-gray-300" />
@@ -72,7 +59,7 @@ export function NotebookDropZone({
           <p className="text-sm text-gray-500">{inactiveDescription}</p>
           {inactiveAction ? <div className="mt-2">{inactiveAction}</div> : null}
         </div>
-      ) : isEmpty ? (
+      ) : (
         /* Empty State */
         <div className="text-center max-w-sm">
           <div className="flex justify-center mb-3">
@@ -98,6 +85,9 @@ export function NotebookDropZone({
           >
             {isOver ? "Drop here!" : "Drop words here"}
           </h3>
+          <p className="text-sm text-gray-500 mb-2">
+            Words will be appended to your translation
+          </p>
 
           {canDrop && isOver && (
             <div className="flex justify-center animate-bounce">
@@ -105,47 +95,6 @@ export function NotebookDropZone({
             </div>
           )}
         </div>
-      ) : (
-        /* Cells List */
-        <SortableContext
-          items={cells.map((c) => c.id)}
-          strategy={
-            mode === "arrange"
-              ? horizontalListSortingStrategy
-              : verticalListSortingStrategy
-          }
-        >
-          <div
-            className={cn(
-              mode === "arrange"
-                ? "flex flex-wrap gap-2"
-                : "flex flex-col space-y-3"
-            )}
-          >
-            {cells.map((cell) => (
-              <TranslationCell
-                key={cell.id}
-                cell={cell}
-                mode={mode}
-                onEdit={onEditCell}
-                onSave={onSaveCell}
-                onCancel={onCancelEdit}
-                onRemove={onRemoveCell}
-                onToggleLock={onToggleLock}
-              />
-            ))}
-          </div>
-
-          {/* Drop indicator when cells exist */}
-          {canDrop && isOver && (
-            <div className="mt-4 p-4 border-2 border-dashed border-blue-400 bg-blue-50 rounded-lg flex items-center justify-center gap-2 animate-pulse">
-              <ArrowDown className="w-4 h-4 text-blue-500" />
-              <span className="text-sm text-blue-700 font-medium">
-                Drop to add new cell
-              </span>
-            </div>
-          )}
-        </SortableContext>
       )}
 
       {canDrop && isActive && !isOver && (
@@ -155,7 +104,7 @@ export function NotebookDropZone({
       )}
 
       {/* Hover overlay */}
-      {canDrop && isOver && !isEmpty && (
+      {canDrop && isOver && (
         <div className="absolute inset-0 pointer-events-none border-2 border-blue-500 rounded-lg bg-blue-50/10" />
       )}
     </div>

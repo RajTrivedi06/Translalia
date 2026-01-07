@@ -191,6 +191,7 @@
     "confirmDialogCancel": "取消",
     "viewpointRange": "视角范围",
     "viewpointRangeHelper": "控制您的翻译变体有多不同",
+    "viewpointRangeRequired": "请选择一个视角范围以继续",
     "viewpointMode": {
       "focused": "聚焦",
       "balanced": "平衡",

@@ -191,6 +191,7 @@
     "confirmDialogCancel": "రద్దు",
     "viewpointRange": "దృక్కోణ పరిధి",
     "viewpointRangeHelper": "మీ అనువాద వేరియంట్లు ఎంత భిన్నంగా ఉంటాయో నియంత్రించండి",
+    "viewpointRangeRequired": "కొనసాగించడానికి దయచేసి దృక్కోణ పరిధిని ఎంచుకోండి",
     "viewpointMode": {
       "focused": "కేంద్రీకృతం",
       "balanced": "సమతుల్యం",

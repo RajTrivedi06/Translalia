@@ -11,7 +11,8 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, ArrowLeft } from "lucide-react";
+import { PanelGroup, Panel, PanelResizeHandle } from "react-resizable-panels";
 import { GuideRail } from "@/components/guide";
 import { WorkshopRail } from "@/components/workshop-rail/WorkshopRail";
 import { NotebookViewContainer } from "@/components/notebook/NotebookViewContainer";
@@ -27,9 +28,11 @@ import { type DragData } from "@/types/drag";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useNotebookStore } from "@/store/notebookSlice";
-import { createCellFromDragData } from "@/lib/notebook/cellHelpers";
 import { useGuideStore } from "@/store/guideSlice";
 import { useWorkshopStore } from "@/store/workshopSlice";
+import { routes } from "@/lib/routers";
+import { Link } from "@/i18n/routing";
+import { Button } from "@/components/ui/button";
 
 interface ThreadPageClientProps {
   projectId: string;
@@ -63,9 +66,10 @@ export default function ThreadPageClient({
   const workshopState = useWorkshopStore();
   const notebookState = useNotebookStore();
 
-  const addCell = useNotebookStore((s) => s.addCell);
-  const reorderCells = useNotebookStore((s) => s.reorderCells);
-  const droppedCells = useNotebookStore((s) => s.droppedCells);
+  // Get workshop store functions for drag-and-drop
+  const appendToDraft = useWorkshopStore((s) => s.appendToDraft);
+  const currentLineIndex = useWorkshopStore((s) => s.currentLineIndex);
+  const setCurrentLineIndex = useWorkshopStore((s) => s.setCurrentLineIndex);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -90,7 +94,15 @@ export default function ThreadPageClient({
   const [isGettingStartedCollapsed, setIsGettingStartedCollapsed] =
     useState(false);
 
-  const isStartupFocusMode = !isWorkshopUnlocked && !isGettingStartedCollapsed;
+  // Track if user manually expanded the Guide Rail (should show in full width)
+  const [isManuallyExpanded, setIsManuallyExpanded] = useState(false);
+
+  // Startup focus mode: show Guide Rail at 80% width when:
+  // 1. Workshop is not unlocked AND Guide Rail is not collapsed, OR
+  // 2. User manually expanded the Guide Rail (regardless of workshop state)
+  const isStartupFocusMode =
+    (!isWorkshopUnlocked && !isGettingStartedCollapsed) ||
+    (isManuallyExpanded && !isGettingStartedCollapsed);
 
   // Reset and update collapse state when threadId changes or store state updates
   // Only collapse if:
@@ -115,13 +127,16 @@ export default function ThreadPageClient({
       const hasWorkshopData = Object.keys(completedLines || {}).length > 0;
       if (isWorkshopUnlocked || hasWorkshopData) {
         setIsGettingStartedCollapsed(true);
+        setIsManuallyExpanded(false); // Reset manual expansion on auto-collapse
       } else {
         // If no work exists for this thread, ensure it's expanded
         setIsGettingStartedCollapsed(false);
+        setIsManuallyExpanded(false); // Reset manual expansion
       }
     } else {
       // If stores are for a different thread, start expanded
       setIsGettingStartedCollapsed(false);
+      setIsManuallyExpanded(false); // Reset manual expansion
     }
   }, [
     threadId,
@@ -211,6 +226,7 @@ export default function ThreadPageClient({
 
     if (hasWorkshopData || guideState.isWorkshopUnlocked) {
       setIsGettingStartedCollapsed(true);
+      setIsManuallyExpanded(false); // Reset manual expansion on auto-collapse
     }
   }, [workshopState.completedLines, guideState.isWorkshopUnlocked]);
 
@@ -224,18 +240,41 @@ export default function ThreadPageClient({
 
     const { active, over } = event;
 
-    if (over && over.id === "notebook-dropzone") {
-      const dragData = active.data.current as DragData;
-      const newCell = createCellFromDragData(dragData);
-      addCell(newCell);
-    } else if (over && active.id !== over.id) {
-      const oldIndex = droppedCells.findIndex((c) => c.id === active.id);
-      const newIndex = droppedCells.findIndex((c) => c.id === over.id);
+    if (!over) return;
 
-      if (oldIndex !== -1 && newIndex !== -1) {
-        reorderCells(oldIndex, newIndex);
+    // Handle drop on notebook dropzone - append text to draft
+    // Support both old "notebook-dropzone" and new line-specific "notebook-dropzone-line-X" IDs
+    const isNotebookDropzone =
+      over.id === "notebook-dropzone" ||
+      String(over.id).startsWith("notebook-dropzone-line-");
+
+    if (isNotebookDropzone) {
+      const dragData = active.data.current as DragData;
+
+      // Extract line index from dropzone ID if it's line-specific
+      let targetLine: number;
+      if (String(over.id).startsWith("notebook-dropzone-line-")) {
+        const lineIndexMatch = String(over.id).match(
+          /notebook-dropzone-line-(\d+)/
+        );
+        targetLine = lineIndexMatch
+          ? parseInt(lineIndexMatch[1], 10)
+          : dragData.sourceLineNumber ?? currentLineIndex ?? 0;
+      } else {
+        // Use source line number if available, otherwise current line
+        targetLine = dragData.sourceLineNumber ?? currentLineIndex ?? 0;
       }
+
+      // If dropping a word from a different line, navigate to that line first
+      if (targetLine !== currentLineIndex) {
+        setCurrentLineIndex(targetLine);
+      }
+
+      // Append the word text to the draft
+      appendToDraft(targetLine, dragData.text);
     }
+
+    // Cell reordering removed - no longer using cells
   };
 
   const threadLabel = threadId?.slice(0, 6).toUpperCase() ?? "CURRENT THREAD";
@@ -249,19 +288,25 @@ export default function ThreadPageClient({
       {/* Soft neutral background that fills entire viewport */}
       <div className="flex h-[calc(100vh-var(--header-h))] w-full flex-col bg-[#f5f5f7]">
         {/* Header */}
-        <div className="border-b border-slate-200/50 bg-white/80 px-6 py-6 backdrop-blur-sm sm:px-8">
+        <div className="border-b border-slate-200/50 bg-white/80 px-6 py-3 backdrop-blur-sm sm:px-8">
           <div className="mx-auto max-w-7xl">
-            <div className="mt-3 flex flex-col items-start justify-between sm:flex-row sm:items-center sm:gap-4">
-              <div>
-                <h1 className="text-2xl font-semibold tracking-tight text-slate-500 sm:text-3xl">
+            <div className="flex flex-col items-start justify-between sm:flex-row sm:items-center sm:gap-4">
+              <div className="flex items-center gap-4">
+                <Link href={routes.workspaceChats(projectId)}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="gap-2 text-slate-600 hover:text-slate-900"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    <span className="hidden sm:inline">Back to Threads</span>
+                    <span className="sm:hidden">Back</span>
+                  </Button>
+                </Link>
+                <div className="h-6 w-px bg-slate-300" />
+                <h1 className="text-xl font-semibold tracking-tight text-slate-500 sm:text-2xl">
                   {t("title")}
                 </h1>
-                <p className="mt-1 text-sm text-slate-600">
-                  {t("description")}
-                </p>
-              </div>
-              <div className="mt-4 rounded-full bg-slate-100/80 px-4 py-1.5 text-xs font-semibold text-slate-600 sm:mt-0">
-                {t("threadLabel")} {threadLabel}
               </div>
             </div>
           </div>
@@ -295,9 +340,10 @@ export default function ThreadPageClient({
                     </div>
                     <button
                       type="button"
-                      onClick={() =>
-                        setIsGettingStartedCollapsed(!isGettingStartedCollapsed)
-                      }
+                      onClick={() => {
+                        setIsGettingStartedCollapsed(true);
+                        setIsManuallyExpanded(false);
+                      }}
                       className="absolute right-4 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-slate-300 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
                       aria-label={t("collapseGuidePanel")}
                     >
@@ -309,9 +355,19 @@ export default function ThreadPageClient({
                       projectId={projectId}
                       threadId={threadId}
                       showHeading={false}
-                      onCollapseToggle={() =>
-                        setIsGettingStartedCollapsed((prevState) => !prevState)
-                      }
+                      onCollapseToggle={() => {
+                        setIsGettingStartedCollapsed((prevState) => {
+                          const newState = !prevState;
+                          if (newState) {
+                            // Collapsing: clear manual expansion flag
+                            setIsManuallyExpanded(false);
+                          } else {
+                            // Expanding: set manual expansion flag to show in full width
+                            setIsManuallyExpanded(true);
+                          }
+                          return newState;
+                        });
+                      }}
                       onAutoCollapse={() => setIsGettingStartedCollapsed(true)}
                       isCollapsed={isGettingStartedCollapsed}
                     />
@@ -322,9 +378,10 @@ export default function ThreadPageClient({
                 <div className="flex h-full flex-col items-center justify-center gap-3 pb-6 pt-4">
                   <button
                     type="button"
-                    onClick={() =>
-                      setIsGettingStartedCollapsed(!isGettingStartedCollapsed)
-                    }
+                    onClick={() => {
+                      setIsGettingStartedCollapsed(false);
+                      setIsManuallyExpanded(true); // Mark as manually expanded to show in full width
+                    }}
                     className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow transition hover:border-slate-300 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
                     aria-label={t("expandGuidePanel")}
                   >
@@ -335,56 +392,82 @@ export default function ThreadPageClient({
               )}
             </div>
 
-            {/* CENTER: Workshop – full-height, scrolls inside */}
-            <div
-              className={cn(
-                "flex h-full min-h-0 flex-col overflow-hidden border-l border-slate-200/50 bg-white shadow-sm",
-                "rounded-none transition-all duration-500 ease-in-out",
-                isStartupFocusMode && "bg-white/70"
-              )}
-            >
-              {isStartupFocusMode ? (
-                <CollapsedPanelTab label={t("workshop")} />
-              ) : (
-                <>
-                  <div className="px-4 py-3">
-                    <h2 className="text-xl font-semibold tracking-tight text-slate-900">
-                      {t("workshop")}
-                    </h2>
-                    <p className="text-sm text-slate-500">
-                      {t("workshopDescription")}
-                    </p>
-                  </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-2 md:p-3">
-                    <WorkshopRail showHeaderTitle={false} />
-                  </div>
-                </>
-              )}
-            </div>
+            {/* CENTER + RIGHT: Workshop and Notebook with resizable splitter */}
+            {isStartupFocusMode ? (
+              // When in startup focus mode, show collapsed tabs side by side
+              <>
+                <div
+                  className={cn(
+                    "flex h-full min-h-0 flex-col overflow-hidden border-l border-slate-200/50 bg-white shadow-sm",
+                    "rounded-none transition-all duration-500 ease-in-out bg-white/70"
+                  )}
+                >
+                  <CollapsedPanelTab label={t("workshop")} />
+                </div>
+                <div
+                  className={cn(
+                    "flex h-full min-h-0 flex-col overflow-hidden border-l border-slate-200/50 bg-white shadow-sm",
+                    "rounded-r-2xl rounded-l-none transition-all duration-500 ease-in-out bg-white/70"
+                  )}
+                >
+                  <CollapsedPanelTab label={t("notebook")} />
+                </div>
+              </>
+            ) : (
+              // When not in startup focus mode, show resizable panels
+              // PanelGroup spans across the last 2 grid columns
+              <div className="col-span-2 flex h-full min-h-0">
+                <PanelGroup
+                  direction="horizontal"
+                  className="flex-1 min-h-0"
+                  autoSaveId={`workshop-notebook-split-${threadId}`}
+                >
+                  {/* CENTER: Workshop – full-height, scrolls inside */}
+                  <Panel
+                    defaultSize={50}
+                    minSize={20}
+                    className={cn(
+                      "flex h-full min-h-0 flex-col overflow-hidden border-l border-slate-200/50 bg-white shadow-sm",
+                      "rounded-none transition-all duration-500 ease-in-out"
+                    )}
+                  >
+                    <div className="px-4 py-3">
+                      <h2 className="text-xl font-semibold tracking-tight text-slate-900">
+                        {t("workshop")}
+                      </h2>
+                      <p className="text-sm text-slate-500">
+                        {t("workshopDescription")}
+                      </p>
+                    </div>
+                    <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-2 md:p-3">
+                      <WorkshopRail showHeaderTitle={false} />
+                    </div>
+                  </Panel>
 
-            {/* RIGHT: Notebook – full-height, scrolls inside */}
-            <div
-              className={cn(
-                "flex h-full min-h-0 flex-col overflow-hidden border-l border-slate-200/50 bg-white shadow-sm",
-                "rounded-r-2xl rounded-l-none transition-all duration-500 ease-in-out",
-                isStartupFocusMode && "bg-white/70"
-              )}
-            >
-              {isStartupFocusMode ? (
-                <CollapsedPanelTab label={t("notebook")} />
-              ) : (
-                <>
-                  <div className="px-4 py-3">
-                    <h2 className="text-xl font-semibold tracking-tight text-slate-900">
-                      {t("notebook")}
-                    </h2>
-                  </div>
-                  <div className="flex-1 min-h-0 overflow-hidden">
-                    <NotebookViewContainer projectId={projectId} />
-                  </div>
-                </>
-              )}
-            </div>
+                  {/* Resize handle */}
+                  <PanelResizeHandle className="w-1 bg-slate-200 hover:bg-slate-300 transition-colors cursor-col-resize active:bg-slate-400" />
+
+                  {/* RIGHT: Notebook – full-height, scrolls inside */}
+                  <Panel
+                    defaultSize={50}
+                    minSize={20}
+                    className={cn(
+                      "flex h-full min-h-0 flex-col overflow-hidden bg-white shadow-sm",
+                      "rounded-r-2xl rounded-l-none transition-all duration-500 ease-in-out"
+                    )}
+                  >
+                    <div className="px-4 py-3">
+                      <h2 className="text-xl font-semibold tracking-tight text-slate-900">
+                        {t("notebook")}
+                      </h2>
+                    </div>
+                    <div className="flex-1 min-h-0 overflow-hidden">
+                      <NotebookViewContainer projectId={projectId} />
+                    </div>
+                  </Panel>
+                </PanelGroup>
+              </div>
+            )}
           </div>
         </div>
       </div>

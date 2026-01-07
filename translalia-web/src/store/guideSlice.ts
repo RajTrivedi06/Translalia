@@ -7,6 +7,7 @@ import {
   splitPoemIntoStanzas,
   type SimplePoemStanzas,
 } from "@/lib/utils/stanzaUtils";
+import { customSegmentationToStanzas } from "@/lib/utils/customSegmentationToStanzas";
 
 export interface GuideAnswers {
   /**
@@ -41,6 +42,13 @@ export interface GuideAnswers {
     | "gpt-5-mini";
 
   /**
+   * Translation method selection (experimental A/B testing).
+   * - method-1: P1 Literalness Spectrum (default)
+   * - method-2: P6-P8 Recipe-Driven Prismatic Variants
+   */
+  translationMethod?: "method-1" | "method-2";
+
+  /**
    * Legacy structured fields are kept optional so previously saved
    * projects keep loading without errors. New flows won't populate these.
    */
@@ -72,6 +80,10 @@ export interface GuideState {
     isSubmitted: boolean;
     preserveFormatting: boolean;
     stanzas: SimplePoemStanzas | null;
+    customSegmentation: {
+      lineToSegment: Record<number, number>; // Map of line index -> segment number (1-indexed)
+      totalSegments: number;
+    } | null;
   };
 
   // Translation intent (free-form instructions)
@@ -108,11 +120,19 @@ export interface GuideState {
     | "gpt-4-turbo"
     | "gpt-5"
     | "gpt-5-mini";
+  // Translation method selection (experimental)
+  translationMethod: "method-1" | "method-2";
 
   // Actions
   setPoem: (text: string) => void;
   submitPoem: () => void;
   getPoemStanzas: () => SimplePoemStanzas | null;
+  setCustomSegmentation: (
+    segmentation: {
+      lineToSegment: Record<number, number>;
+      totalSegments: number;
+    } | null
+  ) => void;
   setPreserveFormatting: (preserve: boolean) => void;
   setSourceLanguageVariety: (value: string) => void;
   submitSourceLanguageVariety: () => void;
@@ -125,6 +145,7 @@ export interface GuideState {
   setTranslationModel: (
     model: "gpt-4o" | "gpt-4o-mini" | "gpt-4-turbo" | "gpt-5" | "gpt-5-mini"
   ) => void;
+  setTranslationMethod: (method: "method-1" | "method-2") => void;
   mergeAnswers: (updates: Partial<GuideAnswers>) => void;
   toggleCollapse: () => void;
   setWidth: (width: number) => void;
@@ -148,6 +169,7 @@ const initialState: Pick<
   | "isWorkshopUnlocked"
   | "viewpointRangeMode"
   | "translationModel"
+  | "translationMethod"
 > = {
   currentStep: "setup",
   poem: {
@@ -155,6 +177,7 @@ const initialState: Pick<
     isSubmitted: false,
     preserveFormatting: true,
     stanzas: null,
+    customSegmentation: null,
   },
   translationIntent: {
     text: null,
@@ -174,6 +197,7 @@ const initialState: Pick<
   isWorkshopUnlocked: false,
   viewpointRangeMode: "balanced",
   translationModel: "gpt-4o",
+  translationMethod: "method-1",
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -191,8 +215,30 @@ export const useGuideStore = create<GuideState>()(
       ...initialState,
 
       setPoem: (text: string) => {
-        // Compute stanzas immediately (client-side, no API)
-        const stanzas = splitPoemIntoStanzas(text);
+        const state = get();
+        let stanzas: SimplePoemStanzas;
+
+        // Use custom segmentation if available, otherwise use default 4-lines-per-segment
+        if (state.poem.customSegmentation) {
+          const poemLines = text
+            .split("\n")
+            .map((l) => l.trim())
+            .filter((l) => l.length > 0);
+
+          const lineToSegmentMap = new Map(
+            Object.entries(state.poem.customSegmentation.lineToSegment).map(
+              ([k, v]) => [Number(k), v]
+            )
+          );
+
+          stanzas = customSegmentationToStanzas(poemLines, {
+            lineToSegment: lineToSegmentMap,
+            totalSegments: state.poem.customSegmentation.totalSegments,
+          });
+        } else {
+          // Default: 4 lines per segment
+          stanzas = splitPoemIntoStanzas(text);
+        }
 
         set((state) => ({
           poem: {
@@ -212,6 +258,39 @@ export const useGuideStore = create<GuideState>()(
       getPoemStanzas: () => {
         return get().poem.stanzas;
       },
+
+      setCustomSegmentation: (segmentation) =>
+        set((state) => {
+          // If segmentation is provided, regenerate stanzas
+          let stanzas = state.poem.stanzas;
+          if (segmentation && state.poem.text) {
+            const poemLines = state.poem.text
+              .split("\n")
+              .map((l) => l.trim())
+              .filter((l) => l.length > 0);
+
+            const lineToSegmentMap = new Map(
+              Object.entries(segmentation.lineToSegment).map(([k, v]) => [
+                Number(k),
+                v,
+              ])
+            );
+
+            stanzas = customSegmentationToStanzas(poemLines, {
+              lineToSegment: lineToSegmentMap,
+              totalSegments: segmentation.totalSegments,
+            });
+          }
+
+          return {
+            poem: {
+              ...state.poem,
+              customSegmentation: segmentation,
+              stanzas,
+            },
+            meta: { threadId: getActiveThreadId() },
+          };
+        }),
 
       setPreserveFormatting: (preserve: boolean) =>
         set((state) => ({
@@ -317,6 +396,15 @@ export const useGuideStore = create<GuideState>()(
           },
         })),
 
+      setTranslationMethod: (method: "method-1" | "method-2") =>
+        set((state) => ({
+          translationMethod: method,
+          answers: {
+            ...state.answers,
+            translationMethod: method,
+          },
+        })),
+
       mergeAnswers: (updates: Partial<GuideAnswers>) =>
         set((state) => {
           const incomingIntent =
@@ -366,7 +454,16 @@ export const useGuideStore = create<GuideState>()(
         const hasTranslationIntent =
           (state.translationIntent.text?.trim().length ?? 0) > 0;
 
-        return hasPoem && hasTranslationZone && hasTranslationIntent;
+        // If method-2 is selected, viewpointRangeMode is mandatory
+        const hasViewpointRange =
+          state.translationMethod !== "method-2" || !!state.viewpointRangeMode;
+
+        return (
+          hasPoem &&
+          hasTranslationZone &&
+          hasTranslationIntent &&
+          hasViewpointRange
+        );
       },
 
       unlockWorkshop: () =>

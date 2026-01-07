@@ -141,7 +141,7 @@ export async function POST(req: Request) {
             },
           },
         ],
-        modelUsed: TRANSLATOR_MODEL,
+        modelUsed: guideAnswers.translationModel ?? TRANSLATOR_MODEL,
       };
       return NextResponse.json(emptyResponse);
     }
@@ -163,6 +163,8 @@ export async function POST(req: Request) {
       });
     }
 
+    const model = guideAnswers.translationModel ?? TRANSLATOR_MODEL;
+
     const result = await translateLineInternal({
       threadId,
       lineIndex,
@@ -174,6 +176,7 @@ export async function POST(req: Request) {
       guideAnswers,
       sourceLanguage: poemAnalysis.language || "the source language",
       targetLanguage,
+      modelOverride: model,
       audit: {
         createdBy: user.id,
         projectId: thread.project_id ?? null,

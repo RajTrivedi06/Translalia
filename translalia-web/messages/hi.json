@@ -191,6 +191,7 @@
     "confirmDialogCancel": "रद्द करें",
     "viewpointRange": "दृष्टिकोण सीमा",
     "viewpointRangeHelper": "नियंत्रित करें कि आपके अनुवाद विकल्प कितने अलग होंगे",
+    "viewpointRangeRequired": "जारी रखने के लिए कृपया एक दृष्टिकोण सीमा चुनें",
     "viewpointMode": {
       "focused": "केंद्रित",
       "balanced": "संतुलित",

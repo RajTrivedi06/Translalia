@@ -5,13 +5,17 @@ import { useDraggable } from "@dnd-kit/core";
 import { useWorkshopStore } from "@/store/workshopSlice";
 import { useTranslateLine } from "@/lib/hooks/useTranslateLine";
 import { useThreadId } from "@/hooks/useThreadId";
-import { useNotebookStore } from "@/store/notebookSlice";
-import { createCellFromDragData } from "@/lib/notebook/cellHelpers";
 import { useGuideStore } from "@/store/guideSlice";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { CheckCircle2, Loader2 } from "lucide-react";
+import {
+  CheckCircle2,
+  Loader2,
+  RefreshCw,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import { DragData } from "@/types/drag";
 import { cn } from "@/lib/utils";
 import type { LineTranslationVariant } from "@/types/lineTranslation";
@@ -19,6 +23,9 @@ import {
   AdditionalSuggestions,
   type WordSuggestion,
 } from "@/components/workshop/AdditionalSuggestions";
+import { FullTranslationEditor } from "@/components/notebook/FullTranslationEditor";
+import { CongratulationsModal } from "@/components/workshop/CongratulationsModal";
+import { Sparkles } from "lucide-react";
 
 // Part of speech type and color mapping
 const POS_COLORS = {
@@ -79,7 +86,9 @@ function DraggableSourceWord({
   index: number;
   lineNumber: number;
 }) {
-  const addCell = useNotebookStore((s) => s.addCell);
+  const currentLineIndex = useWorkshopStore((s) => s.currentLineIndex);
+  const setCurrentLineIndex = useWorkshopStore((s) => s.setCurrentLineIndex);
+  const appendToDraft = useWorkshopStore((s) => s.appendToDraft);
   const [clicked, setClicked] = React.useState(false);
   const justDraggedRef = React.useRef(false);
 
@@ -138,14 +147,22 @@ function DraggableSourceWord({
           justDraggedRef.current = false;
           return;
         }
-        addCell(createCellFromDragData(dragData));
+        const targetLine = dragData.sourceLineNumber ?? currentLineIndex ?? 0;
+        if (targetLine !== currentLineIndex) {
+          setCurrentLineIndex(targetLine);
+        }
+        appendToDraft(targetLine, dragData.text);
         setClicked(true);
         window.setTimeout(() => setClicked(false), 250);
       }}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          addCell(createCellFromDragData(dragData));
+          const targetLine = dragData.sourceLineNumber ?? currentLineIndex ?? 0;
+          if (targetLine !== currentLineIndex) {
+            setCurrentLineIndex(targetLine);
+          }
+          appendToDraft(targetLine, dragData.text);
           setClicked(true);
           window.setTimeout(() => setClicked(false), 250);
         }
@@ -169,17 +186,22 @@ interface WordGridProps {
 export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
   const threadHook = useThreadId();
   const thread = pThreadId || threadHook || undefined;
-  const selectedLineIndex = useWorkshopStore((s) => s.selectedLineIndex);
+  const currentLineIndex = useWorkshopStore((s) => s.currentLineIndex);
   const poemLines = useWorkshopStore((s) => s.poemLines);
   const modelUsed = useWorkshopStore((s) => s.modelUsed);
   const translationIntent = useGuideStore(
     (s) => s.translationIntent.text ?? null
   );
+  const userSelectedModel = useGuideStore((s) => s.translationModel);
 
   const [additionalSuggestions, setAdditionalSuggestions] = React.useState<
     WordSuggestion[]
   >([]);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = React.useState(false);
+  const [isRegenerating, setIsRegenerating] = React.useState(false);
+
+  // Track in-flight requests to prevent duplicates (React Strict Mode fires effects twice)
+  const inFlightRequestRef = React.useRef<string | null>(null);
 
   const {
     mutate: translateLine,
@@ -191,34 +213,62 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
   const selectedVariant = useWorkshopStore((s) => s.selectedVariant);
   const setLineTranslation = useWorkshopStore((s) => s.setLineTranslation);
   const selectVariant = useWorkshopStore((s) => s.selectVariant);
+  const clearLineTranslation = useWorkshopStore((s) => s.clearLineTranslation);
+  const setCurrentLineIndex = useWorkshopStore((s) => s.setCurrentLineIndex);
+  const completedLines = useWorkshopStore((s) => s.completedLines);
+
+  // State for full editor and congratulations
+  const [showFullEditor, setShowFullEditor] = React.useState(false);
+  const [showCongratulations, setShowCongratulations] = React.useState(false);
+
+  // Check if all lines are completed
+  const allLinesCompleted = React.useMemo(() => {
+    if (poemLines.length === 0) return false;
+    return poemLines.every((_, idx) => {
+      const completed = completedLines[idx];
+      return completed && completed.trim().length > 0;
+    });
+  }, [poemLines, completedLines]);
 
   const isPending = isTranslatingLine;
   const error = translateError;
 
   // Derive source words from the raw line (instant, no LLM wait)
   const sourceWords = React.useMemo(() => {
-    if (selectedLineIndex === null) return [];
-    const line = poemLines[selectedLineIndex];
+    if (currentLineIndex === null) return [];
+    const line = poemLines[currentLineIndex];
     // Guard against undefined line (can happen when store is reset or poemLines is empty)
     if (!line || typeof line !== "string") return [];
     return line.split(/\s+/).filter(Boolean);
-  }, [selectedLineIndex, poemLines]);
+  }, [currentLineIndex, poemLines]);
 
   React.useEffect(() => {
-    if (selectedLineIndex === null || !thread) return;
-    const lineText = poemLines[selectedLineIndex];
+    if (currentLineIndex === null || !thread) return;
+    const lineText = poemLines[currentLineIndex];
     if (typeof lineText !== "string") return;
 
     // Already translated → no fetch
-    if (lineTranslations[selectedLineIndex]) return;
+    if (lineTranslations[currentLineIndex]) return;
 
-    const ctx = buildLineContextForIndex(selectedLineIndex, poemLines);
+    // Dedupe: prevent duplicate in-flight requests (React Strict Mode fires effects twice)
+    const requestKey = `${thread}:${currentLineIndex}`;
+    if (inFlightRequestRef.current === requestKey) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(
+          `[WordGrid] Duplicate request blocked for line ${currentLineIndex}`
+        );
+      }
+      return;
+    }
+    inFlightRequestRef.current = requestKey;
+
+    const ctx = buildLineContextForIndex(currentLineIndex, poemLines);
     const fullPoem = lineContext?.fullPoem ?? ctx.fullPoem;
 
     translateLine(
       {
         threadId: thread,
-        lineIndex: selectedLineIndex,
+        lineIndex: currentLineIndex,
         lineText,
         fullPoem,
         stanzaIndex: lineContext?.stanzaIndex ?? ctx.stanzaIndex,
@@ -227,13 +277,17 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
       },
       {
         onSuccess: (data) => {
-          setLineTranslation(selectedLineIndex, data);
+          setLineTranslation(currentLineIndex, data);
           useWorkshopStore.setState({ modelUsed: data.modelUsed || null });
+          inFlightRequestRef.current = null;
+        },
+        onError: () => {
+          inFlightRequestRef.current = null;
         },
       }
     );
   }, [
-    selectedLineIndex,
+    currentLineIndex,
     thread,
     poemLines,
     lineTranslations,
@@ -244,19 +298,90 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
 
   // Get current line translation if available
   const currentLineTranslation =
-    selectedLineIndex !== null ? lineTranslations[selectedLineIndex] : null;
+    currentLineIndex !== null ? lineTranslations[currentLineIndex] : null;
   const currentSelectedVariant =
-    selectedLineIndex !== null ? selectedVariant[selectedLineIndex] : null;
+    currentLineIndex !== null ? selectedVariant[currentLineIndex] : null;
+  const badgeModelUsed = currentLineTranslation?.modelUsed ?? modelUsed;
+
+  // Regression guard: warn if displayed translation model differs from user selection (dev only)
+  React.useEffect(() => {
+    if (process.env.NODE_ENV !== "production") {
+      if (
+        currentLineTranslation?.modelUsed &&
+        userSelectedModel &&
+        currentLineTranslation.modelUsed !== userSelectedModel
+      ) {
+        console.warn(
+          `[WordGrid] Model mismatch: displaying translation from "${currentLineTranslation.modelUsed}" ` +
+            `but user selected "${userSelectedModel}". Line ${currentLineIndex} may need regeneration.`
+        );
+      }
+    }
+  }, [currentLineTranslation?.modelUsed, userSelectedModel, currentLineIndex]);
+
+  // Detect model mismatch for UI
+  const hasModelMismatch =
+    currentLineTranslation?.modelUsed &&
+    userSelectedModel &&
+    currentLineTranslation.modelUsed !== userSelectedModel;
+
+  // Handler to regenerate translation with currently selected model
+  const handleRegenerateWithSelectedModel = React.useCallback(() => {
+    if (currentLineIndex === null || !thread) return;
+
+    setIsRegenerating(true);
+    // Clear cached translation to force refetch
+    clearLineTranslation(currentLineIndex);
+
+    const lineText = poemLines[currentLineIndex];
+    if (typeof lineText !== "string") {
+      setIsRegenerating(false);
+      return;
+    }
+
+    const ctx = buildLineContextForIndex(currentLineIndex, poemLines);
+    const fullPoem = lineContext?.fullPoem ?? ctx.fullPoem;
+
+    translateLine(
+      {
+        threadId: thread,
+        lineIndex: currentLineIndex,
+        lineText,
+        fullPoem,
+        stanzaIndex: lineContext?.stanzaIndex ?? ctx.stanzaIndex,
+        prevLine: (lineContext?.prevLine ?? ctx.prevLine) || undefined,
+        nextLine: (lineContext?.nextLine ?? ctx.nextLine) || undefined,
+      },
+      {
+        onSuccess: (data) => {
+          setLineTranslation(currentLineIndex, data);
+          useWorkshopStore.setState({ modelUsed: data.modelUsed || null });
+          setIsRegenerating(false);
+        },
+        onError: () => {
+          setIsRegenerating(false);
+        },
+      }
+    );
+  }, [
+    currentLineIndex,
+    thread,
+    poemLines,
+    lineContext,
+    translateLine,
+    setLineTranslation,
+    clearLineTranslation,
+  ]);
 
   // Clear suggestions when switching lines
   React.useEffect(() => {
     setAdditionalSuggestions([]);
     setIsLoadingSuggestions(false);
-  }, [selectedLineIndex]);
+  }, [currentLineIndex]);
 
   const generateAdditionalSuggestions = React.useCallback(
     async (userGuidance?: string) => {
-      if (!thread || selectedLineIndex === null) return;
+      if (!thread || currentLineIndex === null) return;
 
       setIsLoadingSuggestions(true);
       try {
@@ -265,13 +390,13 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             threadId: thread,
-            lineIndex: selectedLineIndex,
-            currentLine: poemLines[selectedLineIndex],
+            lineIndex: currentLineIndex,
+            currentLine: poemLines[currentLineIndex],
             previousLine:
-              selectedLineIndex > 0 ? poemLines[selectedLineIndex - 1] : null,
+              currentLineIndex > 0 ? poemLines[currentLineIndex - 1] : null,
             nextLine:
-              selectedLineIndex < poemLines.length - 1
-                ? poemLines[selectedLineIndex + 1]
+              currentLineIndex < poemLines.length - 1
+                ? poemLines[currentLineIndex + 1]
                 : null,
             fullPoem: poemLines.join("\n"),
             poemTheme: translationIntent || undefined,
@@ -295,30 +420,34 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
         setIsLoadingSuggestions(false);
       }
     },
-    [thread, selectedLineIndex, poemLines, translationIntent]
+    [thread, currentLineIndex, poemLines, translationIntent]
   );
 
   const handleAdditionalWordClick = React.useCallback(
     (word: string) => {
-      if (selectedLineIndex === null) return;
+      if (currentLineIndex === null) return;
+      const { appendToDraft } = useWorkshopStore.getState();
       const dragData: DragData = {
-        id: `additional-${selectedLineIndex}-${Date.now()}-${word}`,
+        id: `additional-${currentLineIndex}-${Date.now()}-${word}`,
         text: word,
         originalWord: word,
         partOfSpeech: "neutral",
-        sourceLineNumber: selectedLineIndex,
+        sourceLineNumber: currentLineIndex,
         position: 0,
         dragType: "variantWord",
         metadata: {
           source: "additional-suggestions",
         },
       };
-      useNotebookStore.getState().addCell(createCellFromDragData(dragData));
+      appendToDraft(
+        dragData.sourceLineNumber ?? currentLineIndex,
+        dragData.text
+      );
     },
-    [selectedLineIndex]
+    [currentLineIndex]
   );
 
-  if (selectedLineIndex === null) {
+  if (currentLineIndex === null) {
     return (
       <div className="p-6 flex items-center justify-center h-full">
         <div className="text-center space-y-2">
@@ -347,16 +476,16 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
               className="w-full"
               onClick={() => {
                 if (!thread) return;
-                const lineText = poemLines[selectedLineIndex];
+                const lineText = poemLines[currentLineIndex];
                 if (typeof lineText !== "string") return;
                 const ctx = buildLineContextForIndex(
-                  selectedLineIndex,
+                  currentLineIndex,
                   poemLines
                 );
                 const fullPoem = lineContext?.fullPoem ?? ctx.fullPoem;
                 translateLine({
                   threadId: thread,
-                  lineIndex: selectedLineIndex,
+                  lineIndex: currentLineIndex,
                   lineText,
                   fullPoem,
                   stanzaIndex: lineContext?.stanzaIndex ?? ctx.stanzaIndex,
@@ -377,39 +506,86 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
 
   // Show line translation UI if available, otherwise show old word-by-word UI
   if (currentLineTranslation) {
-    const ctx = buildLineContextForIndex(selectedLineIndex, poemLines);
+    // Navigation helpers
+    const canGoPrevious = currentLineIndex !== null && currentLineIndex > 0;
+    const canGoNext =
+      currentLineIndex !== null && currentLineIndex < poemLines.length - 1;
+
+    const handlePreviousLine = () => {
+      if (canGoPrevious && currentLineIndex !== null) {
+        setCurrentLineIndex(currentLineIndex - 1);
+      }
+    };
+
+    const handleNextLine = () => {
+      if (canGoNext && currentLineIndex !== null) {
+        setCurrentLineIndex(currentLineIndex + 1);
+      }
+    };
+
     return (
       <div className="space-y-6 p-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <div className="text-sm font-semibold text-gray-700">
-              Select a translation variant
-            </div>
-            <p className="text-xs text-gray-500">
-              Drag any token from the variants or the original line into your
-              notebook.
-            </p>
-            {ctx.position.isOnly ? (
-              <p className="text-xs text-gray-500 mt-1">
-                ℹ️ Single-line poem — variants adapted for standalone impact
-              </p>
-            ) : ctx.position.isFirst || ctx.position.isLast ? (
-              <p className="text-xs text-gray-500 mt-1">
-                ℹ️ {ctx.position.isFirst ? "Opening" : "Closing"} line —
-                variants adapted for position
-              </p>
-            ) : null}
+          {/* Navigation arrows */}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handlePreviousLine}
+              disabled={!canGoPrevious}
+              className="h-8 w-8 p-0"
+              title="Previous line"
+              aria-label="Previous line"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleNextLine}
+              disabled={!canGoNext}
+              className="h-8 w-8 p-0"
+              title="Next line"
+              aria-label="Next line"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            {currentLineIndex !== null && (
+              <span className="text-sm text-gray-500 ml-1">
+                Line {currentLineIndex + 1} of {poemLines.length}
+              </span>
+            )}
           </div>
-          {modelUsed && (
-            <Badge variant="secondary" className="bg-blue-50 text-blue-700">
-              {modelUsed}
-            </Badge>
-          )}
+
+          <div className="flex items-center gap-2">
+            {badgeModelUsed && (
+              <Badge variant="secondary" className="bg-blue-50 text-blue-700">
+                {badgeModelUsed}
+              </Badge>
+            )}
+            {hasModelMismatch && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleRegenerateWithSelectedModel}
+                disabled={isRegenerating}
+                className="h-7 px-2 text-xs text-amber-700 hover:text-amber-800 hover:bg-amber-50"
+                title={`Regenerate with ${userSelectedModel}`}
+              >
+                {isRegenerating ? (
+                  <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                ) : (
+                  <RefreshCw className="h-3 w-3 mr-1" />
+                )}
+                Use {userSelectedModel}
+              </Button>
+            )}
+          </div>
         </div>
 
         <SourceWordsPalette
           sourceWords={sourceWords}
-          lineNumber={selectedLineIndex}
+          lineNumber={currentLineIndex}
         />
 
         <div className="space-y-4">
@@ -419,15 +595,15 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
               variant={variant}
               isSelected={currentSelectedVariant === variant.variant}
               onSelect={() => {
-                if (selectedLineIndex !== null) {
+                if (currentLineIndex !== null) {
                   const next =
                     currentSelectedVariant === variant.variant
                       ? null
                       : variant.variant;
-                  selectVariant(selectedLineIndex, next);
+                  selectVariant(currentLineIndex, next);
                 }
               }}
-              lineNumber={selectedLineIndex ?? 0}
+              lineNumber={currentLineIndex ?? 0}
               stanzaIndex={lineContext?.stanzaIndex}
             />
           ))}
@@ -439,7 +615,51 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
           onGenerate={() => generateAdditionalSuggestions()}
           onRegenerate={(guidance) => generateAdditionalSuggestions(guidance)}
           onWordClick={handleAdditionalWordClick}
-          isExpanded={false}
+        />
+
+        {/* Finalize Poem Button - Show when all lines are completed */}
+        {allLinesCompleted && (
+          <div className="mt-8 pt-6 border-t border-gray-200">
+            <div className="flex flex-col items-center gap-4">
+              <div className="flex items-center gap-2 text-green-600">
+                <CheckCircle2 className="w-5 h-5" />
+                <span className="text-sm font-medium">
+                  All {poemLines.length} lines completed!
+                </span>
+              </div>
+              <Button
+                onClick={() => setShowFullEditor(true)}
+                size="lg"
+                className="px-8 py-6 text-base font-semibold bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200"
+              >
+                <Sparkles className="w-5 h-5 mr-2" />
+                Finalize Poem
+              </Button>
+              <p className="text-xs text-gray-500 text-center max-w-md">
+                Review your complete translation, make final adjustments, and
+                finalize your masterpiece
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Full Translation Editor */}
+        <FullTranslationEditor
+          open={showFullEditor}
+          onOpenChange={setShowFullEditor}
+          onFinalize={() => {
+            // Show congratulations after a short delay to allow editor to close
+            setTimeout(() => {
+              setShowCongratulations(true);
+            }, 500);
+          }}
+        />
+
+        {/* Congratulations Modal */}
+        <CongratulationsModal
+          open={showCongratulations}
+          onClose={() => setShowCongratulations(false)}
+          totalLines={poemLines.length}
         />
       </div>
     );
@@ -516,6 +736,10 @@ function TranslationVariantCard({
   lineNumber,
   stanzaIndex,
 }: TranslationVariantCardProps) {
+  const currentLineIndex = useWorkshopStore((s) => s.currentLineIndex);
+  const setCurrentLineIndex = useWorkshopStore((s) => s.setCurrentLineIndex);
+  const appendToDraft = useWorkshopStore((s) => s.appendToDraft);
+
   const tokens = React.useMemo(() => {
     if (variant.words.length > 0) {
       return variant.words;
@@ -531,12 +755,45 @@ function TranslationVariantCard({
       }));
   }, [variant]);
 
+  // Handler to add all tokens from this variant to the draft
+  const handleAddAllTokens = React.useCallback(() => {
+    // Collect all valid token translations
+    const validTokens = tokens
+      .filter((token) => token.translation && token.translation.trim())
+      .map((token) => token.translation.trim());
+
+    if (validTokens.length === 0) return;
+
+    // Join tokens with spaces to form the complete variant text
+    const fullVariantText = validTokens.join(" ");
+
+    // Determine target line (use lineNumber from variant, or current line)
+    const targetLine = lineNumber ?? currentLineIndex ?? 0;
+
+    // Set current line if needed
+    if (targetLine !== currentLineIndex) {
+      setCurrentLineIndex(targetLine);
+    }
+
+    // Add all tokens to draft
+    appendToDraft(targetLine, fullVariantText);
+  }, [
+    tokens,
+    lineNumber,
+    currentLineIndex,
+    setCurrentLineIndex,
+    appendToDraft,
+  ]);
+
   return (
     <Card
       onClick={(e) => {
-        // Only select card if clicking on the card itself, not on draggable tokens
+        // Only act if clicking on the card itself, not on draggable tokens
         const target = e.target as HTMLElement;
         if (!target.closest('[data-draggable="true"]')) {
+          // Add all tokens to draft
+          handleAddAllTokens();
+          // Also toggle selection
           onSelect();
         }
       }}
@@ -548,10 +805,7 @@ function TranslationVariantCard({
       )}
     >
       <CardContent className="p-4 space-y-3">
-        <div
-          className="flex items-start justify-between cursor-pointer"
-          onClick={onSelect}
-        >
+        <div className="flex items-start justify-between cursor-pointer">
           <div className="flex items-center gap-2">
             <Badge
               variant={isSelected ? "default" : "secondary"}
@@ -614,7 +868,9 @@ function DraggableVariantToken({
   stanzaIndex,
   disabled,
 }: DraggableVariantTokenProps) {
-  const addCell = useNotebookStore((s) => s.addCell);
+  const currentLineIndex = useWorkshopStore((s) => s.currentLineIndex);
+  const setCurrentLineIndex = useWorkshopStore((s) => s.setCurrentLineIndex);
+  const appendToDraft = useWorkshopStore((s) => s.appendToDraft);
   const [clicked, setClicked] = React.useState(false);
   const justDraggedRef = React.useRef(false);
 
@@ -687,7 +943,11 @@ function DraggableVariantToken({
           justDraggedRef.current = false;
           return;
         }
-        addCell(createCellFromDragData(dragData));
+        const targetLine = dragData.sourceLineNumber ?? currentLineIndex ?? 0;
+        if (targetLine !== currentLineIndex) {
+          setCurrentLineIndex(targetLine);
+        }
+        appendToDraft(targetLine, dragData.text);
         setClicked(true);
         window.setTimeout(() => setClicked(false), 250);
       }}
@@ -695,7 +955,11 @@ function DraggableVariantToken({
         if (disabled || !token.translation) return;
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          addCell(createCellFromDragData(dragData));
+          const targetLine = dragData.sourceLineNumber ?? currentLineIndex ?? 0;
+          if (targetLine !== currentLineIndex) {
+            setCurrentLineIndex(targetLine);
+          }
+          appendToDraft(targetLine, dragData.text);
           setClicked(true);
           window.setTimeout(() => setClicked(false), 250);
         }

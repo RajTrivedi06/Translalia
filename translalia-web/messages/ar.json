@@ -191,6 +191,7 @@
     "confirmDialogCancel": "إلغاء",
     "viewpointRange": "نطاق وجهات النظر",
     "viewpointRangeHelper": "تحكم في مدى اختلاف نسخ الترجمة",
+    "viewpointRangeRequired": "يرجى تحديد نطاق وجهة النظر للمتابعة",
     "viewpointMode": {
       "focused": "مركّز",
       "balanced": "متوازن",

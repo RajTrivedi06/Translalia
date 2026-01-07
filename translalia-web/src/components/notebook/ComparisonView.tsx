@@ -60,9 +60,9 @@ export function ComparisonView({
   embedded = false,
 }: ComparisonViewProps) {
   const poemLines = useWorkshopStore((s) => s.poemLines);
-  const studioDraftLines = useWorkshopStore((s) => s.studioDraftLines);
-  const setStudioDraftLine = useWorkshopStore((s) => s.setStudioDraftLine);
-  const setStudioDraftLines = useWorkshopStore((s) => s.setStudioDraftLines);
+  const draftLines = useWorkshopStore((s) => s.draftLines);
+  const setDraft = useWorkshopStore((s) => s.setDraft);
+  const setDraftLines = useWorkshopStore((s) => s.setDraftLines);
   const guideAnswers = useGuideStore((s) => s.answers);
   const translationIntent = useGuideStore(
     (s) => s.translationIntent.text ?? null
@@ -148,13 +148,13 @@ export function ComparisonView({
   const getStudioValue = React.useCallback(
     (idx: number) => {
       const hasDraft = Object.prototype.hasOwnProperty.call(
-        studioDraftLines,
+        draftLines,
         idx
       );
-      if (hasDraft) return studioDraftLines[idx] ?? "";
+      if (hasDraft) return draftLines[idx] ?? "";
       return getConfirmedTranslation(idx) ?? "";
     },
-    [studioDraftLines, getConfirmedTranslation]
+    [draftLines, getConfirmedTranslation]
   );
 
   const isLineConfirmedSaved = React.useCallback(
@@ -189,11 +189,11 @@ export function ComparisonView({
     return poemLines.map((_, idx) => getStudioValue(idx) || "").join("\n");
   }, [poemLines, getStudioValue]);
 
-  // When a confirmed save arrives, drop any matching Studio drafts
+  // When a confirmed save arrives, drop any matching drafts
   React.useEffect(() => {
     if (!savedWorkshopLines) return;
 
-    const currentDrafts = useWorkshopStore.getState().studioDraftLines;
+    const currentDrafts = useWorkshopStore.getState().draftLines;
     const nextDrafts: Record<number, string> = { ...currentDrafts };
     let changed = false;
 
@@ -208,7 +208,7 @@ export function ComparisonView({
     }
 
     if (changed) {
-      useWorkshopStore.getState().setStudioDraftLines(nextDrafts);
+      useWorkshopStore.getState().setDraftLines(nextDrafts);
     }
   }, [savedWorkshopLines, getConfirmedTranslation]);
 
@@ -237,8 +237,8 @@ export function ComparisonView({
       }
     });
 
-    // Save into Studio drafts (does not mark as confirmed-saved)
-    setStudioDraftLines(nextDraftLines);
+    // Save into drafts (does not mark as confirmed-saved)
+    setDraftLines(nextDraftLines);
 
     // Show success feedback
     setSaveSuccess(true);
@@ -248,7 +248,7 @@ export function ComparisonView({
     wholeTranslation,
     poemLines.length,
     getConfirmedTranslation,
-    setStudioDraftLines,
+    setDraftLines,
   ]);
 
   // Reset whole translation to original
@@ -508,7 +508,7 @@ export function ComparisonView({
             <ArrowLeftRight className="w-5 h-5 text-blue-600" />
             <h2 className="text-lg font-semibold">
               {embedded
-                ? "Translation Studio"
+                ? "Comparison"
                 : "Source-Translation Comparison"}
             </h2>
           </div>
@@ -745,7 +745,7 @@ export function ComparisonView({
                         <textarea
                           value={getStudioValue(line.lineNumber - 1)}
                           onChange={(e) =>
-                            setStudioDraftLine(
+                            setDraft(
                               line.lineNumber - 1,
                               e.target.value
                             )
@@ -1146,7 +1146,7 @@ export function ComparisonView({
                           <textarea
                             value={getStudioValue(line.lineNumber - 1)}
                             onChange={(e) =>
-                              setStudioDraftLine(
+                              setDraft(
                                 line.lineNumber - 1,
                                 e.target.value
                               )

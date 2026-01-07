@@ -6,6 +6,7 @@ import { useGuideStore } from "@/store/guideSlice";
 import { useWorkshopStore } from "@/store/workshopSlice";
 import { useThreadId } from "@/hooks/useThreadId";
 import { useTranslationJob } from "@/lib/hooks/useTranslationJob";
+import { useWorkshopState } from "@/lib/hooks/useWorkshopFlow";
 import { WorkshopHeader } from "@/components/workshop-rail/WorkshopHeader";
 import { WordGrid } from "@/components/workshop-rail/WordGrid";
 import { StanzaProgressPanel } from "@/components/workshop-rail/StanzaProgressPanel";
@@ -28,8 +29,9 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
   const poem = useGuideStore((s) => s.poem);
   const guideStep = useGuideStore((s) => s.currentStep);
   const isWorkshopUnlocked = useGuideStore((s) => s.isWorkshopUnlocked);
+  const workshopHydrated = useWorkshopStore((s) => s.hydrated);
   const {
-    selectedLineIndex,
+    currentLineIndex,
     poemLines,
     setPoemLines,
     reset,
@@ -40,6 +42,10 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
   const setLineTranslation = useWorkshopStore((s) => s.setLineTranslation);
   const completedLines = useWorkshopStore((s) => s.completedLines);
   const setCompletedLines = useWorkshopStore((s) => s.setCompletedLines);
+
+  // ✅ Authoritative saved lines from Supabase (chat_threads.state.workshop_lines)
+  // Important: this should be the ONLY source of completedLines hydration.
+  const { data: savedWorkshopLines } = useWorkshopState(threadId || undefined);
 
   // Get stanzas directly from guide store (client-side, no API)
   const poemStanzas = poem.stanzas;
@@ -68,62 +74,37 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
     }
   }, [guideStep, poemLines.length, reset]);
 
-  // ✅ Load saved translations on initial mount
+  // ✅ Hydrate completed lines ONLY from Supabase saved state (not from generated variants)
   React.useEffect(() => {
-    // Only run once on mount when translation data is available
-    if (
-      !translationJobQuery.data?.job ||
-      !threadId ||
-      Object.keys(completedLines).length > 0
-    ) {
+    if (!threadId || !savedWorkshopLines) return;
+
+    // Only hydrate if we don't already have completed lines in local state.
+    // Avoid clobbering local progress if the user has newer in-memory state.
+    if (Object.keys(completedLines).length > 0) {
       return;
     }
 
-    const job = translationJobQuery.data.job;
-    const chunkOrStanzaStates = job.chunks || job.stanzas || {};
-    const savedLines: Record<number, string> = {};
-
-    console.log("[WorkshopRail] Checking for saved translations on mount...");
-
-    // Iterate through all segments/stanzas to collect already-translated lines
-    Object.values(chunkOrStanzaStates).forEach((chunk) => {
-      if (chunk.lines && Array.isArray(chunk.lines)) {
-        chunk.lines.forEach((line) => {
-          if (line.translations && line.translations.length > 0) {
-            const defaultTranslation = line.translations[0]?.fullText;
-            if (defaultTranslation && line.line_number !== undefined) {
-              savedLines[line.line_number] = defaultTranslation;
-
-              // Also restore the full LineTranslationResponse
-              if (line.translations.length === 3) {
-                setLineTranslation(line.line_number, {
-                  lineOriginal:
-                    line.original_text || poemLines[line.line_number] || "",
-                  translations: line.translations as [
-                    LineTranslationVariant,
-                    LineTranslationVariant,
-                    LineTranslationVariant
-                  ],
-                  modelUsed: line.model_used || "unknown",
-                });
-              }
-            }
-          }
-        });
+    const mapped: Record<number, string> = {};
+    for (const [k, v] of Object.entries(savedWorkshopLines)) {
+      const idx = Number(k);
+      if (Number.isNaN(idx)) continue;
+      // Guard against null/undefined values
+      if (!v || typeof v !== "object") continue;
+      const translated = (v as { translated?: string }).translated;
+      if (typeof translated === "string" && translated.trim().length > 0) {
+        mapped[idx] = translated;
       }
-    });
-
-    // Load all saved translations at once
-    if (Object.keys(savedLines).length > 0) {
-      console.log(
-        `[WorkshopRail] Loading ${
-          Object.keys(savedLines).length
-        } saved translations from previous session`
-      );
-      setCompletedLines(savedLines);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [translationJobQuery.data?.job, threadId]); // Only depend on job data and threadId, not on completedLines
+
+    if (Object.keys(mapped).length > 0) {
+      console.log(
+        `[WorkshopRail] Hydrating ${
+          Object.keys(mapped).length
+        } saved completed lines from Supabase`
+      );
+      setCompletedLines(mapped);
+    }
+  }, [threadId, savedWorkshopLines, completedLines, setCompletedLines]);
 
   // Reset stanza selection when poem changes
   React.useEffect(() => {
@@ -131,6 +112,40 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
       setSelectedStanzaIndex(null);
     }
   }, [poem.text, selectedStanzaIndex]);
+
+  // Auto-update selectedStanzaIndex when currentLineIndex changes (e.g., from Notebook click)
+  React.useEffect(() => {
+    if (currentLineIndex === null || !poemStanzas) {
+      return;
+    }
+
+    // Calculate which stanza contains the current line
+    let lineCount = 0;
+    for (let i = 0; i < poemStanzas.stanzas.length; i++) {
+      const stanza = poemStanzas.stanzas[i];
+      const stanzaStartLine = lineCount;
+      const stanzaEndLine = lineCount + stanza.lines.length - 1;
+
+      // Check if currentLineIndex falls within this stanza
+      if (
+        currentLineIndex >= stanzaStartLine &&
+        currentLineIndex <= stanzaEndLine
+      ) {
+        // Update selectedStanzaIndex if it's different or null
+        if (selectedStanzaIndex !== i) {
+          setSelectedStanzaIndex(i);
+        }
+        return;
+      }
+
+      lineCount += stanza.lines.length;
+    }
+  }, [
+    currentLineIndex,
+    poemStanzas,
+    selectedStanzaIndex,
+    setSelectedStanzaIndex,
+  ]);
 
   // Keep poemLines updated for WordGrid compatibility (flattened from stanzas)
   React.useEffect(() => {
@@ -163,13 +178,13 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
   // Compute context for line translation (prev/next lines, stanza index)
   // Must be before early returns to satisfy React hooks rules
   const lineContext = React.useMemo(() => {
-    if (selectedLineIndex === null || selectedStanzaIndex === null) return null;
+    if (currentLineIndex === null || selectedStanzaIndex === null) return null;
 
     const currentStanza = poemStanzas?.stanzas[selectedStanzaIndex];
     if (!currentStanza) return null;
 
     // Calculate local line index within the stanza
-    const localLineIndex = selectedLineIndex - globalLineOffsetForContext;
+    const localLineIndex = currentLineIndex - globalLineOffsetForContext;
 
     const prevLine =
       localLineIndex > 0 ? currentStanza.lines[localLineIndex - 1] : undefined;
@@ -188,7 +203,7 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
       fullPoem,
     };
   }, [
-    selectedLineIndex,
+    currentLineIndex,
     selectedStanzaIndex,
     poemStanzas,
     poem.text,
@@ -268,7 +283,7 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
     return statuses;
   }, [translationProgress, poemStanzas]);
 
-  // ✅ Hydrate background translations into workshop store
+  // ✅ Hydrate background translations into workshop store (lineTranslations only)
   React.useEffect(() => {
     if (!translationJobQuery.data?.job || !threadId) {
       return;
@@ -276,23 +291,13 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
 
     const job = translationJobQuery.data.job;
     const chunkOrStanzaStates = job.chunks || job.stanzas || {};
-    const hydratedLines: Record<number, string> = {};
-    let hasNewTranslations = false;
 
     // Iterate through all segments/stanzas to collect translated lines
     Object.values(chunkOrStanzaStates).forEach((chunk) => {
       if (chunk.lines && Array.isArray(chunk.lines)) {
         chunk.lines.forEach((line) => {
           if (line.translations && line.translations.length > 0) {
-            // Use the first translation variant as the default
-            const defaultTranslation = line.translations[0]?.fullText;
-            if (defaultTranslation && line.line_number !== undefined) {
-              // Check if this is a new translation we don't have yet
-              if (!completedLines[line.line_number]) {
-                hasNewTranslations = true;
-              }
-              hydratedLines[line.line_number] = defaultTranslation;
-
+            if (line.line_number !== undefined) {
               // Also hydrate the full LineTranslationResponse for the new workflow
               if (line.translations.length === 3) {
                 setLineTranslation(line.line_number, {
@@ -311,27 +316,20 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
         });
       }
     });
+  }, [translationJobQuery.data, threadId, setLineTranslation, poemLines]);
 
-    // Update completed lines if we have new translations
-    if (hasNewTranslations && Object.keys(hydratedLines).length > 0) {
-      console.log(
-        `[WorkshopRail] Hydrating ${
-          Object.keys(hydratedLines).length
-        } background translations`
-      );
-      setCompletedLines({
-        ...completedLines,
-        ...hydratedLines,
-      });
-    }
-  }, [
-    translationJobQuery.data,
-    threadId,
-    setLineTranslation,
-    completedLines,
-    setCompletedLines,
-    poemLines,
-  ]);
+  // Avoid UI/state races with persisted hydration (can otherwise auto-select a line
+  // after the user clicks a segment).
+  if (!workshopHydrated) {
+    return (
+      <div className="h-full flex flex-col">
+        <WorkshopHeader showTitle={showHeaderTitle} />
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="text-sm text-gray-600">Loading workshop…</div>
+        </div>
+      </div>
+    );
+  }
 
   // ✅ Show locked state if workshop not unlocked
   if (!isWorkshopUnlocked) {
@@ -443,9 +441,7 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
                   onClick={() => {
                     setSelectedStanzaIndex(idx);
                     // Reset line selection when switching segments
-                    if (selectedLineIndex !== null) {
-                      deselectLine();
-                    }
+                    deselectLine();
                   }}
                   className="p-4 border rounded-lg cursor-pointer hover:bg-blue-50 transition-colors"
                 >
@@ -485,9 +481,7 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
   // Use the already-calculated global line offset
   const globalLineOffset = globalLineOffsetForContext;
   const currentLineNumber =
-    selectedLineIndex !== null
-      ? selectedLineIndex - globalLineOffset + 1
-      : null;
+    currentLineIndex !== null ? currentLineIndex - globalLineOffset + 1 : null;
 
   return (
     <div className="h-full flex flex-col">
@@ -514,7 +508,7 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
         <WorkshopNavigationToggle
           title={t("chunk", { number: currentStanza.number })}
           subtitle={
-            selectedLineIndex === null
+            currentLineIndex === null
               ? t("step2ChooseLine")
               : t("lineInFocus", { number: currentLineNumber! })
           }
@@ -528,7 +522,7 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
         </h2>
 
         {/* Line selector */}
-        {selectedLineIndex === null ? (
+        {currentLineIndex === null ? (
           <div className="space-y-2">
             {stanzaLines.map((line, idx) => {
               const globalLineIndex = globalLineOffset + idx;
@@ -543,7 +537,7 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
                   stanzaNumber={currentStanza.number}
                   status={lineStatus}
                   statusMeta={statusMeta}
-                  isSelected={selectedLineIndex === globalLineIndex}
+                  isSelected={currentLineIndex === globalLineIndex}
                   onSelect={() => selectLine(globalLineIndex)}
                   onRetry={
                     lineStatus === "failed" &&
