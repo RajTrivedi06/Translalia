@@ -68,6 +68,7 @@ const GuideAnswersSchema = z
     translationModel: z
       .enum(["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-5", "gpt-5-mini"])
       .optional(),
+    translationMethod: z.enum(["method-1", "method-2"]).optional(),
     targetLanguage: TargetLanguageSchema.optional(),
     audience: AudienceSchema.optional(),
     stance: StanceSchema.optional(),
@@ -160,6 +161,11 @@ export async function updateGuideState(
     const mergedAnswers: GuideAnswers = {
       ...currentAnswers,
       ...updates,
+      // Ensure translationMethod defaults to "method-2" if not set
+      translationMethod:
+        updates.translationMethod ??
+        currentAnswers.translationMethod ??
+        "method-2",
     };
 
     // Update the state

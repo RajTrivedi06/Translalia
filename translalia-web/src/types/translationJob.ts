@@ -40,6 +40,35 @@ export interface ErrorDetails {
 }
 
 /**
+ * Translation status - whether translation is complete
+ */
+export type TranslationStatus = "pending" | "translated" | "failed";
+
+/**
+ * Alignment status - whether alignment is complete
+ */
+export type AlignmentStatus = "pending" | "aligned" | "skipped" | "failed";
+
+/**
+ * Quality tier - how strict the checks were
+ */
+export type QualityTier = "pass" | "salvage" | "failed";
+
+/**
+ * Quality metadata for a translated line
+ */
+export interface LineQualityMetadata {
+  phase1Pass?: boolean;
+  phase1FailureReason?: string;
+  gatePass?: boolean;
+  gateReason?: string;
+  regenPerformed?: boolean;
+  regenStrategy?: "single" | "salvage";
+  /** Quality tier: pass (all checks passed), salvage (best effort), failed (hard failure) */
+  quality_tier?: QualityTier;
+}
+
+/**
  * Translated line stored in chunk results
  */
 export interface TranslatedLine {
@@ -48,6 +77,12 @@ export interface TranslatedLine {
   translations: LineTranslationVariant[];
   model_used?: string;
   updated_at?: number;
+  /** Translation status: pending, translated, or failed */
+  translationStatus?: TranslationStatus;
+  /** Alignment status: pending, aligned, skipped, or failed */
+  alignmentStatus?: AlignmentStatus;
+  /** Quality metadata: phase1, gate, regen results, quality tier */
+  quality_metadata?: LineQualityMetadata;
 }
 
 /**

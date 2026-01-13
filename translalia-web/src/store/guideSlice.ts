@@ -42,9 +42,9 @@ export interface GuideAnswers {
     | "gpt-5-mini";
 
   /**
-   * Translation method selection (experimental A/B testing).
-   * - method-1: P1 Literalness Spectrum (default)
-   * - method-2: P6-P8 Recipe-Driven Prismatic Variants
+   * Translation method selection.
+   * - method-1: P1 Literalness Spectrum (legacy, kept for backward compatibility)
+   * - method-2: P6-P8 Recipe-Driven Prismatic Variants (default)
    */
   translationMethod?: "method-1" | "method-2";
 
@@ -197,7 +197,7 @@ const initialState: Pick<
   isWorkshopUnlocked: false,
   viewpointRangeMode: "balanced",
   translationModel: "gpt-4o",
-  translationMethod: "method-1",
+  translationMethod: "method-2",
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -944,84 +944,157 @@ CRITICAL: Return ONLY valid JSON. No preamble, no markdown, no explanations outs
 // Recipe-Aware Prismatic Prompt Builders
 // =============================================================================
 
-import type { VariantRecipe, VariantRecipesBundle } from "./variantRecipes";
+import type {
+  VariantRecipe,
+  VariantRecipesBundle,
+  Archetype,
+} from "./variantRecipes";
+
+/**
+ * Get archetype-specific MUST rules for translation
+ */
+function getArchetypeMustRules(
+  archetype: Archetype,
+  mode: "focused" | "balanced" | "adventurous"
+): string[] {
+  const rules: string[] = [];
+
+  switch (archetype) {
+    case "essence_cut":
+      rules.push("MUST be clean and legible; remove filler words and padding.");
+      rules.push(
+        "MUST preserve emotional contour (the feeling, not just facts)."
+      );
+      rules.push("MUST avoid word-by-word literalness; compress meaning.");
+      if (mode === "adventurous") {
+        rules.push("ALLOWED: More aggressive compression; sharper cuts.");
+      }
+      break;
+
+    case "prismatic_reimagining":
+      rules.push(
+        "MUST change at least one central metaphor noun / anchor image."
+      );
+      rules.push(
+        "MUST avoid reusing the same opening clause structure as other variants."
+      );
+      rules.push("MUST keep emotional truth, but use a fresh image system.");
+      if (mode === "adventurous") {
+        rules.push(
+          "ENCOURAGED: Radical metaphor replacement; surprising vocabulary."
+        );
+      } else if (mode === "balanced") {
+        rules.push("ENCOURAGED: Clear metaphor shift while staying grounded.");
+      }
+      break;
+
+    case "world_voice_transposition":
+      rules.push(
+        "MUST shift narrator stance (I↔we, you↔we, impersonal↔direct address, etc.)"
+      );
+      rules.push("OR MUST clearly shift time/place/register references.");
+      rules.push(
+        "MUST preserve semantic anchors but in a different voice/world."
+      );
+      if (mode === "adventurous") {
+        rules.push(
+          "ENCOURAGED: Stronger localization/time-shift; more distinct sociolect/register."
+        );
+      }
+      break;
+  }
+
+  return rules;
+}
+
+/**
+ * Get human-readable archetype name
+ */
+function getArchetypeDisplayName(archetype: Archetype): string {
+  switch (archetype) {
+    case "essence_cut":
+      return "ESSENCE CUT";
+    case "prismatic_reimagining":
+      return "PRISMATIC REIMAGINING";
+    case "world_voice_transposition":
+      return "WORLD & VOICE TRANSPOSITION";
+  }
+}
 
 /**
  * Build a prompt block that describes the variant recipes.
- * Includes inline meaning anchor instruction (no heuristic extraction).
- * Mode-aware comparison strategy enforcement.
+ * Includes archetype headers, MUST rules, and mode-aware guidance.
+ * v2: Enhanced with fixed artistic archetypes for each variant.
  */
 export function buildRecipePromptBlock(
   recipes: VariantRecipe[],
   sourceText: string,
   mode?: "focused" | "balanced" | "adventurous"
 ): string {
+  const effectiveMode = mode ?? "balanced";
+
+  // Build recipe blocks with archetype headers
   const recipeBlocks = recipes
-    .map(
-      (r) => `
-VARIANT ${r.label}: ${r.directive}
-  Lens: imagery=${r.lens.imagery}, voice=${r.lens.voice}, sound=${r.lens.sound}, syntax=${r.lens.syntax}, cultural=${r.lens.cultural}
-  Unusualness budget: ${r.unusualnessBudget}`
-    )
+    .map((r) => {
+      const archetypeName = getArchetypeDisplayName(r.archetype);
+      return `
+───────────────────────────────────────────────────────────────
+VARIANT ${r.label}: ${archetypeName}
+───────────────────────────────────────────────────────────────
+Directive: ${r.directive}
+Lens: imagery=${r.lens.imagery}, voice=${r.lens.voice}, sound=${r.lens.sound}, syntax=${r.lens.syntax}, cultural=${r.lens.cultural}
+Unusualness budget: ${r.unusualnessBudget}`;
+    })
     .join("\n");
 
-  const mustRules = recipes
+  // Build archetype-specific MUST rules
+  const archetypeMustRules = recipes
+    .map((r) => {
+      const archetypeRules = getArchetypeMustRules(r.archetype, effectiveMode);
+      return `VARIANT ${r.label} (${getArchetypeDisplayName(
+        r.archetype
+      )}) MUST RULES:
+${archetypeRules.map((rule) => `  • ${rule}`).join("\n")}`;
+    })
+    .join("\n\n");
+
+  // Build lens-driven structural rules (existing logic)
+  const lensRules = recipes
     .map((r) => {
       const rules: string[] = [];
 
       // Voice-driven structural constraints
       if (r.lens.voice === "collective") {
-        rules.push("MUST use a collective subject (we/our/us or equivalent).");
+        rules.push("Use collective subject (we/our/us).");
       } else if (r.lens.voice === "intimate") {
-        rules.push(
-          "MUST use intimate address (you/your or an equivalent direct address)."
-        );
+        rules.push("Use intimate address (you/your).");
       } else if (r.lens.voice === "shift") {
-        rules.push(
-          "MUST shift grammatical perspective (e.g., passive, impersonal, or different subject) vs other variants."
-        );
+        rules.push("Shift grammatical perspective vs other variants.");
       }
 
       // Syntax-driven structural constraints
       if (r.lens.syntax === "fragment") {
-        rules.push(
-          "MUST use fragmented syntax (sentence fragments, dashes/line-break-like rhythm). Avoid full template sentences."
-        );
+        rules.push("Use fragmented syntax (fragments, dashes).");
       } else if (r.lens.syntax === "invert") {
-        rules.push(
-          "MUST use inversion: begin with a prepositional phrase/object and delay the subject."
-        );
+        rules.push("Use inversion (prepositional phrase/object first).");
       } else if (r.lens.syntax === "adapt") {
-        rules.push(
-          "MUST vary clause structure vs other variants (change opener, re-order clauses, or change verb aspect)."
-        );
-      } else if (r.lens.syntax === "preserve") {
-        rules.push(
-          "MUST stay structurally close to the source, but still differ in wording from other variants."
-        );
+        rules.push("Vary clause structure vs other variants.");
       }
 
-      // Imagery constraints (impact structure by forcing different comparison styles)
+      // Imagery constraints
       if (r.lens.imagery === "transform") {
-        rules.push(
-          "MUST transform the imagery: do NOT keep the same comparison template as the source."
-        );
+        rules.push("Transform imagery; don't keep same comparison template.");
       } else if (r.lens.imagery === "substitute") {
         rules.push(
-          "MUST substitute at least one central image with a culturally/locally resonant analogue."
+          "Substitute central image with culturally resonant analogue."
         );
       }
 
-      // Unusualness-driven constraints
-      if (r.unusualnessBudget === "high") {
-        rules.push(
-          "MUST avoid the safest literal template. Take a clearly different structural approach."
-        );
-      }
-
-      return `VARIANT ${r.label} MUST RULES:\n- ${rules.join("\n- ")}`;
+      if (rules.length === 0) return "";
+      return `VARIANT ${r.label} LENS RULES: ${rules.join(" | ")}`;
     })
-    .join("\n\n");
+    .filter(Boolean)
+    .join("\n");
 
   // Detect if source contains comparison marker (simile trap detection)
   const hasComparisonMarker =
@@ -1030,42 +1103,84 @@ VARIANT ${r.label}: ${r.directive}
   // Build comparison strategy rule (mode-scaled)
   let comparisonRule = "";
   if (hasComparisonMarker) {
-    if (mode === "balanced" || mode === "adventurous") {
+    if (effectiveMode === "balanced" || effectiveMode === "adventurous") {
       comparisonRule = `
 ⚠️ COMPARISON STRATEGY CONSTRAINT (source contains simile/comparison marker):
 - At most ONE variant may use an explicit comparison marker (like/as/comme/como/as if).
-- Remaining variants MUST express the relation using:
-  * Direct metaphor ("Rain is a thought…")
-  * Plain statement ("Walking in rain feels…")
-  * Fragment/ellipsis without comparison marker
-- This rule is MANDATORY for ${mode?.toUpperCase()} mode.`;
-    } else if (mode === "focused") {
+- Remaining variants MUST express the relation differently (direct metaphor, plain statement, or fragment).`;
+    } else {
       comparisonRule = `
 ℹ️ COMPARISON STRATEGY (source contains simile/comparison marker):
-- Focused mode allows simile reuse, but still prefer at least one variant without comparison marker for diversity.`;
+- Focused mode allows simile reuse, but prefer at least one variant without comparison marker.`;
     }
   }
 
   return `
 ═══════════════════════════════════════════════════════════════
-VARIANT RECIPES (Your Three Viewpoints)
+VARIANT RECIPES — THREE ARTISTIC APPROACHES
 ═══════════════════════════════════════════════════════════════
+
+These are NOT paraphrases of each other. Each variant represents a different
+translation artist's approach to the same line.
+
+MODE: ${effectiveMode.toUpperCase()}
+${
+  effectiveMode === "focused"
+    ? "Conservative but not literal; subtle artistic choices."
+    : effectiveMode === "balanced"
+    ? "Clear artistic differentiation; each variant should feel distinctly different."
+    : "Bold reframes; push each archetype to expressive limits."
+}
 ${recipeBlocks}
 
 ═══════════════════════════════════════════════════════════════
-HARD STRUCTURAL DIVERGENCE (NON-NEGOTIABLE)
+ARCHETYPE MUST RULES (NON-NEGOTIABLE)
 ═══════════════════════════════════════════════════════════════
-${mustRules}
+${archetypeMustRules}
+
+═══════════════════════════════════════════════════════════════
+LENS-DRIVEN STRUCTURAL RULES
+═══════════════════════════════════════════════════════════════
+${lensRules || "(No additional lens rules for this configuration)"}
 
 GLOBAL DIVERGENCE RULES:
 - No two variants may start with the same first 2 non-stopword tokens.
 - If any two drafts share the same sentence template, rewrite one BEFORE responding.
 - Do NOT reuse the same key wording across variants unless it's in must_keep constraints.${comparisonRule}
 
-MEANING ANCHORS INSTRUCTION (SEMANTIC, NOT LEXICAL):
-Before generating each variant, internally identify 2-4 meaning anchors (core semantic facts/images, NOT exact tokens). ALL variants must preserve these semantic anchors, but you MUST use DIFFERENT surface realizations (lexical divergence) across variants. Anchors are semantic concepts, not word templates to copy. Do NOT output the anchors separately—just ensure the semantic content appears in each translation with varied wording.
+═══════════════════════════════════════════════════════════════
+PHASE 1: SEMANTIC ANCHORS (MODEL-EXTRACTED, CHECKABLE)
+═══════════════════════════════════════════════════════════════
 
-CRITICAL: Each variant must be OBSERVABLY DIFFERENT in surface form (word choice, syntax, voice) while preserving the semantic meaning anchors.
+You MUST extract semantic anchors from the SOURCE LINE and show how each variant realizes them.
+
+CRITICAL RULES:
+1. Extract 3–6 semantic anchors from the SOURCE LINE (NOT variants):
+   - Anchors are SCENE/IDEA concepts (e.g., "BUS", "STREET", "SKY", "SAUDADE")
+   - DO NOT use pronouns or grammatical person as anchor concepts (no I/you/we/he/she/they/it/one)
+   - Each anchor gets a unique UPPER_SNAKE id (e.g., "BUS", "NIGHT_SKY", "LONGING")
+   - Provide a short English concept label (1-4 words) and source tokens that motivated it
+
+2. For EACH variant, provide "anchor_realizations" (exact substrings from variant text):
+   - Must include ALL anchor ids as keys
+   - Each value must be an EXACT substring from the variant's translated text
+   - Realizations must be meaningful (not empty, not just punctuation, not single stopword)
+   - Different variants MUST use DIFFERENT realizations (lexical divergence)
+
+3. Anchors ensure semantic preservation; realizations prove lexical creativity.
+
+EXAMPLE:
+If source line is "Le bus s'arrête sous le ciel nocturne",
+Anchors might be:
+- BUS (concept_en: "bus vehicle", source_tokens: ["bus"])
+- STOP_ACTION (concept_en: "stopping motion", source_tokens: ["s'arrête"])
+- NIGHT_SKY (concept_en: "night sky", source_tokens: ["ciel", "nocturne"])
+
+Variant A anchor_realizations: {"BUS": "the bus", "STOP_ACTION": "halts", "NIGHT_SKY": "evening sky"}
+Variant B anchor_realizations: {"BUS": "coach", "STOP_ACTION": "comes to rest", "NIGHT_SKY": "dark heavens"}
+Variant C anchor_realizations: {"BUS": "our ride", "STOP_ACTION": "we stop", "NIGHT_SKY": "night above"}
+
+CRITICAL: Each variant must be OBSERVABLY DIFFERENT in surface form (word choice, syntax, voice) while preserving the semantic meaning anchors. They should feel like three different translation artists approached the same line.
 `.trim();
 }
 
@@ -1094,34 +1209,71 @@ IMPORTANT RULES:
 - Return ONLY valid JSON (no markdown, no explanations)
 - Each variant must be OBSERVABLY DIFFERENT from the others
 - ALL variants must honor the translator personality
-- Preserve semantic meaning anchors (NOT exact wording) across all variants
+- Phase 1: Extract semantic anchors from source and provide realizations for each variant
+- Phase 1: Include self-report metadata (B image shift summary, C world/subject metadata)
 
 SILENT SELF-CHECK (do NOT mention this in output):
-1) Draft all 3 variants.
-2) If any two share the same opening structure or comparison template, rewrite one until they differ.
-3) Check comparison strategy constraints based on mode.
-4) Ensure semantic anchors are preserved but with lexical diversity.
-5) Only then output JSON.
+1) Extract 3–6 semantic anchors from source line (UPPER_SNAKE ids, no pronouns).
+2) Draft all 3 variants.
+3) If any two share the same opening structure or comparison template, rewrite one until they differ.
+4) Check comparison strategy constraints based on mode.
+5) Ensure semantic anchors are preserved but with lexical diversity.
+6) For each variant, write anchor_realizations with EXACT substrings from variant text.
+7) For B: write b_image_shift_summary (1 sentence, mention at least one anchor ID).
+8) For C: write c_world_shift_summary + c_subject_form_used.
+9) Only then output JSON.
 
 Output format:
 {
+  "anchors": [
+    { "id": "BUS", "concept_en": "bus vehicle", "source_tokens": ["bus"] },
+    { "id": "NIGHT_SKY", "concept_en": "night sky", "source_tokens": ["ciel", "nocturne"] }
+  ],
   "variants": [
-    { "label": "A", "text": "translation", "rationale": "brief explanation", "confidence": 0.0-1.0 },
-    { "label": "B", "text": "translation", "rationale": "brief explanation", "confidence": 0.0-1.0 },
-    { "label": "C", "text": "translation", "rationale": "brief explanation", "confidence": 0.0-1.0 }
+    {
+      "label": "A",
+      "text": "translation",
+      "anchor_realizations": { "BUS": "the bus", "NIGHT_SKY": "evening sky" },
+      "rationale": "brief explanation",
+      "confidence": 0.0-1.0
+    },
+    {
+      "label": "B",
+      "text": "translation",
+      "anchor_realizations": { "BUS": "coach", "NIGHT_SKY": "dark heavens" },
+      "b_image_shift_summary": "I reframed BUS as a coach and shifted NIGHT_SKY to dark heavens for metaphoric freshness",
+      "rationale": "brief explanation",
+      "confidence": 0.0-1.0
+    },
+    {
+      "label": "C",
+      "text": "translation",
+      "anchor_realizations": { "BUS": "our ride", "NIGHT_SKY": "night above" },
+      "c_world_shift_summary": "Shifted to collective first-person plural with urban night setting",
+      "c_subject_form_used": "we",
+      "rationale": "brief explanation",
+      "confidence": 0.0-1.0
+    }
   ]
 }`;
 
   const userPromptParts: string[] = [];
 
   // Translator personality section
+  // HARDENING (Method 2): Simplified to core fields only.
+  // Legacy fields (literalness, register, sacred_terms, forbidden_terms, approach_summary)
+  // are removed from prompts to reduce noise. The archetype-based recipe system
+  // now handles variant diversity and constraints.
   const sourceContext =
     personality.source_language_variety &&
     personality.source_language_variety.trim().length > 0
       ? `
 
 SOURCE LANGUAGE CONTEXT:
-${personality.source_language_notes ?? "Source language variety provided by user."}
+${
+  personality.source_language_notes ??
+  "Source language variety provided by user."
+}
 
 ⚠️ IMPORTANT: The source text is in ${personality.source_language_variety}.
 - Be aware of dialect-/variety-specific expressions and idioms
@@ -1137,24 +1289,7 @@ TRANSLATOR PERSONALITY
 ═══════════════════════════════════════════════════════════════
 Domain: ${personality.domain}
 Purpose: ${personality.purpose}
-Approach: ${personality.approach_summary}
-Literalness: ${personality.literalness}/100
-Register: ${
-      personality.register.length > 0
-        ? personality.register.join(", ")
-        : "neutral"
-    }
 Priority: ${personality.priority}
-${
-  personality.sacred_terms.length > 0
-    ? `MUST use: ${personality.sacred_terms.join(", ")}`
-    : ""
-}
-${
-  personality.forbidden_terms.length > 0
-    ? `NEVER use: ${personality.forbidden_terms.join(", ")}`
-    : ""
-}
 ${sourceContext}
 `.trim()
   );
@@ -1191,7 +1326,26 @@ ${
 `.trim()
   );
 
-  // Task reminder
+  // Task reminder with Phase 1 stance plan for C
+  const recipeC = recipes.recipes.find((r) => r.label === "C");
+  const stancePlanText =
+    recipeC?.stance_plan
+      ? `
+CRITICAL FOR VARIANT C: Use this poem-level stance plan consistently:
+- Subject form: ${recipeC.stance_plan.subject_form}${
+          recipeC.stance_plan.world_frame
+            ? `\n- World frame: ${recipeC.stance_plan.world_frame}`
+            : ""
+        }${
+          recipeC.stance_plan.register_shift
+            ? `\n- Register shift: ${recipeC.stance_plan.register_shift}`
+            : ""
+        }${recipeC.stance_plan.notes ? `\n- Notes: ${recipeC.stance_plan.notes}` : ""}
+
+You MUST set c_subject_form_used to "${recipeC.stance_plan.subject_form}" for variant C.
+If the mode is balanced or adventurous, c_subject_form_used MUST NOT be "i".`
+      : "";
+
   userPromptParts.push(
     `
 ═══════════════════════════════════════════════════════════════
@@ -1201,6 +1355,13 @@ Generate 3 variants following the recipes above.
 - Variant A: Follow Recipe A (${recipes.recipes[0].directive.slice(0, 50)}...)
 - Variant B: Follow Recipe B (${recipes.recipes[1].directive.slice(0, 50)}...)
 - Variant C: Follow Recipe C (${recipes.recipes[2].directive.slice(0, 50)}...)
+${stancePlanText}
+
+PHASE 1 REQUIREMENTS:
+1. Extract 3–6 semantic anchors from SOURCE LINE (UPPER_SNAKE ids, no pronouns).
+2. For EACH variant, provide "anchor_realizations" with EXACT substrings from variant text.
+3. For Variant B: Include "b_image_shift_summary" (1 sentence, must mention at least one anchor ID explicitly).
+4. For Variant C: Include "c_world_shift_summary" (1 sentence) and "c_subject_form_used" (must match stance plan above).
 
 Return ONLY valid JSON.
 `.trim()

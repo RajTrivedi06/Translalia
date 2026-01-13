@@ -1,14 +1,20 @@
 /**
- * Variant Recipes System
+ * Variant Recipes System (v2 - Archetype-Based)
  *
  * Generates and caches reusable "viewpoint recipes" for prismatic translation variants.
  * Recipes are generated once per thread (or when context changes) and applied to each line.
  *
  * Key concepts:
+ * - Archetype: Fixed artistic identity (essence_cut / prismatic_reimagining / world_voice_transposition)
  * - Lens: Configuration for translation perspective (imagery, voice, sound, syntax, cultural)
- * - Recipe: A reusable viewpoint definition (label, lens, directive, unusualnessBudget)
+ * - Recipe: A reusable viewpoint definition (archetype, label, lens, directive, unusualnessBudget)
  * - Bundle: Collection of 3 recipes with metadata (mode, contextHash, createdAt)
+ *
+ * Schema version: v2 introduces archetypes for distinct artistic variants
  */
+
+/** Schema version - increment when recipe structure changes */
+export const RECIPE_SCHEMA_VERSION = "v5"; // Phase 1: Added stance plan for variant C
 
 import { z } from "zod";
 import { stableHash } from "./cache";
@@ -53,11 +59,58 @@ export const UnusualnessBudgetSchema = z.enum(["low", "medium", "high"]);
 export type UnusualnessBudget = z.infer<typeof UnusualnessBudgetSchema>;
 
 /**
+ * Archetype - fixed artistic identity for each variant
+ * - essence_cut: Distill core meaning + emotional contour; clean, legible, not literal
+ * - prismatic_reimagining: Fresh metaphor system; new central image/noun anchors
+ * - world_voice_transposition: Shift narrator stance / world-frame (time, place, register)
+ */
+export const ArchetypeSchema = z.enum([
+  "essence_cut",
+  "prismatic_reimagining",
+  "world_voice_transposition",
+]);
+export type Archetype = z.infer<typeof ArchetypeSchema>;
+
+/**
+ * Hard-mapped archetype assignments by label
+ */
+export const LABEL_TO_ARCHETYPE: Record<"A" | "B" | "C", Archetype> = {
+  A: "essence_cut",
+  B: "prismatic_reimagining",
+  C: "world_voice_transposition",
+};
+
+/**
+ * Phase 1: Stance plan for Variant C (poem-level, stable across all lines in a thread+mode)
+ */
+export const StancePlanSchema = z.object({
+  /** Subject form for narrator stance (NO "i" in balanced/adventurous by default) */
+  subject_form: z.enum(["we", "you", "third_person", "impersonal", "i"]),
+  /** Optional world/setting frame (e.g., "late-night city", "rural coastline") */
+  world_frame: z.string().optional(),
+  /** Optional register shift direction */
+  register_shift: z
+    .enum([
+      "more_colloquial",
+      "more_formal",
+      "more_regional",
+      "more_spoken",
+      "more_lyrical",
+    ])
+    .optional(),
+  /** Optional short practical notes */
+  notes: z.string().optional(),
+});
+export type StancePlan = z.infer<typeof StancePlanSchema>;
+
+/**
  * A single variant recipe - defines one of the A/B/C viewpoints
  */
 export const VariantRecipeSchema = z.object({
   /** Variant label (A, B, or C) */
   label: z.enum(["A", "B", "C"]),
+  /** Archetype - fixed artistic identity */
+  archetype: ArchetypeSchema,
   /** Lens configuration for this variant */
   lens: LensSchema,
   /** Short imperative directive (1-2 lines) - truncated to 200 chars if LLM returns longer */
@@ -66,12 +119,14 @@ export const VariantRecipeSchema = z.object({
   unusualnessBudget: UnusualnessBudgetSchema,
   /** Which mode created this recipe */
   mode: ViewpointRangeModeSchema,
+  /** Phase 1: Stance plan (only for variant C / world_voice_transposition) */
+  stance_plan: StancePlanSchema.optional(),
 });
 export type VariantRecipe = z.infer<typeof VariantRecipeSchema>;
 
 /**
  * Bundle of 3 recipes with metadata
- * Stored in chat_threads.state.variant_recipes_v1
+ * Stored in chat_threads.state.variant_recipes_v2 (with v1 fallback for reads)
  */
 export const VariantRecipesBundleSchema = z.object({
   /** Thread ID this bundle belongs to */
@@ -95,17 +150,55 @@ export const VariantRecipesBundleSchema = z.object({
 });
 export type VariantRecipesBundle = z.infer<typeof VariantRecipesBundleSchema>;
 
+/**
+ * Phase 4: Recipe cache information for audit logging
+ */
+export interface RecipeCacheInfo {
+  cacheHit: "memory" | "db" | "miss";
+  schemaVersion: string;
+  bundleKey?: string;
+}
+
+/**
+ * Phase 4: Extract cache info from a recipe bundle for audit logging.
+ * Call this immediately after getOrCreateVariantRecipes to determine cache status.
+ *
+ * Note: This is a helper that inspects bundle metadata. The actual cache detection
+ * happens inside getOrCreateVariantRecipes and is logged via DEBUG_VARIANTS.
+ * For audit purposes, we infer from createdAt timestamp (fresh < 5s = miss, else db/memory).
+ */
+export function extractRecipeCacheInfo(
+  bundle: VariantRecipesBundle,
+  wasJustCreated: boolean = false
+): RecipeCacheInfo {
+  const age = Date.now() - bundle.createdAt;
+
+  // If bundle was created within last 5 seconds, it's a fresh generation (miss)
+  const cacheHit: RecipeCacheInfo["cacheHit"] =
+    wasJustCreated || age < 5000 ? "miss" : "db";
+
+  return {
+    cacheHit,
+    schemaVersion: RECIPE_SCHEMA_VERSION,
+    bundleKey: bundle.contextHash?.slice(0, 8), // Short hash for debugging
+  };
+}
+
 // =============================================================================
 // Context Hash Computation
 // =============================================================================
 
 /**
  * Computes a stable hash of all inputs that affect recipe generation.
+ *
+ * HARDENING (Method 2): Simplified to core fields only.
+ * Legacy fields (stance/vibes/policy) are no longer included in hash
+ * to reduce cache fragmentation and simplify recipe caching.
+ *
  * Recipes are invalidated when ANY of these change:
- * - translationIntent or translationZone
- * - stance.closeness
- * - style.vibes
- * - policy.must_keep or policy.no_go
+ * - Schema version (RECIPE_SCHEMA_VERSION)
+ * - translationIntent
+ * - translationZone
  * - Source/target language pair
  * - Poem text (via poemHash)
  */
@@ -116,12 +209,10 @@ export function computeRecipeContextHash(
   poemHash?: string
 ): string {
   const relevant = {
+    schemaVersion: RECIPE_SCHEMA_VERSION, // Invalidate cache when schema changes
     intent: guideAnswers.translationIntent ?? "",
     zone: guideAnswers.translationZone ?? "",
-    stance: guideAnswers.stance?.closeness ?? "in_between",
-    vibes: guideAnswers.style?.vibes ?? [],
-    mustKeep: guideAnswers.policy?.must_keep ?? [],
-    noGo: guideAnswers.policy?.no_go ?? [],
+    // REMOVED: stance, vibes, mustKeep, noGo (legacy fields, not used in Method 2)
     srcLang: sourceLanguage,
     tgtLang: targetLanguage,
     poemHash: poemHash ?? "",
@@ -190,25 +281,166 @@ For ADVENTUROUS mode, include at least one bold choice:
 }
 
 // =============================================================================
+// Archetype-Specific Lens Constraints
+// =============================================================================
+
+/**
+ * Allowed lens values for each archetype + mode combination
+ */
+export interface ArchetypeLensConstraints {
+  allowedImagery: Array<"preserve" | "adapt" | "substitute" | "transform">;
+  allowedVoice: Array<"preserve" | "shift" | "collective" | "intimate">;
+  allowedSound: Array<"preserve" | "adapt" | "prioritize" | "ignore">;
+  allowedSyntax: Array<"preserve" | "adapt" | "fragment" | "invert">;
+  allowedCultural: Array<"preserve" | "adapt" | "hybrid" | "localize">;
+}
+
+/**
+ * Get allowed lens values for a given archetype and mode.
+ * These constraints ensure each archetype maintains its artistic identity
+ * while scaling with mode aggressiveness.
+ */
+export function getArchetypeLensConstraints(
+  archetype: Archetype,
+  mode: ViewpointRangeMode
+): ArchetypeLensConstraints {
+  switch (archetype) {
+    case "essence_cut":
+      // Distilled, clean, emotionally legible - simplify, don't complicate
+      switch (mode) {
+        case "focused":
+          return {
+            allowedImagery: ["preserve", "adapt"],
+            allowedVoice: ["preserve", "shift"],
+            allowedSound: ["preserve", "adapt"],
+            allowedSyntax: ["adapt"], // Always adapt for cleaner structure
+            allowedCultural: ["preserve", "adapt"],
+          };
+        case "balanced":
+          return {
+            allowedImagery: ["adapt"],
+            allowedVoice: ["preserve", "shift"],
+            allowedSound: ["adapt", "ignore"], // Can drop sound for clarity
+            allowedSyntax: ["adapt"],
+            allowedCultural: ["adapt", "hybrid"],
+          };
+        case "adventurous":
+          return {
+            allowedImagery: ["adapt", "substitute"], // More aggressive simplification
+            allowedVoice: ["shift"],
+            allowedSound: ["adapt", "ignore"],
+            allowedSyntax: ["adapt", "fragment"], // Fragment for sharper cuts
+            allowedCultural: ["adapt", "hybrid"],
+          };
+      }
+      break;
+
+    case "prismatic_reimagining":
+      // Fresh metaphor system - imagery is key, must change image anchors
+      switch (mode) {
+        case "focused":
+          return {
+            allowedImagery: ["adapt", "substitute"], // Must change imagery
+            allowedVoice: ["preserve"],
+            allowedSound: ["adapt"],
+            allowedSyntax: ["preserve", "adapt"],
+            allowedCultural: ["adapt"],
+          };
+        case "balanced":
+          return {
+            allowedImagery: ["substitute", "transform"],
+            allowedVoice: ["preserve", "shift"],
+            allowedSound: ["adapt", "prioritize"],
+            allowedSyntax: ["adapt", "invert"],
+            allowedCultural: ["adapt", "hybrid"],
+          };
+        case "adventurous":
+          return {
+            allowedImagery: ["substitute", "transform"],
+            allowedVoice: ["shift", "intimate"],
+            allowedSound: ["adapt", "prioritize", "ignore"],
+            allowedSyntax: ["adapt", "invert", "fragment"],
+            allowedCultural: ["hybrid", "localize"],
+          };
+      }
+      break;
+
+    case "world_voice_transposition":
+      // Shift narrator stance / world-frame - voice is key
+      switch (mode) {
+        case "focused":
+          return {
+            allowedImagery: ["preserve", "adapt"],
+            allowedVoice: ["shift", "collective", "intimate"], // Must shift voice
+            allowedSound: ["preserve", "adapt"],
+            allowedSyntax: ["preserve", "adapt"],
+            allowedCultural: ["adapt"],
+          };
+        case "balanced":
+          return {
+            allowedImagery: ["adapt"],
+            allowedVoice: ["shift", "collective", "intimate"],
+            allowedSound: ["adapt"],
+            allowedSyntax: ["adapt"],
+            allowedCultural: ["adapt", "hybrid"],
+          };
+        case "adventurous":
+          return {
+            allowedImagery: ["adapt", "substitute"],
+            allowedVoice: ["collective", "intimate"], // Stronger stance shifts
+            allowedSound: ["adapt", "prioritize"],
+            allowedSyntax: ["adapt", "invert", "fragment"],
+            allowedCultural: ["hybrid", "localize"],
+          };
+      }
+      break;
+  }
+}
+
+// =============================================================================
 // Recipe Generation Prompt Builder
 // =============================================================================
 
 /**
- * Builds the system prompt for recipe generation
+ * Builds the system prompt for recipe generation (v2 - archetype-aware)
  */
 export function buildRecipeGenerationSystemPrompt(): string {
-  return `You are a translation strategy designer. Your task is to create three distinct "recipes" that define different translation viewpoints for poetry translation.
+  return `You are a translation strategy designer creating three ARTISTICALLY DISTINCT translation recipes.
 
-Each recipe must specify:
-1. A lens configuration (how to handle imagery, voice, sound, syntax, cultural references)
-2. A short directive (1-2 lines describing the approach)
-3. An unusualness budget (how creative this variant can be)
+Each recipe has a FIXED ARCHETYPE that defines its artistic identity:
+
+═══════════════════════════════════════════════════════════════
+ARCHETYPE A: ESSENCE CUT
+═══════════════════════════════════════════════════════════════
+Distill core meaning + emotional contour.
+• Make it clean, legible, compressed.
+• NOT literal word-by-word; NOT padded with explanation.
+• Preserve key imagery IF it helps clarity, but simplify structure.
+• Think: "What would a master say in fewer, sharper words?"
+
+═══════════════════════════════════════════════════════════════
+ARCHETYPE B: PRISMATIC REIMAGINING
+═══════════════════════════════════════════════════════════════
+Reimagine with fresh metaphor system.
+• MUST introduce at least 1 new central image/metaphor anchor (noun-level change).
+• Avoid reusing the source's main metaphor nouns directly.
+• Keep emotional truth, but "new image system."
+• Think: "What if a poet saw this moment through different eyes?"
+
+═══════════════════════════════════════════════════════════════
+ARCHETYPE C: WORLD & VOICE TRANSPOSITION
+═══════════════════════════════════════════════════════════════
+Shift narrator stance and/or world-frame.
+• MUST change stance (I→we, you→we, impersonal→direct address, etc.)
+  OR clearly shift time/place/register references.
+• Keep semantic anchors, but in a different voice/world.
+• Think: "Who else could be speaking this, from when/where?"
 
 CRITICAL RULES:
-- All three recipes must be OBSERVABLY DIFFERENT from each other
-- Each recipe must honor the translator's stated preferences and constraints
-- Recipes must preserve meaning anchors even when being creative
-- Return ONLY valid JSON per the schema
+- Each recipe MUST align with its archetype identity
+- Recipes must be OBSERVABLY DIFFERENT (not paraphrases)
+- Honor translator preferences while respecting archetype
+- Return ONLY valid JSON
 
 LENS OPTIONS:
 - imagery: 'preserve' | 'adapt' | 'substitute' | 'transform'
@@ -219,7 +451,13 @@ LENS OPTIONS:
 }
 
 /**
- * Builds the user prompt for recipe generation
+ * Builds the user prompt for recipe generation (v2 - archetype-aware)
+ */
+/**
+ * Builds the user prompt for recipe generation (v2 - archetype-aware)
+ *
+ * HARDENING (Method 2): Simplified to core personality fields only.
+ * Legacy fields (stance, vibes, mustKeep, noGo) are removed from prompts.
  */
 export function buildRecipeGenerationUserPrompt(
   guideAnswers: GuideAnswers,
@@ -236,9 +474,26 @@ export function buildRecipeGenerationUserPrompt(
     poemContext.fullPoem.slice(0, 500) +
     (poemContext.fullPoem.length > 500 ? "..." : "");
 
-  const mustKeep = guideAnswers.policy?.must_keep ?? [];
-  const noGo = guideAnswers.policy?.no_go ?? [];
-  const vibes = guideAnswers.style?.vibes ?? [];
+  // REMOVED: mustKeep, noGo, vibes (legacy fields, not used in Method 2)
+
+  // Get archetype-specific lens constraints
+  const constraintsA = getArchetypeLensConstraints("essence_cut", mode);
+  const constraintsB = getArchetypeLensConstraints(
+    "prismatic_reimagining",
+    mode
+  );
+  const constraintsC = getArchetypeLensConstraints(
+    "world_voice_transposition",
+    mode
+  );
+
+  // Mode-specific intensity guidance
+  const modeIntensity =
+    mode === "focused"
+      ? "Conservative moves, but NOT word-for-word literal. Subtle, controlled artistic choices."
+      : mode === "balanced"
+      ? "Clear artistic differentiation. Each variant should feel like a different translator's approach."
+      : "Bold reframes. Push each archetype to its expressive limits while preserving meaning.";
 
   return `
 TRANSLATION CONTEXT:
@@ -246,23 +501,60 @@ TRANSLATION CONTEXT:
 - Target language: ${poemContext.targetLanguage}
 - Translation intent: ${guideAnswers.translationIntent ?? "Not specified"}
 - Translation zone: ${guideAnswers.translationZone ?? "Not specified"}
-- Stance: ${guideAnswers.stance?.closeness ?? "in_between"}
-${vibes.length > 0 ? `- Style vibes: ${vibes.join(", ")}` : ""}
-${mustKeep.length > 0 ? `- MUST preserve: ${mustKeep.join(", ")}` : ""}
-${noGo.length > 0 ? `- MUST avoid: ${noGo.join(", ")}` : ""}
 
 POEM PREVIEW:
 """
 ${poemPreview}
 """
 
+═══════════════════════════════════════════════════════════════
 MODE: ${mode.toUpperCase()}
+═══════════════════════════════════════════════════════════════
+${modeIntensity}
+
 ${constraints.lensGuidance}
 
-REQUIRED UNUSUALNESS BUDGETS:
-- Recipe A: ${constraints.unusualnessBudgets[0]}
-- Recipe B: ${constraints.unusualnessBudgets[1]}
-- Recipe C: ${constraints.unusualnessBudgets[2]}
+═══════════════════════════════════════════════════════════════
+ARCHETYPE-SPECIFIC LENS CONSTRAINTS
+═══════════════════════════════════════════════════════════════
+
+RECIPE A (archetype: essence_cut) - ${
+    constraints.unusualnessBudgets[0]
+  } unusualness:
+  imagery: ${constraintsA.allowedImagery.join(" | ")}
+  voice: ${constraintsA.allowedVoice.join(" | ")}
+  syntax: ${constraintsA.allowedSyntax.join(" | ")}
+  cultural: ${constraintsA.allowedCultural.join(" | ")}
+  sound: ${constraintsA.allowedSound.join(" | ")}
+  MUST: Compress and clarify; remove filler; preserve emotional core
+
+RECIPE B (archetype: prismatic_reimagining) - ${
+    constraints.unusualnessBudgets[1]
+  } unusualness:
+  imagery: ${constraintsB.allowedImagery.join(" | ")}
+  voice: ${constraintsB.allowedVoice.join(" | ")}
+  syntax: ${constraintsB.allowedSyntax.join(" | ")}
+  cultural: ${constraintsB.allowedCultural.join(" | ")}
+  sound: ${constraintsB.allowedSound.join(" | ")}
+  MUST: Change at least one central metaphor noun; create fresh image system
+
+RECIPE C (archetype: world_voice_transposition) - ${
+    constraints.unusualnessBudgets[2]
+  } unusualness:
+  imagery: ${constraintsC.allowedImagery.join(" | ")}
+  voice: ${constraintsC.allowedVoice.join(" | ")}
+  syntax: ${constraintsC.allowedSyntax.join(" | ")}
+  cultural: ${constraintsC.allowedCultural.join(" | ")}
+  sound: ${constraintsC.allowedSound.join(" | ")}
+  MUST: Shift narrator stance (I↔we, you↔we, impersonal↔direct) OR shift time/place/register
+
+Phase 1 Requirement for Recipe C ONLY:
+Include a "stance_plan" object with:
+  - subject_form: "we" | "you" | "third_person" | "impersonal" (DO NOT use "i" for ${mode} mode)
+  - world_frame (optional): short phrase like "late-night city", "rural coastline"
+  - register_shift (optional): "more_colloquial" | "more_formal" | "more_regional" | "more_spoken" | "more_lyrical"
+  - notes (optional): short, practical guidance
+This stance plan will be used consistently across ALL lines in the poem for variant C.
 
 Generate exactly 3 recipes with labels A, B, C.
 
@@ -271,19 +563,40 @@ OUTPUT FORMAT (JSON only):
   "recipes": [
     {
       "label": "A",
+      "archetype": "essence_cut",
       "lens": {
-        "imagery": "preserve",
-        "voice": "preserve",
-        "sound": "adapt",
-        "syntax": "preserve",
-        "cultural": "adapt"
+        "imagery": "${constraintsA.allowedImagery[0]}",
+        "voice": "${constraintsA.allowedVoice[0]}",
+        "sound": "${constraintsA.allowedSound[0]}",
+        "syntax": "${constraintsA.allowedSyntax[0]}",
+        "cultural": "${constraintsA.allowedCultural[0]}"
       },
-      "directive": "Stay close to source structure while adapting sound patterns for the target language",
+      "directive": "Distill to emotional core; compress without losing meaning",
       "unusualnessBudget": "${constraints.unusualnessBudgets[0]}",
       "mode": "${mode}"
     },
-    { "label": "B", ... },
-    { "label": "C", ... }
+    {
+      "label": "B",
+      "archetype": "prismatic_reimagining",
+      "lens": { ... pick from allowed values ... },
+      "directive": "...",
+      "unusualnessBudget": "${constraints.unusualnessBudgets[1]}",
+      "mode": "${mode}"
+    },
+    {
+      "label": "C",
+      "archetype": "world_voice_transposition",
+      "lens": { ... pick from allowed values ... },
+      "directive": "...",
+      "unusualnessBudget": "${constraints.unusualnessBudgets[2]}",
+      "mode": "${mode}",
+      "stance_plan": {
+        "subject_form": "we",
+        "world_frame": "urban night",
+        "register_shift": "more_colloquial",
+        "notes": "Use collective voice with contemporary urban imagery"
+      }
+    }
   ]
 }`;
 }
@@ -293,7 +606,7 @@ OUTPUT FORMAT (JSON only):
 // =============================================================================
 
 /**
- * Validates that recipes meet mode constraints
+ * Validates that recipes meet mode + archetype constraints
  */
 export function validateRecipes(
   recipes: VariantRecipe[],
@@ -312,7 +625,71 @@ export function validateRecipes(
     issues.push("Recipes must have labels A, B, and C");
   }
 
-  // Check lens diversity (at least 2 lens values differ between each pair)
+  // Check archetype assignments (must match label mapping)
+  for (const recipe of recipes) {
+    const expectedArchetype = LABEL_TO_ARCHETYPE[recipe.label];
+    if (recipe.archetype !== expectedArchetype) {
+      issues.push(
+        `Recipe ${recipe.label} has archetype '${recipe.archetype}' but should have '${expectedArchetype}'`
+      );
+    }
+
+    // Validate lens values are within allowed set for archetype+mode
+    const archetypeConstraints = getArchetypeLensConstraints(
+      expectedArchetype,
+      mode
+    );
+    if (
+      !archetypeConstraints.allowedImagery.includes(
+        recipe.lens
+          .imagery as (typeof archetypeConstraints.allowedImagery)[number]
+      )
+    ) {
+      issues.push(
+        `Recipe ${recipe.label} imagery='${
+          recipe.lens.imagery
+        }' not in allowed: ${archetypeConstraints.allowedImagery.join(", ")}`
+      );
+    }
+    if (
+      !archetypeConstraints.allowedVoice.includes(
+        recipe.lens.voice as (typeof archetypeConstraints.allowedVoice)[number]
+      )
+    ) {
+      issues.push(
+        `Recipe ${recipe.label} voice='${
+          recipe.lens.voice
+        }' not in allowed: ${archetypeConstraints.allowedVoice.join(", ")}`
+      );
+    }
+    if (
+      !archetypeConstraints.allowedSyntax.includes(
+        recipe.lens
+          .syntax as (typeof archetypeConstraints.allowedSyntax)[number]
+      )
+    ) {
+      issues.push(
+        `Recipe ${recipe.label} syntax='${
+          recipe.lens.syntax
+        }' not in allowed: ${archetypeConstraints.allowedSyntax.join(", ")}`
+      );
+    }
+    if (
+      !archetypeConstraints.allowedCultural.includes(
+        recipe.lens
+          .cultural as (typeof archetypeConstraints.allowedCultural)[number]
+      )
+    ) {
+      issues.push(
+        `Recipe ${recipe.label} cultural='${
+          recipe.lens.cultural
+        }' not in allowed: ${archetypeConstraints.allowedCultural.join(", ")}`
+      );
+    }
+    // Sound is more flexible, skip strict validation
+  }
+
+  // Check lens diversity (at least N lens values differ between each pair)
   const constraints = getModeConstraints(mode);
   for (let i = 0; i < recipes.length; i++) {
     for (let j = i + 1; j < recipes.length; j++) {
@@ -350,16 +727,32 @@ import { patchThreadStateField } from "@/server/guide/updateGuideState";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { openai } from "./openai";
 import { TRANSLATOR_MODEL } from "@/lib/models";
+import { trackCallStart, trackCallEnd } from "./openaiInstrumentation";
 
 /** Constants for lock retry */
-// Increased to handle worst-case recipe generation (30-60s)
-const MAX_LOCK_ATTEMPTS = 15;
-const BASE_BACKOFF_MS = 500;
-const LOCK_TTL_SECONDS = 90; // Must exceed worst-case generation time
+// Reduced to fail faster on true contention
+const MAX_LOCK_ATTEMPTS = 8; // Was 15, now max 31.5s wait (vs 95.5s)
+const BASE_BACKOFF_MS = 300; // Was 500, faster initial retry
+const LOCK_TTL_SECONDS = 120; // Was 90, give slow recipe gen more time
+const MAX_BACKOFF_MS = 4000; // Was 8000, cap backoff lower
+
+/**
+ * Per-mode recipe storage structure.
+ * HARDENING: Each mode gets its own slot to avoid cache thrashing when users switch modes.
+ */
+export interface PerModeRecipeCache {
+  focused?: VariantRecipesBundle;
+  balanced?: VariantRecipesBundle;
+  adventurous?: VariantRecipesBundle;
+}
 
 /** Thread state shape (partial) */
 interface ThreadState {
-  variant_recipes_v1?: VariantRecipesBundle;
+  // NEW: Per-mode recipe storage (v3 schema)
+  variant_recipes_v3?: PerModeRecipeCache;
+  // LEGACY: Single-bundle storage (v2 schema) - migrated on read
+  variant_recipes_v2?: VariantRecipesBundle;
+  variant_recipes_v1?: VariantRecipesBundle; // Legacy v1, for backward-compat reads
   guide_answers?: GuideAnswers;
   raw_poem?: string;
   [key: string]: unknown;
@@ -412,6 +805,9 @@ async function generateRecipesLLM(
   const temperature =
     mode === "focused" ? 0.6 : mode === "adventurous" ? 0.95 : 0.8;
 
+  const requestId = trackCallStart("recipe", { threadId });
+  const recipeStart = Date.now();
+
   try {
     const completion = isGpt5
       ? await openai.chat.completions.create({
@@ -432,6 +828,16 @@ async function generateRecipesLLM(
           ],
         });
 
+    trackCallEnd(requestId, {
+      status: "ok",
+      latencyMs: Date.now() - recipeStart,
+      promptTokens: completion.usage?.prompt_tokens,
+      completionTokens: completion.usage?.completion_tokens,
+      totalTokens: completion.usage?.total_tokens,
+      model: modelToUse,
+      temperature: isGpt5 ? undefined : temperature,
+    });
+
     const content = completion.choices[0]?.message?.content?.trim() ?? "{}";
     const parsed = JSON.parse(content);
 
@@ -444,21 +850,84 @@ async function generateRecipesLLM(
       throw new Error("Invalid recipe response: expected 3 recipes");
     }
 
-    // Validate each recipe with Zod
+    // Validate each recipe with Zod, enforcing archetype assignment
     const recipes = parsed.recipes.map((r: unknown, i: number) => {
-      const result = VariantRecipeSchema.safeParse(r);
+      // Ensure archetype is set correctly based on label
+      const rawRecipe = r as Record<string, unknown>;
+      const label = rawRecipe.label as "A" | "B" | "C";
+      const expectedArchetype =
+        LABEL_TO_ARCHETYPE[label] ??
+        LABEL_TO_ARCHETYPE[["A", "B", "C"][i] as "A" | "B" | "C"];
+
+      // Inject correct archetype if missing or wrong
+      const recipeWithArchetype = {
+        ...rawRecipe,
+        archetype: expectedArchetype,
+      };
+
+      const result = VariantRecipeSchema.safeParse(recipeWithArchetype);
       if (!result.success) {
         console.warn(
           `[generateRecipesLLM] Recipe ${i} validation failed:`,
           result.error
         );
         // Return a safe fallback
-        return createFallbackRecipe(
+        const fallback = createFallbackRecipe(
           ["A", "B", "C"][i] as "A" | "B" | "C",
           mode
         );
+        // Phase 1: Add stance plan to C fallback
+        if (label === "C") {
+          fallback.stance_plan = generateDeterministicStancePlan(
+            threadId,
+            mode
+          );
+        }
+        return fallback;
       }
-      return result.data;
+
+      // Phase 1: Defensive enforcement for variant C stance plan
+      let validatedRecipe = result.data;
+      if (
+        validatedRecipe.label === "C" &&
+        validatedRecipe.archetype === "world_voice_transposition"
+      ) {
+        // Validate stance plan exists and is valid
+        const stancePlan = validatedRecipe.stance_plan;
+        const isValidStancePlan =
+          stancePlan &&
+          stancePlan.subject_form &&
+          ["we", "you", "third_person", "impersonal", "i"].includes(
+            stancePlan.subject_form
+          );
+
+        if (!isValidStancePlan) {
+          // Inject deterministic fallback
+          console.warn(
+            `[generateRecipesLLM] Recipe C stance_plan missing/invalid, injecting deterministic fallback`
+          );
+          validatedRecipe = {
+            ...validatedRecipe,
+            stance_plan: generateDeterministicStancePlan(threadId, mode),
+          };
+        } else {
+          // Check if mode forbids "i" and LLM returned "i"
+          if (
+            (mode === "balanced" || mode === "adventurous") &&
+            stancePlan.subject_form === "i"
+          ) {
+            console.warn(
+              `[generateRecipesLLM] Recipe C stance_plan has forbidden "i" for ${mode} mode, overriding with deterministic fallback`
+            );
+            validatedRecipe = {
+              ...validatedRecipe,
+              stance_plan: generateDeterministicStancePlan(threadId, mode),
+            };
+          }
+        }
+      }
+
+      return validatedRecipe;
     }) as [VariantRecipe, VariantRecipe, VariantRecipe];
 
     // Validate recipe diversity
@@ -483,15 +952,17 @@ async function generateRecipesLLM(
     };
 
     if (process.env.DEBUG_VARIANTS === "1") {
-      console.log("[DEBUG_VARIANTS][recipes.generate]", {
+      console.log("[DEBUG_VARIANTS][recipes.generate.v2]", {
         threadId,
         mode,
         contextHash,
+        schemaVersion: RECIPE_SCHEMA_VERSION,
         model: modelToUse,
         isGpt5,
         temperature: isGpt5 ? null : temperature,
         recipes: bundle.recipes.map((r) => ({
           label: r.label,
+          archetype: r.archetype,
           directive: r.directive,
           lens: r.lens,
           unusualnessBudget: r.unusualnessBudget,
@@ -500,7 +971,21 @@ async function generateRecipesLLM(
     }
 
     return bundle;
-  } catch (error) {
+  } catch (error: unknown) {
+    const errorObj = error as {
+      name?: string;
+      status?: number;
+      message?: string;
+    };
+    trackCallEnd(requestId, {
+      status: "error",
+      latencyMs: Date.now() - recipeStart,
+      errorName: errorObj.name,
+      httpStatus: errorObj.status,
+      errorMessageShort: errorObj.message?.slice(0, 100),
+      model: modelToUse,
+      temperature: isGpt5 ? undefined : temperature,
+    });
     console.error("[generateRecipesLLM] Error:", error);
     // Return fallback recipes
     return createFallbackBundle(threadId, mode, contextHash);
@@ -515,23 +1000,32 @@ function createFallbackRecipe(
   mode: ViewpointRangeMode
 ): VariantRecipe {
   const constraints = getModeConstraints(mode);
+  const archetype = LABEL_TO_ARCHETYPE[label];
+  const archetypeConstraints = getArchetypeLensConstraints(archetype, mode);
+
+  // Use first allowed value from each constraint set
+  const lens = {
+    imagery: archetypeConstraints.allowedImagery[0],
+    voice: archetypeConstraints.allowedVoice[0],
+    sound: archetypeConstraints.allowedSound[0],
+    syntax: archetypeConstraints.allowedSyntax[0],
+    cultural: archetypeConstraints.allowedCultural[0],
+  };
+
+  const directive =
+    archetype === "essence_cut"
+      ? "Distill to emotional core; compress without losing meaning"
+      : archetype === "prismatic_reimagining"
+      ? "Reimagine with fresh metaphor; change at least one central image"
+      : "Shift narrator stance or world-frame; different voice, same meaning";
+
   const idx = label === "A" ? 0 : label === "B" ? 1 : 2;
 
   return {
     label,
-    lens: {
-      imagery: idx === 0 ? "preserve" : idx === 1 ? "adapt" : "substitute",
-      voice: "preserve",
-      sound: "adapt",
-      syntax: idx === 2 ? "adapt" : "preserve",
-      cultural: idx === 1 ? "adapt" : "preserve",
-    },
-    directive:
-      idx === 0
-        ? "Stay close to the source structure and meaning"
-        : idx === 1
-        ? "Balance fidelity with natural target language flow"
-        : "Prioritize natural expression in the target language",
+    archetype,
+    lens,
+    directive,
     unusualnessBudget: constraints.unusualnessBudgets[idx],
     mode,
   };
@@ -545,17 +1039,52 @@ function createFallbackBundle(
   mode: ViewpointRangeMode,
   contextHash: string
 ): VariantRecipesBundle {
+  const recipeA = createFallbackRecipe("A", mode);
+  const recipeB = createFallbackRecipe("B", mode);
+  const recipeC = createFallbackRecipe("C", mode);
+
+  // Phase 1: Add stance plan to variant C
+  recipeC.stance_plan = generateDeterministicStancePlan(threadId, mode);
+
   return {
     threadId,
     mode,
     contextHash,
-    recipes: [
-      createFallbackRecipe("A", mode),
-      createFallbackRecipe("B", mode),
-      createFallbackRecipe("C", mode),
-    ],
+    recipes: [recipeA, recipeB, recipeC],
     createdAt: Date.now(),
     modelUsed: "fallback",
+  };
+}
+
+/**
+ * Phase 1: Generate deterministic stance plan for Variant C.
+ * Uses stable hash of threadId + mode to select subject_form.
+ * This ensures consistency across regenerations and prevents per-line voice flipping.
+ *
+ * @param threadId - Thread ID for deterministic selection
+ * @param mode - Viewpoint range mode
+ * @returns A deterministic stance plan for variant C
+ */
+export function generateDeterministicStancePlan(
+  threadId: string,
+  mode: ViewpointRangeMode
+): StancePlan {
+  // Allowed subject forms (NO "i" in balanced/adventurous by default)
+  const allowedForms: Array<StancePlan["subject_form"]> =
+    mode === "focused"
+      ? ["we", "you", "third_person", "impersonal"] // Focused: same as others, default away from "i"
+      : ["we", "you", "third_person", "impersonal"]; // Balanced/Adventurous: NO "i"
+
+  // Deterministic selection using stable hash
+  const seedString = `${threadId}:${mode}:stance_v1`;
+  const hash = stableHash(seedString);
+  // Convert first 8 hex chars to number
+  const hashNum = parseInt(hash.slice(0, 8), 16);
+  const selectedForm = allowedForms[hashNum % allowedForms.length];
+
+  return {
+    subject_form: selectedForm,
+    // Leave world_frame and register_shift undefined for deterministic fallback
   };
 }
 
@@ -619,20 +1148,19 @@ export async function getOrCreateVariantRecipes(
     return memoryCached;
   }
 
-  // Check DB cache
+  // Check DB cache - prefer v3 (per-mode), fall back to v2 (single bundle)
   const threadState = await fetchThreadState(threadId);
-  const dbCached = threadState.variant_recipes_v1;
-  if (
-    dbCached &&
-    dbCached.mode === mode &&
-    dbCached.contextHash === contextHash
-  ) {
-    const validated = VariantRecipesBundleSchema.safeParse(dbCached);
+
+  // TRY V3 (per-mode storage) FIRST
+  const v3Cache = threadState.variant_recipes_v3;
+  const v3Bundle = v3Cache?.[mode];
+  if (v3Bundle && v3Bundle.contextHash === contextHash) {
+    const validated = VariantRecipesBundleSchema.safeParse(v3Bundle);
     if (validated.success) {
       // Populate memory cache
       await cacheSet(memoryCacheKey, validated.data, 3600);
       if (process.env.DEBUG_VARIANTS === "1") {
-        console.log("[DEBUG_VARIANTS][recipes.cache.hit.db]", {
+        console.log("[DEBUG_VARIANTS][recipes.cache.hit.db.v3]", {
           threadId,
           mode,
           contextHash,
@@ -645,6 +1173,7 @@ export async function getOrCreateVariantRecipes(
             modelUsed: validated.data.modelUsed,
             recipes: validated.data.recipes.map((r) => ({
               label: r.label,
+              archetype: r.archetype,
               directive: r.directive,
               lens: r.lens,
               unusualnessBudget: r.unusualnessBudget,
@@ -655,28 +1184,86 @@ export async function getOrCreateVariantRecipes(
       return validated.data;
     }
     console.warn(
-      "[getOrCreateVariantRecipes] Cached recipes failed validation"
+      "[getOrCreateVariantRecipes] Cached v3 recipes failed validation"
     );
   }
+
+  // BACKWARD COMPATIBILITY: Try v2 (single bundle) if v3 doesn't have our mode
+  const v2Bundle = threadState.variant_recipes_v2;
+  if (
+    v2Bundle &&
+    v2Bundle.mode === mode &&
+    v2Bundle.contextHash === contextHash
+  ) {
+    const validated = VariantRecipesBundleSchema.safeParse(v2Bundle);
+    if (validated.success) {
+      // Migrate to v3 format by writing to the mode slot
+      const migratedV3: PerModeRecipeCache = {
+        ...(v3Cache ?? {}),
+        [mode]: validated.data,
+      };
+      await patchThreadStateField(threadId, ["variant_recipes_v3"], migratedV3);
+
+      // Populate memory cache
+      await cacheSet(memoryCacheKey, validated.data, 3600);
+      if (process.env.DEBUG_VARIANTS === "1") {
+        console.log("[DEBUG_VARIANTS][recipes.cache.hit.db.v2.migrated]", {
+          threadId,
+          mode,
+          contextHash,
+        });
+      }
+      return validated.data;
+    }
+    console.warn(
+      "[getOrCreateVariantRecipes] Cached v2 recipes failed validation"
+    );
+  }
+  // Note: v1 recipes are intentionally NOT used as cache hit due to schema change
 
   // Need to generate new recipes - use lock to prevent concurrent generation
   const lockKey = `recipe-gen:${threadId}:${mode}:${contextHash}`;
 
   for (let attempt = 0; attempt < MAX_LOCK_ATTEMPTS; attempt++) {
-    // Try atomic lock acquisition
-    const acquired = await lockHelper.acquire(lockKey, LOCK_TTL_SECONDS);
+    // Try atomic lock acquisition - returns UUID token if acquired, null if failed
+    console.log(
+      `[LOCK] Attempt ${attempt + 1}/${MAX_LOCK_ATTEMPTS} for ${lockKey.slice(
+        -20
+      )}`
+    );
+    const lockToken = await lockHelper.acquire(lockKey, LOCK_TTL_SECONDS);
 
-    if (acquired) {
+    // TEMP DEBUG: Verify lock token is acquired
+    if (process.env.DEBUG_LOCK === "1") {
+      console.log("[DEBUG_LOCK][acquire]", {
+        lockKey,
+        lockToken: lockToken ? `${lockToken.slice(0, 8)}...` : null,
+        attempt,
+      });
+    }
+
+    if (lockToken) {
+      console.log(`[LOCK] ACQUIRED on attempt ${attempt + 1}`);
       try {
         // Double-check DB in case another process just finished
+        // Check v3 first, then fall back to v2
         const freshState = await fetchThreadState(threadId);
-        const freshCached = freshState.variant_recipes_v1;
+        const freshV3Bundle = freshState.variant_recipes_v3?.[mode];
+        if (freshV3Bundle && freshV3Bundle.contextHash === contextHash) {
+          const validated = VariantRecipesBundleSchema.safeParse(freshV3Bundle);
+          if (validated.success) {
+            await cacheSet(memoryCacheKey, validated.data, 3600);
+            return validated.data;
+          }
+        }
+        // Fallback: check v2 single bundle
+        const freshV2Bundle = freshState.variant_recipes_v2;
         if (
-          freshCached &&
-          freshCached.mode === mode &&
-          freshCached.contextHash === contextHash
+          freshV2Bundle &&
+          freshV2Bundle.mode === mode &&
+          freshV2Bundle.contextHash === contextHash
         ) {
-          const validated = VariantRecipesBundleSchema.safeParse(freshCached);
+          const validated = VariantRecipesBundleSchema.safeParse(freshV2Bundle);
           if (validated.success) {
             await cacheSet(memoryCacheKey, validated.data, 3600);
             return validated.data;
@@ -696,7 +1283,7 @@ export async function getOrCreateVariantRecipes(
         );
 
         if (process.env.DEBUG_VARIANTS === "1") {
-          console.log("[DEBUG_VARIANTS][recipes.cache.miss.generated]", {
+          console.log("[DEBUG_VARIANTS][recipes.cache.miss.generated.v3]", {
             threadId,
             mode,
             contextHash,
@@ -709,6 +1296,7 @@ export async function getOrCreateVariantRecipes(
               modelUsed: newBundle.modelUsed,
               recipes: newBundle.recipes.map((r) => ({
                 label: r.label,
+                archetype: r.archetype,
                 directive: r.directive,
                 lens: r.lens,
                 unusualnessBudget: r.unusualnessBudget,
@@ -717,11 +1305,18 @@ export async function getOrCreateVariantRecipes(
           });
         }
 
-        // JSONB patch-safe DB update
+        // JSONB patch-safe DB update - write to v3 per-mode storage
+        // Fetch current v3 cache to merge with new bundle
+        const currentV3 =
+          (await fetchThreadState(threadId)).variant_recipes_v3 ?? {};
+        const updatedV3: PerModeRecipeCache = {
+          ...currentV3,
+          [mode]: newBundle,
+        };
         const patchResult = await patchThreadStateField(
           threadId,
-          ["variant_recipes_v1"],
-          newBundle
+          ["variant_recipes_v3"],
+          updatedV3
         );
 
         if (!patchResult.success) {
@@ -743,26 +1338,46 @@ export async function getOrCreateVariantRecipes(
 
         return newBundle;
       } finally {
-        // CRITICAL: Use explicit DEL, not set-to-null
-        await lockHelper.release(lockKey);
+        // CRITICAL: Use token-based compare-and-delete to prevent releasing others' locks
+        if (process.env.DEBUG_LOCK === "1") {
+          console.log("[DEBUG_LOCK][release]", {
+            lockKey,
+            lockToken: lockToken ? `${lockToken.slice(0, 8)}...` : null,
+          });
+        }
+        await lockHelper.release(lockKey, lockToken);
       }
     }
 
     // Lock not acquired: another request is generating
     // Wait with exponential backoff + jitter, then re-check DB
-    const backoff = Math.min(BASE_BACKOFF_MS * Math.pow(2, attempt), 8000);
+    const backoff = Math.min(
+      BASE_BACKOFF_MS * Math.pow(2, attempt),
+      MAX_BACKOFF_MS
+    );
     const jitter = Math.random() * 500;
+    console.log(`[LOCK] WAITING ${Math.round(backoff + jitter)}ms`);
     await sleep(backoff + jitter);
 
     // Check if another request finished while we waited
+    // Check v3 first, then fall back to v2
     const maybeReady = await fetchThreadState(threadId);
-    const maybeCached = maybeReady.variant_recipes_v1;
+    const maybeV3Bundle = maybeReady.variant_recipes_v3?.[mode];
+    if (maybeV3Bundle && maybeV3Bundle.contextHash === contextHash) {
+      const validated = VariantRecipesBundleSchema.safeParse(maybeV3Bundle);
+      if (validated.success) {
+        await cacheSet(memoryCacheKey, validated.data, 3600);
+        return validated.data;
+      }
+    }
+    // Fallback: check v2 single bundle
+    const maybeV2Bundle = maybeReady.variant_recipes_v2;
     if (
-      maybeCached &&
-      maybeCached.mode === mode &&
-      maybeCached.contextHash === contextHash
+      maybeV2Bundle &&
+      maybeV2Bundle.mode === mode &&
+      maybeV2Bundle.contextHash === contextHash
     ) {
-      const validated = VariantRecipesBundleSchema.safeParse(maybeCached);
+      const validated = VariantRecipesBundleSchema.safeParse(maybeV2Bundle);
       if (validated.success) {
         await cacheSet(memoryCacheKey, validated.data, 3600);
         return validated.data;

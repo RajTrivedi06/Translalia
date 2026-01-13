@@ -1,19 +1,33 @@
 /**
  * Build a translator personality profile from user's guide answers.
  * This becomes the foundation of all translation prompts.
+ *
+ * HARDENING (Method 2): Simplified personality to core fields only.
+ * Legacy fields (literalness, register, sacred_terms, forbidden_terms)
+ * are removed to reduce prompt noise and simplify context hash computation.
+ * The archetype-based recipe system now handles variant diversity.
  */
 export interface TranslatorPersonality {
   domain: string; // from translationZone
   purpose: string; // from translationIntent
-  literalness: number; // 0-100
-  register: string[]; // from style.vibes
-  sacred_terms: string[]; // from policy.must_keep
-  forbidden_terms: string[]; // from policy.no_go
-  approach_summary: string; // synthesized description
-  creativity_level: "conservative" | "moderate" | "bold";
   priority: "accuracy" | "naturalness" | "expressiveness";
   source_language_variety?: string | null;
   source_language_notes?: string;
+
+  // LEGACY FIELDS (kept for backward compatibility but not actively used in prompts)
+  // These are computed but no longer injected into translation prompts.
+  /** @deprecated - Legacy field, not used in Method 2 prompts */
+  literalness: number;
+  /** @deprecated - Legacy field, not used in Method 2 prompts */
+  register: string[];
+  /** @deprecated - Legacy field, not used in Method 2 prompts */
+  sacred_terms: string[];
+  /** @deprecated - Legacy field, not used in Method 2 prompts */
+  forbidden_terms: string[];
+  /** @deprecated - Legacy field, not used in Method 2 prompts */
+  approach_summary: string;
+  /** @deprecated - Legacy field, not used in Method 2 prompts */
+  creativity_level: "conservative" | "moderate" | "bold";
 }
 
 type GuideAnswersLike = {

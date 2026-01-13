@@ -23,7 +23,7 @@ export interface TranslateLineParams {
  */
 export function useTranslateLine() {
   const translationMethod = useGuideStore(
-    (s) => s.answers.translationMethod ?? "method-1"
+    (s) => s.answers.translationMethod ?? "method-2"
   );
 
   return useMutation({

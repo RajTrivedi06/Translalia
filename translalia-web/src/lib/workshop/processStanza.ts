@@ -3,6 +3,7 @@ import type { GuideAnswers } from "@/store/guideSlice";
 import type { TranslatedLine, ErrorCode } from "@/types/translationJob";
 
 import { translateLineInternal } from "@/lib/workshop/translateLineInternal";
+import { translateLineWithRecipesInternal } from "@/lib/translation/method2/translateLineWithRecipesInternal";
 import { updateStanzaStatus } from "@/lib/workshop/jobState";
 
 /**
@@ -163,38 +164,97 @@ export async function processStanza({
     // Use user-selected model from guideAnswers (not env default)
     const selectedModel = guideAnswers.translationModel;
 
+    // Determine translation method (default to method-2)
+    const translationMethod = guideAnswers.translationMethod ?? "method-2";
+    console.log("[BG] translationMethod =", translationMethod);
+
     try {
-      const lineTranslation = await translateLineInternal({
-        threadId,
-        lineIndex: globalLineIndex,
-        lineText,
-        fullPoem: rawPoem,
-        stanzaIndex,
-        prevLine,
-        nextLine,
-        guideAnswers,
-        sourceLanguage,
-        targetLanguage,
-        modelOverride: selectedModel, // ← Use user-selected model for background translations
-        audit:
-          auditUserId !== undefined
-            ? {
-                createdBy: auditUserId,
-                projectId: auditProjectId ?? null,
-                stage: "workshop-background-translate-line",
-              }
-            : undefined,
-      });
+      let lineTranslation;
+
+      if (translationMethod === "method-2") {
+        // Method 2: Recipe-driven prismatic variants
+        lineTranslation = await translateLineWithRecipesInternal({
+          threadId,
+          lineIndex: globalLineIndex,
+          lineText,
+          fullPoem: rawPoem,
+          stanzaIndex,
+          prevLine,
+          nextLine,
+          guideAnswers,
+          sourceLanguage,
+          targetLanguage,
+          model: selectedModel,
+          auditUserId,
+          auditProjectId,
+        });
+      } else {
+        // Method 1: Traditional translation
+        lineTranslation = await translateLineInternal({
+          threadId,
+          lineIndex: globalLineIndex,
+          lineText,
+          fullPoem: rawPoem,
+          stanzaIndex,
+          prevLine,
+          nextLine,
+          guideAnswers,
+          sourceLanguage,
+          targetLanguage,
+          modelOverride: selectedModel, // ← Use user-selected model for background translations
+          audit:
+            auditUserId !== undefined
+              ? {
+                  createdBy: auditUserId,
+                  projectId: auditProjectId ?? null,
+                  stage: "workshop-background-translate-line",
+                }
+              : undefined,
+        });
+      }
 
       // Store translated line with full results (Feature 8)
-      translatedLines.push({
+      // Translation is complete after main-gen + gate (+ regen) - mark as "translated" immediately
+      const lineData: (typeof translatedLines)[0] = {
         line_number: globalLineIndex,
         original_text: lineText,
         translations: lineTranslation.translations,
         model_used: lineTranslation.modelUsed,
         updated_at: Date.now(),
-      });
+        translationStatus: "translated", // Translation is complete - show immediately
+      };
 
+      // Add quality metadata and alignment status for Method 2
+      if (
+        translationMethod === "method-2" &&
+        "qualityMetadata" in lineTranslation
+      ) {
+        const method2Response = lineTranslation as {
+          qualityMetadata?: import("@/types/translationJob").LineQualityMetadata;
+        };
+        const qualityMetadata = method2Response.qualityMetadata;
+
+        // Set translationStatus based on quality tier
+        if (qualityMetadata?.quality_tier === "failed") {
+          lineData.translationStatus = "failed"; // Hard failure
+        } else {
+          lineData.translationStatus = "translated"; // Pass or salvage - show immediately
+        }
+
+        // Alignment: optional for Method 2 (only if drag-and-drop UI is used)
+        // For now, we'll skip alignment for Method 2 unless explicitly needed
+        // Set to "skipped" - can be changed to "pending" if alignment is needed
+        lineData.alignmentStatus = "skipped"; // Method 2 doesn't require alignment by default
+        lineData.quality_metadata = qualityMetadata;
+      } else {
+        // Method 1: Always translated, alignment pending (Method 1 uses drag-and-drop)
+        lineData.translationStatus = "translated";
+        lineData.alignmentStatus = "pending"; // Method 1 needs alignment for drag-and-drop
+      }
+
+      translatedLines.push(lineData);
+
+      console.time(`[TIMING][line=${globalLineIndex}] db-write`);
       await updateStanzaStatus(threadId, stanzaIndex, {
         status: "processing",
         linesProcessed: i + 1,
@@ -202,6 +262,7 @@ export async function processStanza({
         // Feature 8: Store all translated lines so far
         lines: translatedLines,
       });
+      console.timeEnd(`[TIMING][line=${globalLineIndex}] db-write`);
     } catch (error) {
       // Feature 9: Classify error and decide on retry/fallback
       const { code, retryable, message } = classifyError(error);
