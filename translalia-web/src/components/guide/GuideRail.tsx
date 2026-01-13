@@ -1,7 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { ChangeEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
+import {
+  ChangeEvent,
+  KeyboardEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { ChevronLeft, Info } from "lucide-react";
 import { useRouter } from "@/i18n/routing";
 import { useLocale, useTranslations } from "next-intl";
@@ -15,6 +22,7 @@ import {
   useSaveMultipleAnswers,
   useSavePoemState,
 } from "@/lib/hooks/useGuideFlow";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { ConfirmationDialog } from "@/components/guide/ConfirmationDialog";
 import { GuideSteps } from "@/components/guide/GuideSteps";
@@ -56,6 +64,7 @@ export function GuideRail({
 
   const locale = useLocale();
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   const dir = locale === "ar" ? "rtl" : "ltr";
 
@@ -72,8 +81,6 @@ export function GuideRail({
     setViewpointRangeMode,
     translationModel,
     setTranslationModel,
-    translationMethod,
-    setTranslationMethod,
     reset,
     hydrated,
     checkGuideComplete,
@@ -127,8 +134,6 @@ export function GuideRail({
   const [isSavingViewpointMode, setIsSavingViewpointMode] = useState(false);
   const [isSavingTranslationModel, setIsSavingTranslationModel] =
     useState(false);
-  const [isSavingTranslationMethod, setIsSavingTranslationMethod] =
-    useState(false);
 
   const [userHasManuallySetFormatting, setUserHasManuallySetFormatting] =
     useState(false);
@@ -139,6 +144,141 @@ export function GuideRail({
   const [showSegmentEditor, setShowSegmentEditor] = useState(false);
 
   const poemTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // =========================================================================
+  // DEBOUNCED AUTO-SAVE (800ms) for translationZone and translationIntent
+  // Ensures backend always has fresh guide_answers before translation API calls
+  // =========================================================================
+  const DEBOUNCE_MS = 800;
+  const zoneDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const intentDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Track last-saved values to avoid redundant saves
+  const lastSavedZoneRef = useRef<string | null>(null);
+  const lastSavedIntentRef = useRef<string | null>(null);
+
+  /**
+   * Debounced auto-save for translationZone.
+   * Called on change; also triggered immediately on blur.
+   */
+  const debouncedSaveZone = useCallback(
+    (value: string) => {
+      if (!threadId || !value.trim()) return;
+      if (value === lastSavedZoneRef.current) return; // No change
+
+      if (zoneDebounceRef.current) clearTimeout(zoneDebounceRef.current);
+
+      zoneDebounceRef.current = setTimeout(async () => {
+        try {
+          await saveTranslationIntent.mutateAsync({
+            threadId,
+            questionKey: "translationZone",
+            value: value.trim(),
+          });
+          lastSavedZoneRef.current = value.trim();
+        } catch (err) {
+          console.error("[debouncedSaveZone] Auto-save failed:", err);
+        }
+      }, DEBOUNCE_MS);
+    },
+    [threadId, saveTranslationIntent]
+  );
+
+  /**
+   * Debounced auto-save for translationIntent.
+   * Called on change; also triggered immediately on blur.
+   */
+  const debouncedSaveIntent = useCallback(
+    (value: string) => {
+      if (!threadId || !value.trim()) return;
+      if (value === lastSavedIntentRef.current) return; // No change
+
+      if (intentDebounceRef.current) clearTimeout(intentDebounceRef.current);
+
+      intentDebounceRef.current = setTimeout(async () => {
+        try {
+          await saveTranslationIntent.mutateAsync({
+            threadId,
+            questionKey: "translationIntent",
+            value: value.trim(),
+          });
+          lastSavedIntentRef.current = value.trim();
+        } catch (err) {
+          console.error("[debouncedSaveIntent] Auto-save failed:", err);
+        }
+      }, DEBOUNCE_MS);
+    },
+    [threadId, saveTranslationIntent]
+  );
+
+  /**
+   * Flush pending saves immediately (called on blur).
+   * Accesses store directly to avoid dependency on derived variables.
+   */
+  const flushPendingSaves = useCallback(async () => {
+    if (zoneDebounceRef.current) {
+      clearTimeout(zoneDebounceRef.current);
+      zoneDebounceRef.current = null;
+    }
+    if (intentDebounceRef.current) {
+      clearTimeout(intentDebounceRef.current);
+      intentDebounceRef.current = null;
+    }
+
+    // Access store directly to get fresh values
+    const storeState = useGuideStore.getState();
+    const zoneRaw = storeState.translationZone?.text;
+    const intentRaw = storeState.translationIntent?.text;
+
+    const zoneVal = typeof zoneRaw === "string" ? zoneRaw.trim() : "";
+    const intentVal = typeof intentRaw === "string" ? intentRaw.trim() : "";
+
+    const promises: Promise<unknown>[] = [];
+
+    if (zoneVal && zoneVal !== lastSavedZoneRef.current && threadId) {
+      promises.push(
+        saveTranslationIntent
+          .mutateAsync({
+            threadId,
+            questionKey: "translationZone",
+            value: zoneVal,
+          })
+          .then(() => {
+            lastSavedZoneRef.current = zoneVal;
+          })
+          .catch((err) =>
+            console.error("[flushPendingSaves] Zone save failed:", err)
+          )
+      );
+    }
+
+    if (intentVal && intentVal !== lastSavedIntentRef.current && threadId) {
+      promises.push(
+        saveTranslationIntent
+          .mutateAsync({
+            threadId,
+            questionKey: "translationIntent",
+            value: intentVal,
+          })
+          .then(() => {
+            lastSavedIntentRef.current = intentVal;
+          })
+          .catch((err) =>
+            console.error("[flushPendingSaves] Intent save failed:", err)
+          )
+      );
+    }
+
+    await Promise.all(promises);
+  }, [threadId, saveTranslationIntent]);
+
+  // Cleanup debounce timers on unmount
+  useEffect(() => {
+    return () => {
+      if (zoneDebounceRef.current) clearTimeout(zoneDebounceRef.current);
+      if (intentDebounceRef.current) clearTimeout(intentDebounceRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (
@@ -211,7 +351,7 @@ export function GuideRail({
           setEditingIntent(true);
           setAccordionValue("step-3");
           break;
-        case 3: // Translation Method
+        case 3: // Viewpoint Range
           setAccordionValue("step-4");
           break;
         case 4: // Translation Model
@@ -284,19 +424,12 @@ export function GuideRail({
       ? t("ariaAnnouncementComplete")
       : t("ariaAnnouncementProgress");
 
-  const isViewpointOk =
-    translationMethod !== "method-2" || !!viewpointRangeMode;
-
-  const isMethodOk =
-    translationMethod === "method-1" ||
-    (translationMethod === "method-2" && isViewpointOk);
-
   const isGuideCompleteUI =
     isPoemSubmitted &&
     isSourceVarietySubmitted &&
     isTranslationZoneSubmitted &&
     isTranslationIntentSubmitted &&
-    isMethodOk &&
+    !!viewpointRangeMode &&
     !!translationModel;
 
   const ui = {
@@ -557,6 +690,8 @@ export function GuideRail({
         questionKey: "viewpointRangeMode",
         value: nextMode,
       });
+      // Auto-open next step (Step 5: Translation Model)
+      setAccordionValue("step-5");
     } catch (error) {
       console.error("[handleSaveViewpointMode] Error:", error);
     } finally {
@@ -581,28 +716,6 @@ export function GuideRail({
       console.error("[handleSaveTranslationModel] Error:", error);
     } finally {
       setIsSavingTranslationModel(false);
-    }
-  };
-
-  const handleSaveTranslationMethod = async (
-    nextMethod: "method-1" | "method-2"
-  ) => {
-    if (!threadId) return;
-
-    setIsSavingTranslationMethod(true);
-
-    try {
-      await saveTranslationIntent.mutateAsync({
-        threadId,
-        questionKey: "translationMethod",
-        value: nextMethod,
-      });
-      // Auto-open next step (step 5: Translation Model)
-      setAccordionValue("step-5");
-    } catch (error) {
-      console.error("[handleSaveTranslationMethod] Error:", error);
-    } finally {
-      setIsSavingTranslationMethod(false);
     }
   };
 
@@ -688,8 +801,10 @@ export function GuideRail({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             threadId,
-            runInitialTick: true,
+            // runInitialTick omitted - defaults to false for fast response
+            // Worker handles processing in background
           }),
+          cache: "no-store", // Ensure no caching
         });
 
         if (!response.ok) {
@@ -698,6 +813,11 @@ export function GuideRail({
             "Failed to initialize translations:",
             errorData.error || "Unknown error"
           );
+        } else {
+          // Immediately invalidate translation status query to trigger refetch
+          queryClient.invalidateQueries({
+            queryKey: ["translation-job", threadId],
+          });
         }
       } catch (error) {
         console.error(
@@ -855,14 +975,14 @@ export function GuideRail({
           t("sourceLanguageVarietyTitle"),
           t("translationZone"),
           t("translationIntent"),
-          "Translation Method",
+          t("viewpointRange"),
           t("translationModel"),
         ]}
         stepCompletions={[
           isSourceVarietySubmitted,
           isTranslationZoneSubmitted,
           isTranslationIntentSubmitted,
-          !!translationMethod && isMethodOk,
+          !!viewpointRangeMode,
           !!translationModel,
         ]}
         value={accordionValue}
@@ -936,8 +1056,15 @@ export function GuideRail({
               rows={4}
               value={translationZoneText}
               onChange={(e) => {
-                setTranslationZone(e.target.value);
+                const val = e.target.value;
+                setTranslationZone(val);
                 setZoneError(null);
+                // DEBOUNCED AUTO-SAVE: persist to backend after 800ms idle
+                debouncedSaveZone(val);
+              }}
+              onBlur={() => {
+                // FLUSH on blur: ensure backend has latest value before user leaves field
+                void flushPendingSaves();
               }}
               disabled={
                 !canEditZone || (isTranslationZoneSubmitted && !editingZone)
@@ -982,8 +1109,15 @@ export function GuideRail({
               rows={4}
               value={translationIntentText}
               onChange={(e) => {
-                setTranslationIntent(e.target.value);
+                const val = e.target.value;
+                setTranslationIntent(val);
                 setIntentError(null);
+                // DEBOUNCED AUTO-SAVE: persist to backend after 800ms idle
+                debouncedSaveIntent(val);
+              }}
+              onBlur={() => {
+                // FLUSH on blur: ensure backend has latest value before user leaves field
+                void flushPendingSaves();
               }}
               disabled={
                 !canEditIntent ||
@@ -1019,184 +1153,45 @@ export function GuideRail({
             </div>
           </div>,
 
-          // Step 4: Translation Method
-          <div key="step-4" className="space-y-5">
-            <p className="text-sm text-slate-600 leading-relaxed">
-              Choose which AI approach to use for generating translation
-              variants. Both methods produce word-level alignments for the
-              Workshop interface.
-            </p>
+          // Step 4: Viewpoint Range
+          <div key="step-4" className="space-y-4">
+            <p className={ui.subtle}>{t("viewpointRangeHelper")}</p>
 
-            <div className="space-y-4">
-              {/* Method 1 */}
-              <button
-                type="button"
-                onClick={() => {
-                  setTranslationMethod("method-1");
-                  void handleSaveTranslationMethod("method-1");
-                }}
-                className={cn(
-                  "w-full rounded-xl border-2 px-5 py-4 text-left",
-                  "transition",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200",
-                  translationMethod === "method-1"
-                    ? "border-slate-900 bg-slate-50"
-                    : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
-                )}
-                aria-pressed={translationMethod === "method-1"}
-              >
-                <div className="flex items-start gap-4">
-                  <div
-                    className={cn(
-                      "mt-1 flex h-5 w-5 items-center justify-center rounded-full border-2",
-                      "transition",
-                      translationMethod === "method-1"
-                        ? "border-slate-900 bg-slate-900"
-                        : "border-slate-300 bg-white"
-                    )}
-                  >
-                    {translationMethod === "method-1" && (
-                      <div className="h-2 w-2 rounded-full bg-white" />
-                    )}
-                  </div>
-
-                  <div className="flex-1 min-w-0 space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-semibold text-slate-900">
-                        Method 1: Literalness Spectrum
-                      </span>
-
-                      {translationMethod === "method-1" && (
-                        <span className="text-xs font-medium text-slate-500">
-                          (Selected)
-                        </span>
-                      )}
-                    </div>
-
-                    <p className="text-sm text-slate-600 leading-relaxed">
-                      Generates three variants along a literalness spectrum:
-                      literal → balanced → creative. Fast and reliable approach
-                      with proven results.
-                    </p>
-                  </div>
-                </div>
-              </button>
-
-              {/* Method 2 */}
-              <div
-                className={cn(
-                  "rounded-xl border-2 transition",
-                  translationMethod === "method-2"
-                    ? "border-slate-900 bg-slate-50"
-                    : "border-slate-200 bg-white"
-                )}
-              >
+            <div className="flex flex-col gap-2 sm:flex-row">
+              {(["focused", "balanced", "adventurous"] as const).map((mode) => (
                 <button
+                  key={mode}
                   type="button"
                   onClick={() => {
-                    setTranslationMethod("method-2");
-                    void handleSaveTranslationMethod("method-2");
+                    setViewpointRangeMode(mode);
+                    void handleSaveViewpointMode(mode);
                   }}
+                  disabled={isSavingViewpointMode}
                   className={cn(
-                    "w-full px-5 py-4 text-left",
+                    "flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold",
+                    "transition",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200",
-                    translationMethod !== "method-2" && "hover:bg-slate-50"
+                    viewpointRangeMode === mode
+                      ? "bg-slate-900 text-white"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200",
+                    isSavingViewpointMode && "opacity-70"
                   )}
-                  aria-pressed={translationMethod === "method-2"}
+                  aria-pressed={viewpointRangeMode === mode}
                 >
-                  <div className="flex items-start gap-4">
-                    <div
-                      className={cn(
-                        "mt-1 flex h-5 w-5 items-center justify-center rounded-full border-2",
-                        "transition",
-                        translationMethod === "method-2"
-                          ? "border-slate-900 bg-slate-900"
-                          : "border-slate-300 bg-white"
-                      )}
-                    >
-                      {translationMethod === "method-2" && (
-                        <div className="h-2 w-2 rounded-full bg-white" />
-                      )}
-                    </div>
-
-                    <div className="flex-1 min-w-0 space-y-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-semibold text-slate-900">
-                          Method 2: Recipe-Driven Prismatic Variants
-                        </span>
-
-                        {translationMethod === "method-2" && (
-                          <span className="text-xs font-semibold text-blue-700">
-                            (Selected)
-                          </span>
-                        )}
-                      </div>
-
-                      <p className="text-sm text-slate-600 leading-relaxed">
-                        Uses sophisticated &ldquo;recipes&rdquo; with lens
-                        configurations (imagery, voice, sound, syntax,
-                        cultural). Explores diverse translation strategies with
-                        quality gates.
-                      </p>
-                    </div>
-                  </div>
+                  {t(`viewpointMode.${mode}`)}
                 </button>
-
-                {/* Viewpoint Range Selector - Only shown when Method 2 is selected */}
-                {translationMethod === "method-2" && (
-                  <div className="px-5 pb-5 pt-4 border-t border-slate-200 space-y-4">
-                    <div className="space-y-2">
-                      <label className="text-sm font-semibold text-slate-900 block">
-                        {t("viewpointRange")}{" "}
-                        <span className="text-red-500">*</span>
-                      </label>
-
-                      <p className={ui.subtle}>{t("viewpointRangeHelper")}</p>
-                    </div>
-
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      {(["focused", "balanced", "adventurous"] as const).map(
-                        (mode) => (
-                          <button
-                            key={mode}
-                            type="button"
-                            onClick={() => {
-                              setViewpointRangeMode(mode);
-                              void handleSaveViewpointMode(mode);
-                            }}
-                            disabled={isSavingViewpointMode}
-                            className={cn(
-                              "flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold",
-                              "transition",
-                              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200",
-                              viewpointRangeMode === mode
-                                ? "bg-slate-900 text-white"
-                                : "bg-slate-100 text-slate-700 hover:bg-slate-200",
-                              isSavingViewpointMode && "opacity-70"
-                            )}
-                            aria-pressed={viewpointRangeMode === mode}
-                          >
-                            {t(`viewpointMode.${mode}`)}
-                          </button>
-                        )
-                      )}
-                    </div>
-
-                    {!viewpointRangeMode && (
-                      <p className="text-sm text-red-700">
-                        {t("viewpointRangeRequired", {
-                          defaultValue:
-                            "Please select a viewpoint range to continue",
-                        })}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
+              ))}
             </div>
 
-            {/* keep state usage visible (no deletions), but also reflect saving */}
-            {isSavingTranslationMethod && <p className={ui.subtle}>Saving…</p>}
+            {!viewpointRangeMode && (
+              <p className="text-sm text-red-700">
+                {t("viewpointRangeRequired", {
+                  defaultValue: "Please select a viewpoint range to continue",
+                })}
+              </p>
+            )}
+
+            {isSavingViewpointMode && <p className={ui.subtle}>Saving…</p>}
           </div>,
 
           // Step 5: Translation Model

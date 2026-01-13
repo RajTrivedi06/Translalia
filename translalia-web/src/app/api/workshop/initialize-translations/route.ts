@@ -7,18 +7,17 @@ import {
   createTranslationJob,
   getTranslationJob,
 } from "@/lib/workshop/jobState";
-import {
-  loadThreadContext,
-  runTranslationTick,
-} from "@/lib/workshop/runTranslationTick";
+import { loadThreadContext } from "@/lib/workshop/runTranslationTick";
 import { summarizeTranslationJob } from "@/lib/workshop/translationProgress";
+import { enqueueTranslationJob } from "@/lib/workshop/translationQueue";
 
 const RequestSchema = z.object({
   threadId: z.string().uuid(),
-  runInitialTick: z.boolean().optional().default(true),
+  runInitialTick: z.boolean().optional().default(false), // Changed: default false for fast response
 });
 
 export async function POST(req: Request) {
+  console.log("[HIT] initialize-translations");
   const { user, response } = await requireUser();
   if (!user) return response;
 
@@ -75,20 +74,44 @@ export async function POST(req: Request) {
     }
   );
 
+  // Enqueue translation job for background processing
+  await enqueueTranslationJob(threadId).catch((error) => {
+    console.error("[initialize-translations] Failed to enqueue job:", error);
+    // Continue anyway - worker will pick it up via polling if queue fails
+  });
+
+  // Optional: run a tiny "warm start" tick if explicitly requested (debug only)
+  // Default is false - worker handles processing in background
+  // This micro-tick is quality-safe (won't finalize partial lines) but still blocks the request
   let tickResult = null;
   if (runInitialTick && job.status !== "completed") {
+    console.warn(
+      "[initialize-translations] runInitialTick=true requested - this blocks the request. Use worker for production."
+    );
+    const { runTranslationTick } = await import(
+      "@/lib/workshop/runTranslationTick"
+    );
     tickResult = await runTranslationTick(threadId, {
-      maxProcessingTimeMs: 6000,
+      maxProcessingTimeMs: 500, // Small budget, returns fast, quality-safe
     });
   }
 
   const latestJob = await getTranslationJob(threadId);
   const progress = summarizeTranslationJob(latestJob);
 
-  return NextResponse.json({
-    ok: true,
-    job: latestJob,
-    tick: tickResult,
-    progress,
-  });
+  return NextResponse.json(
+    {
+      ok: true,
+      job: latestJob,
+      tick: tickResult,
+      progress,
+    },
+    {
+      headers: {
+        "Cache-Control": "no-store, max-age=0, must-revalidate",
+        Pragma: "no-cache",
+        Expires: "0",
+      },
+    }
+  );
 }

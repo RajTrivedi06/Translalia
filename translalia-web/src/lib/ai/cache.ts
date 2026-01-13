@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { randomUUID } from "crypto";
 
 const mem = new Map<string, { expires: number; value: unknown }>();
 
@@ -81,12 +82,20 @@ export async function getUpstashRedis(): Promise<unknown> {
 /**
  * Lock helper with explicit acquire/release semantics.
  * CRITICAL: In-memory fallback is DEV-ONLY. Production MUST use Upstash Redis.
+ *
+ * HARDENING: Uses UUID tokens and Lua compare-and-delete to prevent:
+ * - Releasing someone else's lock after TTL expiry
+ * - Race conditions when multiple processes compete for the same lock
  */
 export const lockHelper = {
   /**
-   * Atomic acquire: Redis SET ... NX EX (returns true only if lock acquired)
+   * Atomic acquire: Redis SET ... NX EX with UUID token.
+   * Returns the token if acquired, null if lock already held.
+   * IMPORTANT: Caller must store and pass this token to release().
    */
-  async acquire(key: string, ttlSec: number): Promise<boolean> {
+  async acquire(key: string, ttlSec: number): Promise<string | null> {
+    const token = randomUUID();
+
     // Production or explicit Redis flag: use Upstash Redis
     if (
       process.env.NODE_ENV === "production" ||
@@ -96,7 +105,7 @@ export const lockHelper = {
       if (!redis) {
         throw new Error("Redis required for locking in production");
       }
-      // SET key "1" NX EX ttlSec - returns "OK" if acquired, null if already exists
+      // SET key <uuid> NX EX ttlSec - returns "OK" if acquired, null if already exists
       const result = await (
         redis as {
           set: (
@@ -105,8 +114,9 @@ export const lockHelper = {
             opts: { nx: boolean; ex: number }
           ) => Promise<string | null>;
         }
-      ).set(key, "1", { nx: true, ex: ttlSec });
-      return result === "OK";
+      ).set(key, token, { nx: true, ex: ttlSec });
+
+      return result === "OK" ? token : null;
     }
 
     // DEV ONLY: In-memory fallback (NOT safe for Vercel/serverless!)
@@ -116,15 +126,25 @@ export const lockHelper = {
       );
     }
     const existing = await cacheGet<string>(key);
-    if (existing) return false;
-    await cacheSet(key, "locked", ttlSec);
-    return true;
+    if (existing) return null;
+    await cacheSet(key, token, ttlSec);
+    return token;
   },
 
   /**
-   * Explicit release: Redis DEL (MUST be a real delete, not set-to-null)
+   * Safe release: Only deletes the lock if we still own it (token matches).
+   * Uses Lua compare-and-delete script for atomicity in Redis.
+   * Prevents releasing someone else's lock after TTL expiry.
+   *
+   * @param key - The lock key
+   * @param token - The token returned by acquire() (required)
    */
-  async release(key: string): Promise<void> {
+  async release(key: string, token: string): Promise<void> {
+    if (!token) {
+      console.warn("[lockHelper.release] No token provided, skipping release");
+      return;
+    }
+
     // Production or explicit Redis flag: use Upstash Redis
     if (
       process.env.NODE_ENV === "production" ||
@@ -134,12 +154,45 @@ export const lockHelper = {
       if (!redis) {
         throw new Error("Redis required for locking in production");
       }
-      await (redis as { del: (key: string) => Promise<number> }).del(key);
+
+      // Lua script for atomic compare-and-delete:
+      // Only deletes if the current value equals our token
+      const luaScript = `
+        if redis.call("get", KEYS[1]) == ARGV[1] then
+          return redis.call("del", KEYS[1])
+        else
+          return 0
+        end
+      `;
+
+      try {
+        await (
+          redis as {
+            eval: (
+              script: string,
+              keys: string[],
+              args: string[]
+            ) => Promise<number>;
+          }
+        ).eval(luaScript, [key], [token]);
+      } catch (err) {
+        // Fallback for Redis clients that don't support eval directly
+        // Check-then-delete (not atomic, but better than unconditional delete)
+        const currentValue = await (
+          redis as { get: (key: string) => Promise<string | null> }
+        ).get(key);
+        if (currentValue === token) {
+          await (redis as { del: (key: string) => Promise<number> }).del(key);
+        }
+      }
       return;
     }
 
-    // DEV ONLY: In-memory delete
-    await cacheDelete(key);
+    // DEV ONLY: In-memory compare-and-delete
+    const existing = await cacheGet<string>(key);
+    if (existing === token) {
+      await cacheDelete(key);
+    }
   },
 };
 

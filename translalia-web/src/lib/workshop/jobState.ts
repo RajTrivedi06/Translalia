@@ -11,7 +11,7 @@ import type {
 } from "@/types/translationJob";
 
 const DEFAULT_MAX_CONCURRENT = 5;
-const DEFAULT_MAX_STANZAS_PER_TICK = 2;
+const DEFAULT_MAX_STANZAS_PER_TICK = 5; // Increased from 2 to match maxConcurrent for parallel processing
 const DEFAULT_MAX_RETRIES = 3;
 
 interface ThreadState {
@@ -299,6 +299,89 @@ export async function updateStanzaStatus(
   });
 }
 
+/**
+ * Update alignment for a specific line in a stanza
+ * Used by alignment worker to add word-level alignments after text is finalized
+ */
+export async function updateLineAlignment(
+  threadId: string,
+  stanzaIndex: number,
+  lineIndex: number,
+  alignments: Array<
+    Array<{
+      original: string;
+      translation: string;
+      partOfSpeech: string;
+      position: number;
+    }>
+  >,
+  alignmentStatus: "ready" | "failed" = "ready"
+): Promise<TranslationJobState | null> {
+  const finalAlignmentStatus: "aligned" | "failed" =
+    alignmentStatus === "ready" ? "aligned" : "failed";
+
+  return mutateTranslationJob(threadId, (job) => {
+    const chunkOrStanzaStates = job.chunks || job.stanzas || {};
+    const stanza = chunkOrStanzaStates[stanzaIndex];
+    if (!stanza || !stanza.lines) {
+      return job;
+    }
+
+    // Find and update the specific line
+    const lineIndexInStanza = stanza.lines.findIndex(
+      (line) => line.line_number === lineIndex
+    );
+
+    if (lineIndexInStanza === -1) {
+      console.warn(
+        `[updateLineAlignment] Line ${lineIndex} not found in stanza ${stanzaIndex}`
+      );
+      return job;
+    }
+
+    // Update the line with alignments
+    const updatedLines = [...stanza.lines];
+    const line = updatedLines[lineIndexInStanza];
+
+    // Update translations with alignments
+    const updatedTranslations = line.translations.map((translation, idx) => ({
+      ...translation,
+      words: alignments[idx] || [],
+    }));
+
+    // Update alignmentStatus (translationStatus doesn't change)
+    updatedLines[lineIndexInStanza] = {
+      ...line,
+      translations: updatedTranslations,
+      alignmentStatus: finalAlignmentStatus,
+      updated_at: Date.now(),
+    };
+
+    // Update stanza with new lines array
+    const updatedStanza = {
+      ...stanza,
+      lines: updatedLines,
+    };
+
+    // Update both chunks and stanzas
+    if (job.chunks) {
+      job.chunks[stanzaIndex] = {
+        ...updatedStanza,
+        chunkIndex: stanzaIndex,
+      } as TranslationChunkState;
+    }
+
+    if (job.stanzas) {
+      job.stanzas[stanzaIndex] = {
+        ...updatedStanza,
+        stanzaIndex: stanzaIndex,
+      };
+    }
+
+    return job;
+  });
+}
+
 export function getNextStanzasToProcess(job: TranslationJobState): number[] {
   ensureQueuedCapacity(job);
 
@@ -343,10 +426,9 @@ export function mergeTickResult(
   result: TranslationTickResult
 ): TranslationJobState {
   // Use completedChunks if available, otherwise fall back to completedStanzas for backward compatibility
-  const completedIndices = result.completedChunks ?? result.completedStanzas ?? [];
-  job.active = job.active.filter(
-    (index) => !completedIndices.includes(index)
-  );
+  const completedIndices =
+    result.completedChunks ?? result.completedStanzas ?? [];
+  job.active = job.active.filter((index) => !completedIndices.includes(index));
 
   if (!result.hasWorkRemaining && job.active.length === 0) {
     job.status = "completed";

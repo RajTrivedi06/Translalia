@@ -13,9 +13,15 @@ import { buildRecipeAwarePrismaticPrompt } from "@/lib/ai/workshopPrompts";
 import { buildTranslatorPersonality } from "@/lib/ai/translatorPersonality";
 import {
   checkDistinctness,
-  regenerateVariant,
   type TranslationVariant,
 } from "@/lib/ai/diversityGate";
+import { regenerateVariantWithSalvage } from "@/lib/ai/regen";
+import {
+  validateAnchors,
+  validateAnchorRealizations,
+  validateSelfReportMetadata,
+  type Anchor,
+} from "@/lib/ai/anchorsValidation";
 import type { GuideAnswers } from "@/store/guideSlice";
 
 export const runtime = "nodejs";
@@ -338,7 +344,29 @@ export async function POST(req: NextRequest) {
 
     const content = completion.choices?.[0]?.message?.content?.trim() || "{}";
     const parsed = JSON.parse(content);
-    let variants: TranslationVariant[] = parsed.variants || [];
+
+    // Phase 1: Extract anchors and metadata (backward compatible)
+    const responseObj = parsed as {
+      anchors?: Anchor[];
+      variants?: Array<
+        TranslationVariant & {
+          anchor_realizations?: Record<string, string>;
+          b_image_shift_summary?: string;
+          c_world_shift_summary?: string;
+          c_subject_form_used?: string;
+        }
+      >;
+    };
+
+    let variants: Array<
+      TranslationVariant & {
+        anchor_realizations?: Record<string, string>;
+        b_image_shift_summary?: string;
+        c_world_shift_summary?: string;
+        c_subject_form_used?: string;
+      }
+    > = responseObj.variants || [];
+    const anchors = responseObj.anchors;
 
     // Validate structure
     if (!Array.isArray(variants) || variants.length !== 3) {
@@ -346,12 +374,115 @@ export async function POST(req: NextRequest) {
       return err(502, "INVALID_RESPONSE", "Expected 3 variants from model");
     }
 
-    // 11) Distinctness gate (cheap checks with mode-scaling)
-    const gateResult = checkDistinctness(variants, {
-      targetLanguage,
-      mode,
-      sourceText: body.sourceText,
-    });
+    // ========================================================================
+    // PHASE 1 VALIDATION: Anchors + Self-Report Metadata
+    // ========================================================================
+    let phase1FailureReason: string | null = null;
+    let phase1WorstIndex: number | null = null;
+
+    // Only run Phase 1 validation if anchors are present (backward compatible)
+    if (anchors && anchors.length > 0) {
+      // 1) Validate anchors array
+      const anchorsCheck = validateAnchors(anchors);
+      if (!anchorsCheck.valid) {
+        phase1FailureReason = `anchors_invalid: ${anchorsCheck.reason}`;
+        phase1WorstIndex = 2;
+
+        if (process.env.DEBUG_GATE === "1" || process.env.DEBUG_PHASE1 === "1") {
+          log("[DEBUG_PHASE1][anchors.invalid]", {
+            reason: anchorsCheck.reason,
+            invalidAnchorIds: anchorsCheck.invalidAnchorIds,
+          });
+        }
+      }
+
+      // 2) Validate anchor realizations for each variant
+      if (!phase1FailureReason) {
+        const anchorIds = anchors.map((a) => a.id);
+
+        for (let i = 0; i < variants.length; i++) {
+          const variant = variants[i];
+          const realizationsCheck = validateAnchorRealizations(
+            variant.text,
+            variant.anchor_realizations,
+            anchorIds,
+            targetLanguage
+          );
+
+          if (!realizationsCheck.valid) {
+            phase1FailureReason = `anchors_missing_realization: ${realizationsCheck.reason}`;
+            phase1WorstIndex = i;
+
+            if (process.env.DEBUG_GATE === "1" || process.env.DEBUG_PHASE1 === "1") {
+              log("[DEBUG_PHASE1][realizations.invalid]", {
+                variantIndex: i,
+                variantLabel: variant.label,
+                reason: realizationsCheck.reason,
+              });
+            }
+
+            break;
+          }
+        }
+      }
+
+      // 3) Validate self-report metadata for B and C
+      if (!phase1FailureReason) {
+        const recipeC = recipes.recipes.find((r) => r.label === "C");
+        const stancePlanSubjectForm = recipeC?.stance_plan?.subject_form;
+        const anchorIds = anchors.map((a) => a.id);
+
+        for (let i = 0; i < variants.length; i++) {
+          const variant = variants[i];
+          const label = variant.label;
+
+          const metadataCheck = validateSelfReportMetadata(
+            variant,
+            label,
+            anchorIds,
+            mode,
+            stancePlanSubjectForm
+          );
+
+          if (!metadataCheck.valid) {
+            phase1FailureReason = `self_report_invalid: ${metadataCheck.reason}`;
+            phase1WorstIndex = metadataCheck.invalidVariants?.[0] ?? i;
+
+            if (process.env.DEBUG_GATE === "1" || process.env.DEBUG_PHASE1 === "1") {
+              log("[DEBUG_PHASE1][self_report.invalid]", {
+                variantIndex: i,
+                variantLabel: label,
+                reason: metadataCheck.reason,
+              });
+            }
+
+            break;
+          }
+        }
+      }
+
+      if (phase1FailureReason && phase1WorstIndex !== null) {
+        log("phase1_validation_failed", {
+          reason: phase1FailureReason,
+          worstIndex: phase1WorstIndex,
+        });
+      } else if (process.env.DEBUG_GATE === "1" || process.env.DEBUG_PHASE1 === "1") {
+        log("[DEBUG_PHASE1][pass]", {
+          anchorsCount: anchors.length,
+          anchorIds: anchors.map((a) => a.id),
+          mode,
+        });
+      }
+    }
+
+    // 11) Distinctness gate (cheap checks with mode-scaling) - Phase 2
+    const gateResult = phase1FailureReason
+      ? { pass: false, worstIndex: phase1WorstIndex, reason: phase1FailureReason }
+      : checkDistinctness(variants, {
+          targetLanguage,
+          mode,
+          sourceText: body.sourceText,
+        });
     log("distinctness_gate", {
       pass: gateResult.pass,
       maxOverlap: gateResult.details?.maxOverlap,
@@ -365,39 +496,111 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 12) Conditional single-variant regeneration (max 1 extra call)
+    // 12) Conditional single-variant regeneration (Phase 3: Multi-sample salvage)
     if (!gateResult.pass && gateResult.worstIndex !== null) {
+      const idx = gateResult.worstIndex;
+      const label = variants[idx]?.label;
+      const recipeForLabel = recipes.recipes.find((r) => r.label === label);
+      const originalText = variants[idx]?.text;
+
       log("regenerating_variant", {
-        index: gateResult.worstIndex,
+        index: idx,
+        label,
         reason: gateResult.reason,
       });
       if (process.env.DEBUG_VARIANTS === "1") {
         log("[DEBUG_VARIANTS][regen.invoked]", {
-          index: gateResult.worstIndex,
+          index: idx,
+          label,
           reason: gateResult.reason,
-          recipe: recipes.recipes[gateResult.worstIndex],
+          recipe: recipeForLabel,
         });
       }
 
-      try {
-        const regenerated = await regenerateVariant(
-          variants,
-          gateResult.worstIndex,
-          recipes.recipes[gateResult.worstIndex],
-          {
-            sourceText: body.sourceText,
-            sourceLanguage,
+      if (label && recipeForLabel && anchors) {
+        try {
+          // Build fixed variants array (other two variants that passed)
+          const fixedVariants = variants
+            .filter((_, i) => i !== idx)
+            .map((v) => ({
+              label: v.label,
+              text: v.text,
+            }));
+
+          // Get stance plan subject form for C validation
+          const recipeC = recipes.recipes.find((r) => r.label === "C");
+          const stancePlanSubjectForm = recipeC?.stance_plan?.subject_form;
+
+          // Call multi-sample salvage with K=6 for balanced/adventurous, K=1 for focused
+          const regenResult = await regenerateVariantWithSalvage(
+            idx,
+            fixedVariants,
+            recipeForLabel,
+            recipes,
+            {
+              lineText: body.sourceText,
+              sourceLanguage,
+              targetLanguage,
+              mode,
+              stancePlanSubjectForm,
+            },
+            anchors,
+            gateResult.reason || "distinctness_check_failed",
+            modelToUse // Pass the model used for initial generation
+          );
+
+          // Update variant with regenerated result
+          variants[idx] = {
+            label,
+            text: regenResult.text,
+            anchor_realizations: regenResult.anchor_realizations,
+            b_image_shift_summary: regenResult.b_image_shift_summary,
+            c_world_shift_summary: regenResult.c_world_shift_summary,
+            c_subject_form_used: regenResult.c_subject_form_used,
+          };
+
+          // Debug: check if regen returned the same text
+          const regenChangedText = regenResult.text !== originalText;
+
+          // Re-check distinctness after regeneration (best-effort)
+          const recheckResult = checkDistinctness(variants, {
+            mode,
             targetLanguage,
+            sourceText: body.sourceText,
+          });
+
+          if (process.env.DEBUG_GATE === "1" || process.env.DEBUG_REGEN === "1") {
+            log("[DEBUG_GATE][prismatic.recheck]", {
+              regenIndex: idx,
+              regenChangedText,
+              candidatesGenerated: regenResult.candidatesGenerated,
+              candidatesValid: regenResult.candidatesValid,
+              selectedReason: regenResult.selectedReason,
+              recheckPass: recheckResult.pass,
+              recheckReason: recheckResult.reason,
+              recheckMaxOverlap: recheckResult.details?.maxOverlap,
+            });
           }
-        );
-        variants[gateResult.worstIndex] = regenerated;
-        log("regeneration_complete");
-      } catch (regenError: unknown) {
-        // Regeneration failed - continue with original variants
-        const message =
-          regenError instanceof Error ? regenError.message : String(regenError);
-        log("regeneration_failed", message);
-        // Don't fail the whole request, just use original variants
+
+          if (!recheckResult.pass) {
+            log("recheck_after_regen_failed", {
+              reason: recheckResult.reason,
+              maxOverlap: recheckResult.details?.maxOverlap,
+            });
+            // Continue anyway - best-effort, no extra regen loop
+          } else {
+            log("regeneration_complete");
+          }
+        } catch (regenError: unknown) {
+          // Regeneration failed - continue with original variants
+          const message =
+            regenError instanceof Error ? regenError.message : String(regenError);
+          log("regeneration_failed", message);
+          // Don't fail the whole request, just use original variants
+        }
+      } else if (!anchors) {
+        log("skip_regen_no_anchors", "Cannot regenerate without anchors (backward compatibility mode)");
+        // Skip regeneration if no anchors (backward compatibility)
       }
     }
 

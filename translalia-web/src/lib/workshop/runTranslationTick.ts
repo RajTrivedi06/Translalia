@@ -257,16 +257,17 @@ export async function runTranslationTick(
   const maxProcessingTime = options.maxProcessingTimeMs ?? 8000;
   const windowStart = Date.now();
 
-  for (const stanzaIndex of started) {
+  // Process chunks in parallel with Promise.allSettled
+  console.log(`[runTranslationTick] Processing ${started.length} chunks in parallel`);
+  const processingPromises = started.map(async (stanzaIndex) => {
+    // Check timeout before starting
     if (Date.now() - windowStart > maxProcessingTime) {
-      skipped.push(stanzaIndex);
-      continue;
+      return { stanzaIndex, status: 'skipped' as const };
     }
 
     const stanza = stanzaResult.stanzas[stanzaIndex];
     if (!stanza) {
-      failed.push(stanzaIndex);
-      continue;
+      return { stanzaIndex, status: 'failed' as const, error: new Error('Stanza not found') };
     }
 
     try {
@@ -283,7 +284,7 @@ export async function runTranslationTick(
         auditProjectId: context.projectId,
       });
 
-      completed.push(stanzaIndex);
+      // Update job state to mark chunk as completed
       await updateTranslationJob(threadId, (draft) => {
         applyMetadata(draft);
         const chunkOrStanzaStates = draft.chunks || draft.stanzas || {};
@@ -297,12 +298,15 @@ export async function runTranslationTick(
         draft.active = draft.active.filter((index) => index !== stanzaIndex);
         return markJobCompletedIfDone(draft);
       });
+
+      return { stanzaIndex, status: 'completed' as const };
     } catch (error: unknown) {
       console.error(
         `[runTranslationTick] Failed to process stanza ${stanzaIndex} for ${threadId}`,
         error
       );
-      failed.push(stanzaIndex);
+
+      // Update job state to mark chunk as failed
       await updateTranslationJob(threadId, (draft) => {
         applyMetadata(draft);
         const chunkOrStanzaStates = draft.chunks || draft.stanzas || {};
@@ -318,8 +322,35 @@ export async function runTranslationTick(
         draft.active = draft.active.filter((index) => index !== stanzaIndex);
         return draft;
       });
+
+      return { stanzaIndex, status: 'failed' as const, error };
     }
-  }
+  });
+
+  const results = await Promise.allSettled(processingPromises);
+
+  // Categorize results
+  results.forEach((result, idx) => {
+    if (result.status === 'fulfilled') {
+      const { stanzaIndex, status } = result.value;
+      if (status === 'completed') {
+        completed.push(stanzaIndex);
+      } else if (status === 'skipped') {
+        skipped.push(stanzaIndex);
+      } else if (status === 'failed') {
+        failed.push(stanzaIndex);
+      }
+    } else {
+      // Promise rejected (shouldn't happen with try-catch, but handle it)
+      console.error('[runTranslationTick] Unexpected rejection:', result.reason);
+      const stanzaIndex = started[idx];
+      if (stanzaIndex !== undefined) {
+        failed.push(stanzaIndex);
+      }
+    }
+  });
+
+  console.log(`[runTranslationTick] Parallel processing complete: ${completed.length} completed, ${failed.length} failed, ${skipped.length} skipped`);
 
   if (skipped.length > 0) {
     await updateTranslationJob(threadId, (draft) => {

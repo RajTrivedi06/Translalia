@@ -1,0 +1,1714 @@
+[
+  {
+    "input": {
+      "id": "fr-en-1",
+      "sourceLanguage": "French",
+      "targetLanguage": "English",
+      "lineText": "Je marche dans la pluie comme une pensée qui s'égare",
+      "fullPoem": "Je marche dans la pluie comme une pensée qui s'égare\nLe ciel pleure des larmes d'argent\nEt la ville s'endort sous son voile de brume",
+      "lineIndex": 0,
+      "category": "metaphor-heavy"
+    },
+    "method1": {
+      "variants": [
+        {
+          "variant": 1,
+          "fullText": "I walk in the rain like a thought that wanders",
+          "words": [
+            "I",
+            "walk",
+            "in",
+            "the",
+            "rain",
+            "like",
+            "a",
+            "thought",
+            "that",
+            "wanders"
+          ],
+          "metadata": {
+            "literalness": 0.9,
+            "characterCount": 45
+          }
+        },
+        {
+          "variant": 2,
+          "fullText": "I'm walking in the rain as if my mind drifts away",
+          "words": [
+            "I'm",
+            "walking",
+            "in",
+            "the",
+            "rain",
+            "as",
+            "if",
+            "my",
+            "mind",
+            "drifts",
+            "away"
+          ],
+          "metadata": {
+            "literalness": 0.5,
+            "characterCount": 54
+          }
+        },
+        {
+          "variant": 3,
+          "fullText": "In the rain I wander, my thoughts lost in the mist",
+          "words": [
+            "In",
+            "the",
+            "rain",
+            "I",
+            "wander",
+            "my",
+            "thoughts",
+            "lost",
+            "in",
+            "the",
+            "mist"
+          ],
+          "metadata": {
+            "literalness": 0.2,
+            "characterCount": 56
+          }
+        }
+      ],
+      "metrics": {
+        "jaccardOverlap": {
+          "v1v2": 0.2222222222222222,
+          "v1v3": 0.26666666666666666,
+          "v2v3": 0.3125,
+          "avg": 0.26712962962962966
+        },
+        "bigramOverlap": {
+          "v1v2": 0.1111111111111111,
+          "v1v3": 0.125,
+          "v2v3": 0.1111111111111111,
+          "avg": 0.11574074074074074
+        },
+        "uniqueTokens": {
+          "v1": 10,
+          "v2": 12,
+          "v3": 9,
+          "total": 31,
+          "uniqueAcrossAll": 22
+        },
+        "openingDiversity": {
+          "sameFirst3Tokens": false,
+          "sameFirstWord": true
+        },
+        "structuralDiversity": {
+          "subjectOpeners": [
+            "I",
+            "I"
+          ],
+          "comparisonMarkers": [
+            "like",
+            "as if"
+          ],
+          "hasPronounShift": false
+        }
+      },
+      "latencyMs": 3238
+    },
+    "method2": {
+      "variants": [
+        {
+          "variant": 1,
+          "fullText": "I walk in the rain like a thought that wanders",
+          "words": [],
+          "metadata": {
+            "literalness": 0.8,
+            "characterCount": 46
+          }
+        },
+        {
+          "variant": 2,
+          "fullText": "Strolling through the rain, akin to a drifting thought, as if meandering through a Parisian street",
+          "words": [],
+          "metadata": {
+            "literalness": 0.5,
+            "characterCount": 98
+          }
+        },
+        {
+          "variant": 3,
+          "fullText": "In the rain, we drift, thoughts stray like leaves down quiet village pathways",
+          "words": [],
+          "metadata": {
+            "literalness": 0.3,
+            "characterCount": 77
+          }
+        }
+      ],
+      "metrics": {
+        "jaccardOverlap": {
+          "v1v2": 0.2,
+          "v1v3": 0.21052631578947367,
+          "v2v3": 0.08,
+          "avg": 0.16350877192982458
+        },
+        "bigramOverlap": {
+          "v1v2": 0.043478260869565216,
+          "v1v3": 0.10526315789473684,
+          "v2v3": 0.038461538461538464,
+          "avg": 0.062400985741946836
+        },
+        "uniqueTokens": {
+          "v1": 10,
+          "v2": 14,
+          "v3": 13,
+          "total": 37,
+          "uniqueAcrossAll": 29
+        },
+        "openingDiversity": {
+          "sameFirst3Tokens": false,
+          "sameFirstWord": false
+        },
+        "structuralDiversity": {
+          "subjectOpeners": [
+            "I"
+          ],
+          "comparisonMarkers": [
+            "like",
+            "as if",
+            "like"
+          ],
+          "hasPronounShift": false
+        }
+      },
+      "latencyMs": 4816,
+      "regenCount": 0
+    },
+    "comparison": {
+      "method2MoreDiverse": true,
+      "diversityDelta": 0.10362085769980511,
+      "verdict": "method2-wins"
+    }
+  },
+  {
+    "input": {
+      "id": "fr-en-2",
+      "sourceLanguage": "French",
+      "targetLanguage": "English",
+      "lineText": "Le ciel pleure des larmes d'argent",
+      "fullPoem": "Je marche dans la pluie comme une pensée qui s'égare\nLe ciel pleure des larmes d'argent\nEt la ville s'endort sous son voile de brume",
+      "lineIndex": 1,
+      "category": "metaphor-heavy"
+    },
+    "method1": {
+      "variants": [
+        {
+          "variant": 1,
+          "fullText": "The sky cries tears of silver",
+          "words": [
+            "The",
+            "sky",
+            "cries",
+            "tears",
+            "of",
+            "silver"
+          ],
+          "metadata": {
+            "literalness": 0.9,
+            "characterCount": 28
+          }
+        },
+        {
+          "variant": 2,
+          "fullText": "The sky weeps silver tears",
+          "words": [
+            "The",
+            "sky",
+            "weeps",
+            "silver",
+            "tears"
+          ],
+          "metadata": {
+            "literalness": 0.5,
+            "characterCount": 26
+          }
+        },
+        {
+          "variant": 3,
+          "fullText": "Above, silver tears fall from the sky",
+          "words": [
+            "Above",
+            "silver",
+            "tears",
+            "fall",
+            "from",
+            "the",
+            "sky"
+          ],
+          "metadata": {
+            "literalness": 0.2,
+            "characterCount": 39
+          }
+        }
+      ],
+      "metrics": {
+        "jaccardOverlap": {
+          "v1v2": 0.5714285714285714,
+          "v1v3": 0.4444444444444444,
+          "v2v3": 0.5,
+          "avg": 0.5052910052910052
+        },
+        "bigramOverlap": {
+          "v1v2": 0.125,
+          "v1v3": 0.1,
+          "v2v3": 0.25,
+          "avg": 0.15833333333333333
+        },
+        "uniqueTokens": {
+          "v1": 6,
+          "v2": 5,
+          "v3": 7,
+          "total": 18,
+          "uniqueAcrossAll": 10
+        },
+        "openingDiversity": {
+          "sameFirst3Tokens": false,
+          "sameFirstWord": true
+        },
+        "structuralDiversity": {
+          "subjectOpeners": [
+            "the-NP",
+            "the-NP"
+          ],
+          "comparisonMarkers": [],
+          "hasPronounShift": false
+        }
+      },
+      "latencyMs": 2617
+    },
+    "method2": {
+      "variants": [
+        {
+          "variant": 1,
+          "fullText": "The sky cries tears of silver",
+          "words": [],
+          "metadata": {
+            "literalness": 0.8,
+            "characterCount": 29
+          }
+        },
+        {
+          "variant": 2,
+          "fullText": "Above, the heavens shed glistening tears, like molten silver",
+          "words": [],
+          "metadata": {
+            "literalness": 0.5,
+            "characterCount": 60
+          }
+        },
+        {
+          "variant": 3,
+          "fullText": "Silver drops weep from skies above",
+          "words": [],
+          "metadata": {
+            "literalness": 0.3,
+            "characterCount": 34
+          }
+        }
+      ],
+      "metrics": {
+        "jaccardOverlap": {
+          "v1v2": 0.25,
+          "v1v3": 0.09090909090909091,
+          "v2v3": 0.15384615384615385,
+          "avg": 0.16491841491841494
+        },
+        "bigramOverlap": {
+          "v1v2": 0,
+          "v1v3": 0,
+          "v2v3": 0,
+          "avg": 0
+        },
+        "uniqueTokens": {
+          "v1": 6,
+          "v2": 9,
+          "v3": 6,
+          "total": 21,
+          "uniqueAcrossAll": 16
+        },
+        "openingDiversity": {
+          "sameFirst3Tokens": false,
+          "sameFirstWord": false
+        },
+        "structuralDiversity": {
+          "subjectOpeners": [
+            "the-NP"
+          ],
+          "comparisonMarkers": [
+            "like"
+          ],
+          "hasPronounShift": false
+        }
+      },
+      "latencyMs": 3140,
+      "regenCount": 0
+    },
+    "comparison": {
+      "method2MoreDiverse": true,
+      "diversityDelta": 0.34037259037259027,
+      "verdict": "method2-wins"
+    }
+  },
+  {
+    "input": {
+      "id": "es-en-1",
+      "sourceLanguage": "Spanish",
+      "targetLanguage": "English",
+      "lineText": "El sol se pone detrás de las montañas",
+      "fullPoem": "El sol se pone detrás de las montañas\nLas sombras se alargan en el valle\nY el día termina en silencio",
+      "lineIndex": 0,
+      "category": "plain"
+    },
+    "method1": {
+      "variants": [
+        {
+          "variant": 1,
+          "fullText": "The sun sets behind the mountains",
+          "words": [
+            "The",
+            "sun",
+            "sets",
+            "behind",
+            "the",
+            "mountains"
+          ],
+          "metadata": {
+            "literalness": 0.9,
+            "characterCount": 33
+          }
+        },
+        {
+          "variant": 2,
+          "fullText": "The sun dips behind the mountains",
+          "words": [
+            "The",
+            "sun",
+            "dips",
+            "behind",
+            "the",
+            "mountains"
+          ],
+          "metadata": {
+            "literalness": 0.5,
+            "characterCount": 35
+          }
+        },
+        {
+          "variant": 3,
+          "fullText": "The sun slips away beyond the peaks",
+          "words": [
+            "The",
+            "sun",
+            "slips",
+            "away",
+            "beyond",
+            "the",
+            "peaks"
+          ],
+          "metadata": {
+            "literalness": 0.2,
+            "characterCount": 38
+          }
+        }
+      ],
+      "metrics": {
+        "jaccardOverlap": {
+          "v1v2": 0.6666666666666666,
+          "v1v3": 0.2222222222222222,
+          "v2v3": 0.2222222222222222,
+          "avg": 0.3703703703703704
+        },
+        "bigramOverlap": {
+          "v1v2": 0.42857142857142855,
+          "v1v3": 0.1,
+          "v2v3": 0.1,
+          "avg": 0.20952380952380953
+        },
+        "uniqueTokens": {
+          "v1": 5,
+          "v2": 5,
+          "v3": 6,
+          "total": 16,
+          "uniqueAcrossAll": 10
+        },
+        "openingDiversity": {
+          "sameFirst3Tokens": false,
+          "sameFirstWord": true
+        },
+        "structuralDiversity": {
+          "subjectOpeners": [
+            "the-NP",
+            "the-NP",
+            "the-NP"
+          ],
+          "comparisonMarkers": [],
+          "hasPronounShift": false
+        }
+      },
+      "latencyMs": 1902
+    },
+    "method2": {
+      "variants": [
+        {
+          "variant": 1,
+          "fullText": "The sun sets behind the mountains",
+          "words": [],
+          "metadata": {
+            "literalness": 0.8,
+            "characterCount": 33
+          }
+        },
+        {
+          "variant": 2,
+          "fullText": "Behind the peaks, the sun dips gently down",
+          "words": [],
+          "metadata": {
+            "literalness": 0.5,
+            "characterCount": 42
+          }
+        },
+        {
+          "variant": 3,
+          "fullText": "We watch the sun sink past the mountain tops",
+          "words": [],
+          "metadata": {
+            "literalness": 0.3,
+            "characterCount": 44
+          }
+        }
+      ],
+      "metrics": {
+        "jaccardOverlap": {
+          "v1v2": 0.3333333333333333,
+          "v1v3": 0.18181818181818182,
+          "v2v3": 0.15384615384615385,
+          "avg": 0.222999222999223
+        },
+        "bigramOverlap": {
+          "v1v2": 0.2,
+          "v1v3": 0.08333333333333333,
+          "v2v3": 0.07142857142857142,
+          "avg": 0.11825396825396824
+        },
+        "uniqueTokens": {
+          "v1": 5,
+          "v2": 7,
+          "v3": 8,
+          "total": 20,
+          "uniqueAcrossAll": 15
+        },
+        "openingDiversity": {
+          "sameFirst3Tokens": false,
+          "sameFirstWord": false
+        },
+        "structuralDiversity": {
+          "subjectOpeners": [
+            "the-NP",
+            "we"
+          ],
+          "comparisonMarkers": [],
+          "hasPronounShift": false
+        }
+      },
+      "latencyMs": 3478,
+      "regenCount": 0
+    },
+    "comparison": {
+      "method2MoreDiverse": true,
+      "diversityDelta": 0.14737114737114743,
+      "verdict": "method2-wins"
+    }
+  },
+  {
+    "input": {
+      "id": "es-en-2",
+      "sourceLanguage": "Spanish",
+      "targetLanguage": "English",
+      "lineText": "Como el viento entre los árboles, mi corazón suspira",
+      "fullPoem": "Como el viento entre los árboles, mi corazón suspira\nBuscando la paz que el mundo no ofrece\nEn la quietud de la noche encuentro consuelo",
+      "lineIndex": 0,
+      "category": "metaphor-heavy"
+    },
+    "method1": {
+      "variants": [
+        {
+          "variant": 1,
+          "fullText": "Like the wind among the trees, my heart sighs",
+          "words": [
+            "Like",
+            "wind",
+            "among",
+            "trees",
+            "heart",
+            "sighs"
+          ],
+          "metadata": {
+            "literalness": 0.9,
+            "characterCount": 44
+          }
+        },
+        {
+          "variant": 2,
+          "fullText": "As the wind moves through the trees, my heart sighs",
+          "words": [
+            "As",
+            "wind",
+            "moves",
+            "through",
+            "trees",
+            "heart",
+            "sighs"
+          ],
+          "metadata": {
+            "literalness": 0.5,
+            "characterCount": 53
+          }
+        },
+        {
+          "variant": 3,
+          "fullText": "My heart sighs like the breeze whispering through the trees",
+          "words": [
+            "heart",
+            "sighs",
+            "breeze",
+            "whispering",
+            "through",
+            "trees"
+          ],
+          "metadata": {
+            "literalness": 0.2,
+            "characterCount": 61
+          }
+        }
+      ],
+      "metrics": {
+        "jaccardOverlap": {
+          "v1v2": 0.5454545454545454,
+          "v1v3": 0.5454545454545454,
+          "v2v3": 0.5,
+          "avg": 0.5303030303030303
+        },
+        "bigramOverlap": {
+          "v1v2": 0.4166666666666667,
+          "v1v3": 0.3076923076923077,
+          "v2v3": 0.2857142857142857,
+          "avg": 0.33669108669108666
+        },
+        "uniqueTokens": {
+          "v1": 8,
+          "v2": 9,
+          "v3": 9,
+          "total": 26,
+          "uniqueAcrossAll": 13
+        },
+        "openingDiversity": {
+          "sameFirst3Tokens": false,
+          "sameFirstWord": false
+        },
+        "structuralDiversity": {
+          "subjectOpeners": [],
+          "comparisonMarkers": [
+            "like",
+            "as",
+            "like"
+          ],
+          "hasPronounShift": false
+        }
+      },
+      "latencyMs": 2615
+    },
+    "method2": {
+      "variants": [
+        {
+          "variant": 1,
+          "fullText": "Like the wind among the trees, my heart sighs",
+          "words": [],
+          "metadata": {
+            "literalness": 0.8,
+            "characterCount": 45
+          }
+        },
+        {
+          "variant": 2,
+          "fullText": "My heart sighs, like a breeze weaving through trees",
+          "words": [],
+          "metadata": {
+            "literalness": 0.5,
+            "characterCount": 51
+          }
+        },
+        {
+          "variant": 3,
+          "fullText": "We sigh like the breeze caressing the forest",
+          "words": [],
+          "metadata": {
+            "literalness": 0.3,
+            "characterCount": 44
+          }
+        }
+      ],
+      "metrics": {
+        "jaccardOverlap": {
+          "v1v2": 0.4166666666666667,
+          "v1v3": 0.15384615384615385,
+          "v2v3": 0.14285714285714285,
+          "avg": 0.23778998778998775
+        },
+        "bigramOverlap": {
+          "v1v2": 0.14285714285714285,
+          "v1v3": 0.07142857142857142,
+          "v2v3": 0,
+          "avg": 0.07142857142857142
+        },
+        "uniqueTokens": {
+          "v1": 8,
+          "v2": 9,
+          "v3": 7,
+          "total": 24,
+          "uniqueAcrossAll": 16
+        },
+        "openingDiversity": {
+          "sameFirst3Tokens": false,
+          "sameFirstWord": false
+        },
+        "structuralDiversity": {
+          "subjectOpeners": [
+            "we"
+          ],
+          "comparisonMarkers": [
+            "like",
+            "like",
+            "like"
+          ],
+          "hasPronounShift": false
+        }
+      },
+      "latencyMs": 4507,
+      "regenCount": 0
+    },
+    "comparison": {
+      "method2MoreDiverse": true,
+      "diversityDelta": 0.29251304251304255,
+      "verdict": "method2-wins"
+    }
+  },
+  {
+    "input": {
+      "id": "hi-en-1",
+      "sourceLanguage": "Hindi",
+      "targetLanguage": "English",
+      "lineText": "चाँद की रोशनी में नदी चमकती है",
+      "fullPoem": "चाँद की रोशनी में नदी चमकती है\nरात के सन्नाटे में एक गीत गूंजता है\nमेरी आत्मा शांति खोजती है",
+      "lineIndex": 0,
+      "category": "plain"
+    },
+    "method1": {
+      "variants": [
+        {
+          "variant": 1,
+          "fullText": "The river shines in the moonlight",
+          "words": [
+            "moonlight",
+            "river",
+            "shines"
+          ],
+          "metadata": {
+            "literalness": 0.9,
+            "characterCount": 35
+          }
+        },
+        {
+          "variant": 2,
+          "fullText": "In the moon's glow, the river sparkles",
+          "words": [
+            "moon",
+            "glow",
+            "river",
+            "sparkles"
+          ],
+          "metadata": {
+            "literalness": 0.5,
+            "characterCount": 44
+          }
+        },
+        {
+          "variant": 3,
+          "fullText": "Under moonlit skies, the river gleams",
+          "words": [
+            "moonlit",
+            "skies",
+            "river",
+            "gleams"
+          ],
+          "metadata": {
+            "literalness": 0.2,
+            "characterCount": 45
+          }
+        }
+      ],
+      "metrics": {
+        "jaccardOverlap": {
+          "v1v2": 0.3333333333333333,
+          "v1v3": 0.2222222222222222,
+          "v2v3": 0.18181818181818182,
+          "avg": 0.2457912457912458
+        },
+        "bigramOverlap": {
+          "v1v2": 0.2,
+          "v1v3": 0.1111111111111111,
+          "v2v3": 0.09090909090909091,
+          "avg": 0.13400673400673402
+        },
+        "uniqueTokens": {
+          "v1": 5,
+          "v2": 7,
+          "v3": 6,
+          "total": 18,
+          "uniqueAcrossAll": 13
+        },
+        "openingDiversity": {
+          "sameFirst3Tokens": false,
+          "sameFirstWord": false
+        },
+        "structuralDiversity": {
+          "subjectOpeners": [
+            "the-NP"
+          ],
+          "comparisonMarkers": [],
+          "hasPronounShift": false
+        }
+      },
+      "latencyMs": 3415
+    },
+    "method2": {
+      "variants": [
+        {
+          "variant": 1,
+          "fullText": "The river shines in the moonlight",
+          "words": [],
+          "metadata": {
+            "literalness": 0.8,
+            "characterCount": 33
+          }
+        },
+        {
+          "variant": 2,
+          "fullText": "Under the moon's glow, the river gleams",
+          "words": [],
+          "metadata": {
+            "literalness": 0.5,
+            "characterCount": 39
+          }
+        },
+        {
+          "variant": 3,
+          "fullText": "A river, aglow in moon's embrace, shines",
+          "words": [],
+          "metadata": {
+            "literalness": 0.3,
+            "characterCount": 40
+          }
+        }
+      ],
+      "metrics": {
+        "jaccardOverlap": {
+          "v1v2": 0.2,
+          "v1v3": 0.3,
+          "v2v3": 0.25,
+          "avg": 0.25
+        },
+        "bigramOverlap": {
+          "v1v2": 0.09090909090909091,
+          "v1v3": 0,
+          "v2v3": 0.07692307692307693,
+          "avg": 0.055944055944055944
+        },
+        "uniqueTokens": {
+          "v1": 5,
+          "v2": 7,
+          "v3": 8,
+          "total": 20,
+          "uniqueAcrossAll": 13
+        },
+        "openingDiversity": {
+          "sameFirst3Tokens": false,
+          "sameFirstWord": false
+        },
+        "structuralDiversity": {
+          "subjectOpeners": [
+            "the-NP",
+            "indef-NP"
+          ],
+          "comparisonMarkers": [],
+          "hasPronounShift": false
+        }
+      },
+      "latencyMs": 3077,
+      "regenCount": 0
+    },
+    "comparison": {
+      "method2MoreDiverse": false,
+      "diversityDelta": -0.004208754208754217,
+      "verdict": "tie"
+    }
+  },
+  {
+    "input": {
+      "id": "hi-en-2",
+      "sourceLanguage": "Hindi",
+      "targetLanguage": "English",
+      "lineText": "प्यार एक समुद्र है जिसमें मैं डूबता हूँ",
+      "fullPoem": "प्यार एक समुद्र है जिसमें मैं डूबता हूँ\nहर लहर मुझे किनारे से दूर ले जाती है\nफिर भी मैं तैरता रहता हूँ",
+      "lineIndex": 0,
+      "category": "metaphor-heavy"
+    },
+    "method1": {
+      "variants": [
+        {
+          "variant": 1,
+          "fullText": "Love is an ocean in which I drown",
+          "words": [
+            "Love",
+            "is",
+            "an",
+            "ocean",
+            "in",
+            "which",
+            "I",
+            "drown"
+          ],
+          "metadata": {
+            "literalness": 0.9,
+            "characterCount": 32
+          }
+        },
+        {
+          "variant": 2,
+          "fullText": "Love is an ocean where I find myself submerged",
+          "words": [
+            "Love",
+            "is",
+            "an",
+            "ocean",
+            "where",
+            "I",
+            "find",
+            "myself",
+            "submerged"
+          ],
+          "metadata": {
+            "literalness": 0.5,
+            "characterCount": 47
+          }
+        },
+        {
+          "variant": 3,
+          "fullText": "In love's vast sea, I lose myself beneath the waves",
+          "words": [
+            "In",
+            "love's",
+            "vast",
+            "sea",
+            "I",
+            "lose",
+            "myself",
+            "beneath",
+            "the",
+            "waves"
+          ],
+          "metadata": {
+            "literalness": 0.2,
+            "characterCount": 49
+          }
+        }
+      ],
+      "metrics": {
+        "jaccardOverlap": {
+          "v1v2": 0.4166666666666667,
+          "v1v3": 0.1875,
+          "v2v3": 0.17647058823529413,
+          "avg": 0.2602124183006536
+        },
+        "bigramOverlap": {
+          "v1v2": 0.25,
+          "v1v3": 0,
+          "v2v3": 0,
+          "avg": 0.08333333333333333
+        },
+        "uniqueTokens": {
+          "v1": 8,
+          "v2": 9,
+          "v3": 11,
+          "total": 28,
+          "uniqueAcrossAll": 19
+        },
+        "openingDiversity": {
+          "sameFirst3Tokens": true,
+          "sameFirstWord": true
+        },
+        "structuralDiversity": {
+          "subjectOpeners": [],
+          "comparisonMarkers": [],
+          "hasPronounShift": false
+        }
+      },
+      "latencyMs": 2131
+    },
+    "method2": {
+      "variants": [
+        {
+          "variant": 1,
+          "fullText": "Love is a sea in which I drown.",
+          "words": [],
+          "metadata": {
+            "literalness": 0.8,
+            "characterCount": 31
+          }
+        },
+        {
+          "variant": 2,
+          "fullText": "Love is an ocean where I find myself submerged.",
+          "words": [],
+          "metadata": {
+            "literalness": 0.5,
+            "characterCount": 47
+          }
+        },
+        {
+          "variant": 3,
+          "fullText": "In love's vast ocean, I am swept away, lost beneath its waves.",
+          "words": [],
+          "metadata": {
+            "literalness": 0.3,
+            "characterCount": 62
+          }
+        }
+      ],
+      "metrics": {
+        "jaccardOverlap": {
+          "v1v2": 0.21428571428571427,
+          "v1v3": 0.16666666666666666,
+          "v2v3": 0.15789473684210525,
+          "avg": 0.17961570593149542
+        },
+        "bigramOverlap": {
+          "v1v2": 0.07142857142857142,
+          "v1v3": 0,
+          "v2v3": 0,
+          "avg": 0.023809523809523808
+        },
+        "uniqueTokens": {
+          "v1": 8,
+          "v2": 9,
+          "v3": 13,
+          "total": 30,
+          "uniqueAcrossAll": 23
+        },
+        "openingDiversity": {
+          "sameFirst3Tokens": false,
+          "sameFirstWord": true
+        },
+        "structuralDiversity": {
+          "subjectOpeners": [],
+          "comparisonMarkers": [],
+          "hasPronounShift": false
+        }
+      },
+      "latencyMs": 4144,
+      "regenCount": 0
+    },
+    "comparison": {
+      "method2MoreDiverse": true,
+      "diversityDelta": 0.08059671236915811,
+      "verdict": "method2-wins"
+    }
+  },
+  {
+    "input": {
+      "id": "ar-en-1",
+      "sourceLanguage": "Arabic",
+      "targetLanguage": "English",
+      "lineText": "القلب يحترق بنار الشوق",
+      "fullPoem": "القلب يحترق بنار الشوق\nوالعين تبكي دموع الفراق\nوالروح تطير إلى الحبيب",
+      "lineIndex": 0,
+      "category": "metaphor-heavy"
+    },
+    "method1": {
+      "variants": [
+        {
+          "variant": 1,
+          "fullText": "The heart burns with the fire of longing",
+          "words": [
+            "heart",
+            "burns",
+            "fire",
+            "longing"
+          ],
+          "metadata": {
+            "literalness": 0.9,
+            "characterCount": 39
+          }
+        },
+        {
+          "variant": 2,
+          "fullText": "The heart is ablaze with yearning",
+          "words": [
+            "heart",
+            "ablaze",
+            "yearning"
+          ],
+          "metadata": {
+            "literalness": 0.5,
+            "characterCount": 31
+          }
+        },
+        {
+          "variant": 3,
+          "fullText": "With longing's fire, the heart ignites",
+          "words": [
+            "longing",
+            "fire",
+            "heart",
+            "ignites"
+          ],
+          "metadata": {
+            "literalness": 0.2,
+            "characterCount": 38
+          }
+        }
+      ],
+      "metrics": {
+        "jaccardOverlap": {
+          "v1v2": 0.3,
+          "v1v3": 0.5555555555555556,
+          "v2v3": 0.3,
+          "avg": 0.38518518518518524
+        },
+        "bigramOverlap": {
+          "v1v2": 0.09090909090909091,
+          "v1v3": 0.08333333333333333,
+          "v2v3": 0.1,
+          "avg": 0.09141414141414143
+        },
+        "uniqueTokens": {
+          "v1": 7,
+          "v2": 6,
+          "v3": 7,
+          "total": 20,
+          "uniqueAcrossAll": 12
+        },
+        "openingDiversity": {
+          "sameFirst3Tokens": false,
+          "sameFirstWord": true
+        },
+        "structuralDiversity": {
+          "subjectOpeners": [
+            "the-NP",
+            "the-NP"
+          ],
+          "comparisonMarkers": [],
+          "hasPronounShift": false
+        }
+      },
+      "latencyMs": 2457
+    },
+    "method2": {
+      "variants": [
+        {
+          "variant": 1,
+          "fullText": "The heart burns with the fire of longing.",
+          "words": [],
+          "metadata": {
+            "literalness": 0.8,
+            "characterCount": 41
+          }
+        },
+        {
+          "variant": 2,
+          "fullText": "Longing sets the heart ablaze with its fiery embrace.",
+          "words": [],
+          "metadata": {
+            "literalness": 0.5,
+            "characterCount": 53
+          }
+        },
+        {
+          "variant": 3,
+          "fullText": "In longing's fire, the heart finds its burning passion.",
+          "words": [],
+          "metadata": {
+            "literalness": 0.3,
+            "characterCount": 55
+          }
+        }
+      ],
+      "metrics": {
+        "jaccardOverlap": {
+          "v1v2": 0.3333333333333333,
+          "v1v3": 0.3076923076923077,
+          "v2v3": 0.26666666666666666,
+          "avg": 0.30256410256410254
+        },
+        "bigramOverlap": {
+          "v1v2": 0.07142857142857142,
+          "v1v3": 0.06666666666666667,
+          "v2v3": 0.0625,
+          "avg": 0.06686507936507936
+        },
+        "uniqueTokens": {
+          "v1": 7,
+          "v2": 9,
+          "v3": 10,
+          "total": 26,
+          "uniqueAcrossAll": 17
+        },
+        "openingDiversity": {
+          "sameFirst3Tokens": false,
+          "sameFirstWord": false
+        },
+        "structuralDiversity": {
+          "subjectOpeners": [
+            "the-NP"
+          ],
+          "comparisonMarkers": [],
+          "hasPronounShift": false
+        }
+      },
+      "latencyMs": 2794,
+      "regenCount": 0
+    },
+    "comparison": {
+      "method2MoreDiverse": true,
+      "diversityDelta": 0.0826210826210827,
+      "verdict": "method2-wins"
+    }
+  },
+  {
+    "input": {
+      "id": "zh-en-1",
+      "sourceLanguage": "Chinese",
+      "targetLanguage": "English",
+      "lineText": "月光洒落窗前如银水",
+      "fullPoem": "月光洒落窗前如银水\n秋风轻抚竹叶声\n思念远方的故人",
+      "lineIndex": 0,
+      "category": "metaphor-heavy"
+    },
+    "method1": {
+      "variants": [
+        {
+          "variant": 1,
+          "fullText": "Moonlight spills before the window like silver water",
+          "words": [
+            "Moonlight",
+            "spills",
+            "before",
+            "the",
+            "window",
+            "like",
+            "silver",
+            "water"
+          ],
+          "metadata": {
+            "literalness": 0.9,
+            "characterCount": 49
+          }
+        },
+        {
+          "variant": 2,
+          "fullText": "The moonlight pours like silver water before the window",
+          "words": [
+            "The",
+            "moonlight",
+            "pours",
+            "like",
+            "silver",
+            "water",
+            "before",
+            "the",
+            "window"
+          ],
+          "metadata": {
+            "literalness": 0.5,
+            "characterCount": 54
+          }
+        },
+        {
+          "variant": 3,
+          "fullText": "Silvery moonlight flows by the window like a gentle stream",
+          "words": [
+            "Silvery",
+            "moonlight",
+            "flows",
+            "by",
+            "the",
+            "window",
+            "like",
+            "a",
+            "gentle",
+            "stream"
+          ],
+          "metadata": {
+            "literalness": 0.2,
+            "characterCount": 66
+          }
+        }
+      ],
+      "metrics": {
+        "jaccardOverlap": {
+          "v1v2": 0.7777777777777778,
+          "v1v3": 0.2857142857142857,
+          "v2v3": 0.2857142857142857,
+          "avg": 0.44973544973544977
+        },
+        "bigramOverlap": {
+          "v1v2": 0.36363636363636365,
+          "v1v3": 0.14285714285714285,
+          "v2v3": 0.0625,
+          "avg": 0.18966450216450217
+        },
+        "uniqueTokens": {
+          "v1": 8,
+          "v2": 8,
+          "v3": 10,
+          "total": 26,
+          "uniqueAcrossAll": 15
+        },
+        "openingDiversity": {
+          "sameFirst3Tokens": false,
+          "sameFirstWord": false
+        },
+        "structuralDiversity": {
+          "subjectOpeners": [
+            "the-NP"
+          ],
+          "comparisonMarkers": [
+            "like",
+            "like",
+            "like"
+          ],
+          "hasPronounShift": false
+        }
+      },
+      "latencyMs": 2178
+    },
+    "method2": {
+      "variants": [
+        {
+          "variant": 1,
+          "fullText": "Moonlight spills before the window like silver water",
+          "words": [],
+          "metadata": {
+            "literalness": 0.8,
+            "characterCount": 52
+          }
+        },
+        {
+          "variant": 2,
+          "fullText": "The moonlight radiates by the window, reminiscent of a shimmering lake",
+          "words": [],
+          "metadata": {
+            "literalness": 0.5,
+            "characterCount": 70
+          }
+        },
+        {
+          "variant": 3,
+          "fullText": "Silver waters gather at the window, cast by the moon's glow",
+          "words": [],
+          "metadata": {
+            "literalness": 0.3,
+            "characterCount": 59
+          }
+        }
+      ],
+      "metrics": {
+        "jaccardOverlap": {
+          "v1v2": 0.2,
+          "v1v3": 0.1875,
+          "v2v3": 0.16666666666666666,
+          "avg": 0.18472222222222223
+        },
+        "bigramOverlap": {
+          "v1v2": 0.0625,
+          "v1v3": 0.058823529411764705,
+          "v2v3": 0.10526315789473684,
+          "avg": 0.07552889576883386
+        },
+        "uniqueTokens": {
+          "v1": 8,
+          "v2": 10,
+          "v3": 11,
+          "total": 29,
+          "uniqueAcrossAll": 22
+        },
+        "openingDiversity": {
+          "sameFirst3Tokens": false,
+          "sameFirstWord": false
+        },
+        "structuralDiversity": {
+          "subjectOpeners": [
+            "the-NP"
+          ],
+          "comparisonMarkers": [
+            "like"
+          ],
+          "hasPronounShift": false
+        }
+      },
+      "latencyMs": 3067,
+      "regenCount": 0
+    },
+    "comparison": {
+      "method2MoreDiverse": true,
+      "diversityDelta": 0.26501322751322753,
+      "verdict": "method2-wins"
+    }
+  },
+  {
+    "input": {
+      "id": "en-es-1",
+      "sourceLanguage": "English",
+      "targetLanguage": "Spanish",
+      "lineText": "The stars are diamonds scattered across the velvet sky",
+      "fullPoem": "The stars are diamonds scattered across the velvet sky\nThe moon rises like a silver coin\nAnd night embraces the sleeping world",
+      "lineIndex": 0,
+      "category": "metaphor-heavy"
+    },
+    "method1": {
+      "variants": [
+        {
+          "variant": 1,
+          "fullText": "Las estrellas son diamantes esparcidos por el cielo de terciopelo",
+          "words": [
+            "estrellas",
+            "diamantes",
+            "esparcidos",
+            "cielo",
+            "terciopelo"
+          ],
+          "metadata": {
+            "literalness": 0.9,
+            "characterCount": 65
+          }
+        },
+        {
+          "variant": 2,
+          "fullText": "Las estrellas parecen diamantes en el cielo aterciopelado",
+          "words": [
+            "estrellas",
+            "parecen",
+            "diamantes",
+            "cielo",
+            "aterciopelado"
+          ],
+          "metadata": {
+            "literalness": 0.5,
+            "characterCount": 59
+          }
+        },
+        {
+          "variant": 3,
+          "fullText": "Las estrellas titilan como joyas sobre el manto de terciopelo del cielo",
+          "words": [
+            "estrellas",
+            "titilan",
+            "joyas",
+            "manto",
+            "terciopelo",
+            "cielo"
+          ],
+          "metadata": {
+            "literalness": 0.2,
+            "characterCount": 80
+          }
+        }
+      ],
+      "metrics": {
+        "jaccardOverlap": {
+          "v1v2": 0.38461538461538464,
+          "v1v3": 0.375,
+          "v2v3": 0.25,
+          "avg": 0.3365384615384615
+        },
+        "bigramOverlap": {
+          "v1v2": 0.14285714285714285,
+          "v1v3": 0.1111111111111111,
+          "v2v3": 0.058823529411764705,
+          "avg": 0.10426392779333955
+        },
+        "uniqueTokens": {
+          "v1": 10,
+          "v2": 8,
+          "v3": 12,
+          "total": 30,
+          "uniqueAcrossAll": 19
+        },
+        "openingDiversity": {
+          "sameFirst3Tokens": false,
+          "sameFirstWord": true
+        },
+        "structuralDiversity": {
+          "subjectOpeners": [],
+          "comparisonMarkers": [
+            "como"
+          ],
+          "hasPronounShift": false
+        }
+      },
+      "latencyMs": 2236
+    },
+    "method2": {
+      "variants": [
+        {
+          "variant": 1,
+          "fullText": "Las estrellas son diamantes esparcidos por el cielo de terciopelo",
+          "words": [],
+          "metadata": {
+            "literalness": 0.8,
+            "characterCount": 65
+          }
+        },
+        {
+          "variant": 2,
+          "fullText": "Las estrellas parecen diamantes dispersos en el cielo como terciopelo",
+          "words": [],
+          "metadata": {
+            "literalness": 0.5,
+            "characterCount": 69
+          }
+        },
+        {
+          "variant": 3,
+          "fullText": "Diamantes, estrellas en el cielo aterciopelado",
+          "words": [],
+          "metadata": {
+            "literalness": 0.3,
+            "characterCount": 46
+          }
+        }
+      ],
+      "metrics": {
+        "jaccardOverlap": {
+          "v1v2": 0.42857142857142855,
+          "v1v3": 0.3333333333333333,
+          "v2v3": 0.45454545454545453,
+          "avg": 0.4054834054834055
+        },
+        "bigramOverlap": {
+          "v1v2": 0.125,
+          "v1v3": 0.07692307692307693,
+          "v2v3": 0.16666666666666666,
+          "avg": 0.12286324786324787
+        },
+        "uniqueTokens": {
+          "v1": 10,
+          "v2": 10,
+          "v3": 6,
+          "total": 26,
+          "uniqueAcrossAll": 15
+        },
+        "openingDiversity": {
+          "sameFirst3Tokens": false,
+          "sameFirstWord": true
+        },
+        "structuralDiversity": {
+          "subjectOpeners": [],
+          "comparisonMarkers": [
+            "como"
+          ],
+          "hasPronounShift": false
+        }
+      },
+      "latencyMs": 2889,
+      "regenCount": 0
+    },
+    "comparison": {
+      "method2MoreDiverse": false,
+      "diversityDelta": -0.0689449439449441,
+      "verdict": "method1-wins"
+    }
+  },
+  {
+    "input": {
+      "id": "en-es-2",
+      "sourceLanguage": "English",
+      "targetLanguage": "Spanish",
+      "lineText": "Time flows like a river with no return",
+      "fullPoem": "Time flows like a river with no return\nEach moment a drop in the ocean of memory\nWe float on currents we cannot control",
+      "lineIndex": 0,
+      "category": "idiom"
+    },
+    "method1": {
+      "variants": [
+        {
+          "variant": 1,
+          "fullText": "El tiempo fluye como un río sin retorno",
+          "words": [
+            "El",
+            "tiempo",
+            "fluye",
+            "como",
+            "un",
+            "río",
+            "sin",
+            "retorno"
+          ],
+          "metadata": {
+            "literalness": 0.9,
+            "characterCount": 35
+          }
+        },
+        {
+          "variant": 2,
+          "fullText": "El tiempo pasa como un río que no regresa",
+          "words": [
+            "El",
+            "tiempo",
+            "pasa",
+            "como",
+            "un",
+            "río",
+            "que",
+            "no",
+            "regresa"
+          ],
+          "metadata": {
+            "literalness": 0.5,
+            "characterCount": 42
+          }
+        },
+        {
+          "variant": 3,
+          "fullText": "El tiempo avanza como un río sin volver atrás",
+          "words": [
+            "El",
+            "tiempo",
+            "avanza",
+            "como",
+            "un",
+            "río",
+            "sin",
+            "volver",
+            "atrás"
+          ],
+          "metadata": {
+            "literalness": 0.2,
+            "characterCount": 50
+          }
+        }
+      ],
+      "metrics": {
+        "jaccardOverlap": {
+          "v1v2": 0.4166666666666667,
+          "v1v3": 0.5454545454545454,
+          "v2v3": 0.38461538461538464,
+          "avg": 0.4489121989121989
+        },
+        "bigramOverlap": {
+          "v1v2": 0.25,
+          "v1v3": 0.36363636363636365,
+          "v2v3": 0.23076923076923078,
+          "avg": 0.28146853146853146
+        },
+        "uniqueTokens": {
+          "v1": 8,
+          "v2": 9,
+          "v3": 9,
+          "total": 26,
+          "uniqueAcrossAll": 15
+        },
+        "openingDiversity": {
+          "sameFirst3Tokens": false,
+          "sameFirstWord": true
+        },
+        "structuralDiversity": {
+          "subjectOpeners": [],
+          "comparisonMarkers": [
+            "como",
+            "como",
+            "como"
+          ],
+          "hasPronounShift": false
+        }
+      },
+      "latencyMs": 3023
+    },
+    "method2": {
+      "variants": [
+        {
+          "variant": 1,
+          "fullText": "El tiempo fluye como un río sin retorno",
+          "words": [],
+          "metadata": {
+            "literalness": 0.8,
+            "characterCount": 39
+          }
+        },
+        {
+          "variant": 2,
+          "fullText": "El tiempo avanza, semejante a un río que no vuelve",
+          "words": [],
+          "metadata": {
+            "literalness": 0.5,
+            "characterCount": 50
+          }
+        },
+        {
+          "variant": 3,
+          "fullText": "Fluye el tiempo. Río eterno. Nunca regresa.",
+          "words": [],
+          "metadata": {
+            "literalness": 0.3,
+            "characterCount": 43
+          }
+        }
+      ],
+      "metrics": {
+        "jaccardOverlap": {
+          "v1v2": 0.2857142857142857,
+          "v1v3": 0.36363636363636365,
+          "v2v3": 0.21428571428571427,
+          "avg": 0.2878787878787879
+        },
+        "bigramOverlap": {
+          "v1v2": 0.14285714285714285,
+          "v1v3": 0.08333333333333333,
+          "v2v3": 0.07142857142857142,
+          "avg": 0.09920634920634919
+        },
+        "uniqueTokens": {
+          "v1": 8,
+          "v2": 10,
+          "v3": 7,
+          "total": 25,
+          "uniqueAcrossAll": 17
+        },
+        "openingDiversity": {
+          "sameFirst3Tokens": false,
+          "sameFirstWord": true
+        },
+        "structuralDiversity": {
+          "subjectOpeners": [],
+          "comparisonMarkers": [
+            "como"
+          ],
+          "hasPronounShift": false
+        }
+      },
+      "latencyMs": 3413,
+      "regenCount": 0
+    },
+    "comparison": {
+      "method2MoreDiverse": true,
+      "diversityDelta": 0.16103341103341107,
+      "verdict": "method2-wins"
+    }
+  }
+]

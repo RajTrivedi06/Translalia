@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type {
   TranslationJobProgressSummary,
@@ -35,7 +35,16 @@ async function fetchJSON<T>(
   input: RequestInfo,
   init?: RequestInit
 ): Promise<T> {
-  const response = await fetch(input, init);
+  // Ensure no caching for translation status
+  const noCacheInit: RequestInit = {
+    ...init,
+    cache: "no-store",
+    headers: {
+      ...init?.headers,
+      "Cache-Control": "no-store",
+    },
+  };
+  const response = await fetch(input, noCacheInit);
   if (!response.ok) {
     const errorPayload = await response
       .json()
@@ -49,6 +58,8 @@ async function fetchJSON<T>(
 }
 
 export function useInitializeTranslations() {
+  const queryClient = useQueryClient();
+
   return useMutation({
     mutationFn: async (
       params: InitializeTranslationsParams
@@ -61,6 +72,12 @@ export function useInitializeTranslations() {
           body: JSON.stringify(params),
         }
       ),
+    onSuccess: (_, variables) => {
+      // Immediately invalidate translation status query to trigger refetch
+      queryClient.invalidateQueries({
+        queryKey: ["translation-job", variables.threadId],
+      });
+    },
   });
 }
 
@@ -68,11 +85,7 @@ export function useTranslationJob(
   threadId: string | undefined,
   options: UseTranslationJobOptions = {}
 ) {
-  const {
-    pollIntervalMs = 4000,
-    advanceOnPoll = true,
-    enabled = true,
-  } = options;
+  const { advanceOnPoll = true, enabled = true } = options;
 
   return useQuery({
     queryKey: ["translation-job", threadId, advanceOnPoll],
@@ -89,7 +102,21 @@ export function useTranslationJob(
       );
     },
     enabled: Boolean(threadId) && enabled,
-    refetchInterval: pollIntervalMs,
-    refetchOnWindowFocus: false,
+    staleTime: 0, // Always consider data stale
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      // Stop polling when job is done
+      if (
+        !data?.job ||
+        data.job.status === "completed" ||
+        data.job.status === "failed"
+      ) {
+        return false;
+      }
+      // Poll every 1.5s while processing (faster updates)
+      return 1500;
+    },
+    refetchOnWindowFocus: true, // Refetch when user returns to tab
+    refetchIntervalInBackground: true, // Keep polling even when tab is in background
   });
 }

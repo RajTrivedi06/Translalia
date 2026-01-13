@@ -4,12 +4,30 @@
  * Performs cheap post-generation checks to ensure translation variants are
  * observably different. If variants are too similar, triggers single-variant
  * regeneration (max 1 extra call).
+ *
+ * Phase 2 enhancements:
+ * - Structural signature / template clone detection (language-aware)
+ * - Length-aware overlap thresholds (short lines don't fail on Jaccard noise)
+ * - Deterministic worst variant selection with priority order
+ * - Integration with Phase 1 validation (respects Phase 1 decisions)
+ *
+ * Phase 3 enhancements:
+ * - Mode-aware Jaccard thresholds (focused=lenient, adventurous=strict)
+ * - Extended stopword support (EN/FR/ES/DE/PT/IT)
+ * - Debug logging behind DEBUG_GATE flag
  */
 
 import { z } from "zod";
 import type { VariantRecipe } from "./variantRecipes";
 import { openai } from "./openai";
 import { TRANSLATOR_MODEL } from "@/lib/models";
+import { pickStopwords, getStopwordsLanguage } from "./stopwords";
+import {
+  structuralSignature,
+  openerType,
+  countNonPunctTokens,
+  type OpenerType,
+} from "./structureSignature";
 
 // =============================================================================
 // Types
@@ -36,6 +54,11 @@ export interface DistinctnessResult {
     jaccardScores: number[];
     maxOverlap: number;
     pairWithMaxOverlap: [number, number];
+    // Phase 2 debug info
+    openerTypes?: OpenerType[];
+    signatures?: string[];
+    contentTokenCounts?: number[];
+    lengthAdjustedThreshold?: number;
   };
 }
 
@@ -54,75 +77,61 @@ export interface LineContext {
 // Distinctness Checks
 // =============================================================================
 
-/** Threshold for Jaccard similarity - above this is "too similar" */
-const JACCARD_THRESHOLD = 0.6;
+/**
+ * Phase 2: Length-aware Jaccard thresholds.
+ * Uses CONTENT TOKEN count (stopword-removed) to scale thresholds.
+ * Short lines get more lenient thresholds to avoid Jaccard noise.
+ *
+ * @param mode - Viewpoint range mode
+ * @param contentTokenCount - Number of content tokens (after stopword removal)
+ * @returns Overlap threshold for this mode/length combination
+ */
+function getLengthAwareThreshold(
+  mode: "focused" | "balanced" | "adventurous",
+  contentTokenCount: number
+): number {
+  if (mode === "adventurous") {
+    // Adventurous: strictest enforcement
+    if (contentTokenCount <= 6) return 1.0; // Don't fail on Jaccard alone (structure handles these)
+    if (contentTokenCount <= 10) return 0.55;
+    if (contentTokenCount <= 16) return 0.45;
+    return 0.40;
+  }
+
+  if (mode === "balanced") {
+    // Balanced: moderate enforcement
+    if (contentTokenCount <= 6) return 0.80; // Almost always pass
+    if (contentTokenCount <= 10) return 0.65;
+    if (contentTokenCount <= 16) return 0.55;
+    return 0.50;
+  }
+
+  // Focused: lenient (existing behavior)
+  return 0.75;
+}
+
+/**
+ * Legacy mode-aware Jaccard thresholds (kept for backward compatibility).
+ * Phase 2: Use getLengthAwareThreshold instead.
+ */
+const JACCARD_THRESHOLDS: Record<
+  "focused" | "balanced" | "adventurous",
+  number
+> = {
+  focused: 0.7,
+  balanced: 0.6,
+  adventurous: 0.5,
+};
+
+/** Get mode-aware Jaccard threshold (legacy, use getLengthAwareThreshold for Phase 2) */
+function getJaccardThreshold(
+  mode: "focused" | "balanced" | "adventurous"
+): number {
+  return JACCARD_THRESHOLDS[mode];
+}
 
 // If openings/comparison templates repeat, fail even when Jaccard is low.
 const MIN_TOKENS_FOR_TEMPLATE_CHECK = 6;
-
-const EN_STOPWORDS = new Set([
-  "i",
-  "im",
-  "i'm",
-  "we",
-  "you",
-  "he",
-  "she",
-  "it",
-  "they",
-  "a",
-  "an",
-  "the",
-  "in",
-  "on",
-  "at",
-  "to",
-  "of",
-  "for",
-  "with",
-  "under",
-  "over",
-  "through",
-  "as",
-  "like",
-  "and",
-  "or",
-  "but",
-  "so",
-  "that",
-  "this",
-  "these",
-  "those",
-]);
-
-const FR_STOPWORDS = new Set([
-  "je",
-  "j",
-  "tu",
-  "il",
-  "elle",
-  "on",
-  "nous",
-  "vous",
-  "ils",
-  "elles",
-  "un",
-  "une",
-  "le",
-  "la",
-  "les",
-  "des",
-  "du",
-  "de",
-  "dans",
-  "sous",
-  "sur",
-  "avec",
-  "comme",
-  "et",
-  "ou",
-  "mais",
-]);
 
 const COMPARISON_MARKERS = [
   // English
@@ -143,7 +152,7 @@ const COMPARISON_MARKERS = [
  * Tokenize text for Jaccard calculation.
  * Simple word-level tokenization that works for most languages.
  */
-function tokenize(text: string): Set<string> {
+export function tokenize(text: string): Set<string> {
   // Normalize: lowercase, remove punctuation, split on whitespace
   const normalized = text
     .toLowerCase()
@@ -164,16 +173,7 @@ function tokenizeList(text: string): string[] {
   return normalized.split(/\s+/).filter((t) => t.length > 0);
 }
 
-function pickStopwords(targetLanguage?: string): Set<string> {
-  const hint = (targetLanguage ?? "").toLowerCase();
-  if (
-    hint.includes("french") ||
-    hint.includes("français") ||
-    hint.includes("francais")
-  )
-    return FR_STOPWORDS;
-  return EN_STOPWORDS;
-}
+// pickStopwords is now imported from ./stopwords.ts
 
 function openingContentBigram(
   text: string,
@@ -204,7 +204,7 @@ function detectComparisonMarker(text: string): string | null {
  * Calculate Jaccard similarity between two token sets.
  * Returns a value between 0 (no overlap) and 1 (identical).
  */
-function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
+export function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
   if (a.size === 0 && b.size === 0) return 1; // Both empty = identical
   if (a.size === 0 || b.size === 0) return 0; // One empty = no overlap
 
@@ -279,8 +279,12 @@ function detectSubjectOpener(text: string): string | null {
 /**
  * Check if variants are sufficiently distinct.
  *
- * Mode-scaled shape checks + Jaccard similarity.
- * Balanced/Adventurous modes enforce stricter structural divergence.
+ * Phase 2: Structural signature checks + length-aware Jaccard thresholds.
+ * Integration order:
+ * 1. Empty/safety checks
+ * 2. Phase 2 structural checks (template clone detection)
+ * 3. Legacy shape checks (subject opener, opening bigram, comparison markers, walk-verbs)
+ * 4. Phase 2 length-aware Jaccard overlap checks
  */
 export function checkDistinctness(
   variants: TranslationVariant[],
@@ -300,11 +304,154 @@ export function checkDistinctness(
 
   const mode = opts?.mode ?? "balanced";
   const sourceText = opts?.sourceText ?? "";
+  const targetLanguage = opts?.targetLanguage;
+
+  // ========================================================================
+  // SAFETY CHECK: Empty variant text
+  // ========================================================================
+  for (let i = 0; i < 3; i++) {
+    if (!variants[i].text || variants[i].text.trim().length === 0) {
+      return {
+        pass: false,
+        worstIndex: i,
+        reason: `empty_variant_text: variant ${i} has empty text`,
+      };
+    }
+  }
+
+  // ========================================================================
+  // PHASE 2: STRUCTURAL SIGNATURE CHECKS (Template Clone Detection)
+  // ========================================================================
+  const signatures = variants.map((v) => structuralSignature(v.text, targetLanguage));
+  const openerTypes = signatures.map((s) => s.openerType);
+  const signatureKeys = signatures.map((s) => s.signature);
+
+  // Debug logging for Phase 2
+  if (process.env.DEBUG_GATE === "1") {
+    console.log("[DEBUG_GATE][phase2.signatures]", {
+      mode,
+      openerTypes,
+      signatureKeys,
+      variantTexts: variants.map((v) => v.text.slice(0, 60)),
+    });
+  }
+
+  // Adventurous mode: Strict structural enforcement
+  if (mode === "adventurous") {
+    // Rule 1: Variant C signature must be unique vs A and B
+    if (signatureKeys[2] === signatureKeys[0] || signatureKeys[2] === signatureKeys[1]) {
+      return {
+        pass: false,
+        worstIndex: 2,
+        reason: `signature_match_c: C signature matches ${
+          signatureKeys[2] === signatureKeys[0] ? "A" : "B"
+        }`,
+        details: {
+          jaccardScores: [],
+          maxOverlap: 0,
+          pairWithMaxOverlap: [0, 1],
+          openerTypes,
+          signatures: signatureKeys,
+        },
+      };
+    }
+
+    // Rule 2: Opener type distinctness with priority (C first, then B)
+    if (openerTypes[2] === openerTypes[0] || openerTypes[2] === openerTypes[1]) {
+      return {
+        pass: false,
+        worstIndex: 2,
+        reason: `opener_duplicate_c: C opener "${openerTypes[2]}" matches ${
+          openerTypes[2] === openerTypes[0] ? "A" : "B"
+        }`,
+        details: {
+          jaccardScores: [],
+          maxOverlap: 0,
+          pairWithMaxOverlap: [0, 1],
+          openerTypes,
+          signatures: signatureKeys,
+        },
+      };
+    }
+
+    if (openerTypes[1] === openerTypes[0]) {
+      return {
+        pass: false,
+        worstIndex: 1,
+        reason: `opener_duplicate_b: B opener "${openerTypes[1]}" matches A`,
+        details: {
+          jaccardScores: [],
+          maxOverlap: 0,
+          pairWithMaxOverlap: [0, 1],
+          openerTypes,
+          signatures: signatureKeys,
+        },
+      };
+    }
+  }
+
+  // Balanced mode: Lighter structural enforcement
+  if (mode === "balanced") {
+    // If all three openers are the same, fail with priority (prefer C, then B)
+    if (
+      openerTypes[0] === openerTypes[1] &&
+      openerTypes[1] === openerTypes[2]
+    ) {
+      // Determine worst based on which has highest overlap with others
+      // For simplicity, prefer regenerating C first
+      return {
+        pass: false,
+        worstIndex: 2,
+        reason: `opener_all_same: all three variants use "${openerTypes[0]}" opener`,
+        details: {
+          jaccardScores: [],
+          maxOverlap: 0,
+          pairWithMaxOverlap: [0, 1],
+          openerTypes,
+          signatures: signatureKeys,
+        },
+      };
+    }
+  }
+
+  // ========================================================================
+  // LEGACY SHAPE CHECKS + PHASE 2 LENGTH-AWARE JACCARD
+  // ========================================================================
 
   // Tokenize all variants
   const tokenSets = variants.map((v) => tokenize(v.text));
   const tokenLists = variants.map((v) => tokenizeList(v.text));
   const stopwords = pickStopwords(opts?.targetLanguage);
+
+  // ========================================================================
+  // PHASE 2: CALCULATE CONTENT TOKEN COUNTS (for length-aware thresholds)
+  // ========================================================================
+  // Content tokens = tokens after stopword removal
+  const contentTokenCounts = tokenLists.map((toks) => {
+    const contentToks = toks.filter((t) => !stopwords.has(t));
+    return contentToks.length;
+  });
+
+  // Use average content token count for threshold calculation
+  const avgContentTokenCount = Math.round(
+    contentTokenCounts.reduce((sum, c) => sum + c, 0) / 3
+  );
+
+  // Phase 2: Length-aware threshold
+  const lengthAwareThreshold = getLengthAwareThreshold(mode, avgContentTokenCount);
+
+  // Debug logging for gate initialization
+  if (process.env.DEBUG_GATE === "1") {
+    console.log("[DEBUG_GATE][init]", {
+      mode,
+      lengthAwareThreshold,
+      avgContentTokenCount,
+      contentTokenCounts,
+      targetLanguage: opts?.targetLanguage,
+      stopwordsLanguage: getStopwordsLanguage(stopwords),
+      variantLengths: variants.map((v) => v.text.length),
+    });
+  }
 
   // Calculate pairwise Jaccard similarities
   const jaccardScores: number[] = [];
@@ -329,9 +476,7 @@ export function checkDistinctness(
   if (minLen >= MIN_TOKENS_FOR_TEMPLATE_CHECK) {
     // SHAPE CHECK 1: Subject opener repetition (balanced/adventurous)
     if (mode === "balanced" || mode === "adventurous") {
-      const subjectOpeners = variants.map((v) =>
-        detectSubjectOpener(v.text)
-      );
+      const subjectOpeners = variants.map((v) => detectSubjectOpener(v.text));
       const nonNullSubjects = subjectOpeners.filter(
         (s): s is string => s !== null
       );
@@ -388,9 +533,8 @@ export function checkDistinctness(
     // SHAPE CHECK 3: Comparison marker constraints (mode-scaled)
     const markers = variants.map((v) => detectComparisonMarker(v.text));
     const markerCount = markers.filter(Boolean).length;
-    const sourceHasMarker = /\b(comme|like|as if|as though|as|como|come)\b/i.test(
-      sourceText
-    );
+    const sourceHasMarker =
+      /\b(comme|like|as if|as though|as|como|come)\b/i.test(sourceText);
 
     if (sourceHasMarker) {
       if (mode === "balanced" || mode === "adventurous") {
@@ -464,10 +608,18 @@ export function checkDistinctness(
     }
   }
 
-  // Check if any pair exceeds threshold
-  if (maxOverlap > JACCARD_THRESHOLD) {
-    // Determine which variant to regenerate
-    // Prefer regenerating the one with higher overlap with multiple variants
+  // ========================================================================
+  // PHASE 2: LENGTH-AWARE JACCARD OVERLAP CHECK
+  // ========================================================================
+  // Check if any pair exceeds the length-aware threshold
+  if (maxOverlap > lengthAwareThreshold) {
+    // ========================================================================
+    // PHASE 2: DETERMINISTIC WORST VARIANT SELECTION
+    // ========================================================================
+    // Priority order for adventurous mode:
+    // 1. Prefer regenerating the variant with most high-overlap pairs
+    // 2. Tie-breaker: prefer C, then B, then A
+
     const overlapCounts = [0, 0, 0];
 
     // Count high-overlap pairs for each variant
@@ -477,41 +629,84 @@ export function checkDistinctness(
       [1, 2],
     ] as const;
     pairs.forEach(([a, b], pairIdx) => {
-      if (jaccardScores[pairIdx] > JACCARD_THRESHOLD) {
+      if (jaccardScores[pairIdx] > lengthAwareThreshold) {
         overlapCounts[a]++;
         overlapCounts[b]++;
       }
     });
 
-    // Pick the variant with most high-overlap pairs
-    // If tied, pick from the max overlap pair (arbitrary: second one)
-    let worstIndex = maxPair[1];
+    // Determine worstIndex with deterministic priority
+    let worstIndex: number;
     const maxCount = Math.max(...overlapCounts);
+
     if (maxCount > 1) {
-      worstIndex = overlapCounts.indexOf(maxCount);
+      // Multiple variants have high overlap - use priority order
+      // Find all variants with maxCount overlaps
+      const candidatesWithMaxCount: number[] = [];
+      for (let i = 0; i < 3; i++) {
+        if (overlapCounts[i] === maxCount) {
+          candidatesWithMaxCount.push(i);
+        }
+      }
+
+      // Adventurous mode tie-breaker: prefer C (2), then B (1), then A (0)
+      if (mode === "adventurous") {
+        worstIndex = Math.max(...candidatesWithMaxCount);
+      } else {
+        // Balanced/focused: use highest index among candidates
+        worstIndex = Math.max(...candidatesWithMaxCount);
+      }
+    } else {
+      // Only one pair exceeded threshold - pick from that pair
+      // Prefer the one with higher index (tie-breaker: C > B > A)
+      worstIndex = Math.max(maxPair[0], maxPair[1]);
+    }
+
+    const failReason = `Variants ${maxPair[0]} and ${maxPair[1]} have ${(
+      maxOverlap * 100
+    ).toFixed(0)}% token overlap (threshold: ${(lengthAwareThreshold * 100).toFixed(
+      0
+    )}% for ${mode} mode, ${avgContentTokenCount} content tokens)`;
+
+    if (process.env.DEBUG_GATE === "1") {
+      console.log("[DEBUG_GATE][fail.jaccard]", {
+        mode,
+        lengthAwareThreshold,
+        avgContentTokenCount,
+        maxOverlap,
+        maxPair,
+        worstIndex,
+        overlapCounts,
+        reason: failReason,
+      });
     }
 
     return {
       pass: false,
       worstIndex,
-      reason: `Variants ${maxPair[0]} and ${maxPair[1]} have ${(
-        maxOverlap * 100
-      ).toFixed(0)}% token overlap (threshold: ${JACCARD_THRESHOLD * 100}%)`,
+      reason: failReason,
       details: {
         jaccardScores,
         maxOverlap,
         pairWithMaxOverlap: maxPair,
+        openerTypes,
+        signatures: signatureKeys,
+        contentTokenCounts,
+        lengthAdjustedThreshold: lengthAwareThreshold,
       },
     };
   }
 
-  if (process.env.DEBUG_VARIANTS === "1") {
-    // eslint-disable-next-line no-console
-    console.log("[DEBUG_VARIANTS][gate.pass]", {
+  if (process.env.DEBUG_VARIANTS === "1" || process.env.DEBUG_GATE === "1") {
+    console.log("[DEBUG_GATE][pass]", {
+      mode,
+      lengthAwareThreshold,
+      avgContentTokenCount,
       jaccardScores,
       maxOverlap,
       maxPair,
-      threshold: JACCARD_THRESHOLD,
+      openerTypes,
+      signatures: signatureKeys,
     });
   }
 
@@ -522,6 +717,10 @@ export function checkDistinctness(
       jaccardScores,
       maxOverlap,
       pairWithMaxOverlap: maxPair,
+      openerTypes,
+      signatures: signatureKeys,
+      contentTokenCounts,
+      lengthAdjustedThreshold: lengthAwareThreshold,
     },
   };
 }
@@ -543,9 +742,7 @@ const RegenerationResponseSchema = z.object({
  * Extract structural features from variants to create contrastive constraints.
  * Returns features that are OVERUSED in the kept variants.
  */
-function extractOverusedFeatures(
-  variants: TranslationVariant[]
-): {
+function extractOverusedFeatures(variants: TranslationVariant[]): {
   comparisonMarkers: string[];
   subjectOpeners: string[];
   walkVerbs: string[];
@@ -597,19 +794,26 @@ function buildContrastiveConstraints(features: {
     doNotUse.push(
       `Subject opener "${features.subjectOpeners[0]}" - other variants already use this pattern`
     );
-    if (features.subjectOpeners[0] === "I" || features.subjectOpeners[0] === "je") {
+    if (
+      features.subjectOpeners[0] === "I" ||
+      features.subjectOpeners[0] === "je"
+    ) {
       mustDo.push(
         "Use a different subject (you/we, or omit subject, or use impersonal construction)"
       );
     } else if (features.subjectOpeners[0] === "gerund") {
-      mustDo.push("Avoid gerund opener; start with subject or prepositional phrase");
+      mustDo.push(
+        "Avoid gerund opener; start with subject or prepositional phrase"
+      );
     }
   }
 
   // If both kept variants use walk-verbs, regen MUST use different motion framing
   if (features.walkVerbs.length === 2) {
     doNotUse.push(
-      `Walk-verb bucket (${features.walkVerbs.join(", ")}) - other variants already use walking motion`
+      `Walk-verb bucket (${features.walkVerbs.join(
+        ", "
+      )}) - other variants already use walking motion`
     );
     mustDo.push(
       "Use different motion framing (move/go/come, or reframe without explicit motion verb)"
@@ -625,16 +829,21 @@ function buildContrastiveConstraints(features: {
  * Uses feature-contrastive prompting: extracts overused features from kept variants
  * and requires the regenerated variant to avoid those patterns.
  *
+ * HARDENING: Added `model` parameter to ensure regeneration uses the same model
+ * as the original generation (user's selected model from guideAnswers).
+ *
  * @param originalVariants - The three variants from the first generation
  * @param failedIndex - Index of the variant to regenerate (0, 1, or 2)
  * @param recipe - The recipe that should guide this variant
  * @param context - Line context (source text, languages, etc.)
+ * @param model - Optional: model to use for regeneration (defaults to TRANSLATOR_MODEL)
  */
 export async function regenerateVariant(
   originalVariants: TranslationVariant[],
   failedIndex: number,
   recipe: VariantRecipe,
-  context: LineContext
+  context: LineContext,
+  model?: string
 ): Promise<TranslationVariant> {
   const labels = ["A", "B", "C"] as const;
   const failedLabel = labels[failedIndex];
@@ -708,7 +917,8 @@ OUTPUT FORMAT (JSON only):
 }`;
 
   try {
-    let modelToUse = TRANSLATOR_MODEL;
+    // HARDENING: Use provided model (user's selection) or fall back to default
+    const modelToUse = model ?? TRANSLATOR_MODEL;
     const isGpt5 = modelToUse.startsWith("gpt-5");
 
     const completion = isGpt5
