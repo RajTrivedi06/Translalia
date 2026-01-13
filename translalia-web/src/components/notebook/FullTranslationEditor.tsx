@@ -1,14 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
-  X,
-  ChevronLeft,
-  ChevronRight,
-  RotateCcw,
-  Save,
-  Check,
-} from "lucide-react";
+import { X, RotateCcw, Save, Check } from "lucide-react";
 import { useWorkshopStore } from "@/store/workshopSlice";
 import { useThreadId } from "@/hooks/useThreadId";
 import { useWorkshopState } from "@/lib/hooks/useWorkshopFlow";
@@ -42,7 +35,6 @@ export function FullTranslationEditor({
   const [saveSuccess, setSaveSuccess] = React.useState(false);
   const [isSaving, setIsSaving] = React.useState(false);
   const [isFinalizing, setIsFinalizing] = React.useState(false);
-  const [isSourceCollapsed, setIsSourceCollapsed] = React.useState(false);
 
   // Get confirmed translations
   const getConfirmedTranslation = React.useCallback(
@@ -123,10 +115,8 @@ export function FullTranslationEditor({
 
     setIsSaving(true);
     try {
-      // Split the whole translation back into lines
       const translationLines = wholeTranslation.split("\n");
 
-      // Only store drafts that differ from confirmed saves
       const nextDraftLines: Record<number, string> = {};
       translationLines.forEach((line, idx) => {
         if (idx < poemLines.length) {
@@ -138,7 +128,6 @@ export function FullTranslationEditor({
         }
       });
 
-      // Save into drafts
       setDraftLines(nextDraftLines);
       setHasUnsavedChanges(false);
       setSaveSuccess(true);
@@ -160,13 +149,11 @@ export function FullTranslationEditor({
     if (!open) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // ESC to close
       if (e.key === "Escape") {
         handleClose();
         return;
       }
 
-      // Cmd/Ctrl + Enter to save draft
       if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
         e.preventDefault();
         if (hasUnsavedChanges && !isSaving) {
@@ -187,7 +174,6 @@ export function FullTranslationEditor({
     const translationLines = wholeTranslation.split("\n");
 
     try {
-      // Save all lines as completed
       const savePromises = translationLines
         .map((line) => line.trim())
         .map((translatedLine, idx) => {
@@ -212,23 +198,19 @@ export function FullTranslationEditor({
 
       await Promise.all(savePromises);
 
-      // Mark all as completed in store
       translationLines.forEach((line, idx) => {
         if (idx < poemLines.length && line.trim()) {
           setCompletedLine(idx, line.trim());
         }
       });
 
-      // Clear drafts
       setDraftLines({});
       setHasUnsavedChanges(false);
 
-      // Trigger onFinalize callback if provided
       if (onFinalize) {
         onFinalize();
       }
 
-      // Close the editor
       onOpenChange(false);
     } catch (error) {
       console.error("[FullTranslationEditor] Failed to finalize:", error);
@@ -273,11 +255,13 @@ export function FullTranslationEditor({
     if (open) {
       setShouldRender(true);
     } else {
-      // Delay unmount to allow exit animation
       const timer = setTimeout(() => setShouldRender(false), 300);
       return () => clearTimeout(timer);
     }
   }, [open]);
+
+  // Get translation lines as array
+  const translationLines = wholeTranslation.split("\n");
 
   if (!shouldRender) return null;
 
@@ -333,137 +317,106 @@ export function FullTranslationEditor({
               </Badge>
             )}
           </div>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="rounded-full p-2 hover:bg-slate-100 transition-colors"
-            aria-label="Close"
-          >
-            <X className="h-5 w-5 text-slate-500" />
-          </button>
-        </div>
-
-        {/* Main Content */}
-        <div className="flex-1 min-h-0 flex relative">
-          {/* Source Panel */}
-          <div
-            className={cn(
-              "border-r bg-slate-50 transition-all duration-300 ease-in-out",
-              isSourceCollapsed
-                ? "w-0 overflow-hidden opacity-0"
-                : "w-[40%] min-w-[300px] opacity-100"
-            )}
-          >
-            <div className="h-full flex flex-col">
-              {/* Source Header */}
-              <div className="flex items-center justify-between px-4 py-3 border-b bg-white">
-                <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">
-                  Source Poem
-                </h3>
-                <button
-                  type="button"
-                  onClick={() => setIsSourceCollapsed(true)}
-                  className="rounded p-1.5 hover:bg-slate-100 transition-colors"
-                  aria-label="Collapse source"
-                >
-                  <ChevronLeft className="h-4 w-4 text-slate-500" />
-                </button>
-              </div>
-
-              {/* Source Content */}
-              <div className="flex-1 overflow-y-auto px-4 py-3">
-                <div className="space-y-1">
-                  {poemLines.map((line, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-start gap-3 py-2 px-3 rounded-lg hover:bg-white/50 transition-colors"
-                    >
-                      <span className="text-xs text-slate-400 font-mono w-8 flex-shrink-0 pt-0.5">
-                        {idx + 1}
-                      </span>
-                      <span className="text-sm text-slate-700 leading-relaxed flex-1">
-                        {line}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Collapsed Source Toggle */}
-          {isSourceCollapsed && (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleReset}
+              className="gap-1.5 h-8 text-xs"
+              disabled={!hasUnsavedChanges}
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Reset
+            </Button>
             <button
               type="button"
-              onClick={() => setIsSourceCollapsed(false)}
-              className="absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-white border-r border-t border-b rounded-r-lg p-2 shadow-lg hover:bg-slate-50 transition-colors"
-              aria-label="Expand source"
+              onClick={handleClose}
+              className="rounded-full p-2 hover:bg-slate-100 transition-colors"
+              aria-label="Close"
             >
-              <ChevronRight className="h-4 w-4 text-slate-500" />
+              <X className="h-5 w-5 text-slate-500" />
             </button>
-          )}
+          </div>
+        </div>
 
-          {/* Translation Panel */}
-          <div className="flex-1 flex flex-col min-w-0">
-            {/* Translation Header */}
-            <div className="px-6 py-3 border-b bg-gradient-to-r from-blue-50 to-purple-50 flex-shrink-0">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">
-                    Your Translation
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Edit the complete translation as continuous text
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleReset}
-                    className="gap-1.5"
-                    disabled={!hasUnsavedChanges}
+        {/* Column Headers */}
+        <div className="grid grid-cols-2 bg-slate-50/80 flex-shrink-0">
+          <div className="px-8 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            Source Poem
+          </div>
+          <div className="px-8 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            Your Translation
+          </div>
+        </div>
+
+        {/* Main Content - Row-based side by side */}
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="grid grid-cols-2 min-h-full">
+            {/* Source Poem Column */}
+            <div className="px-8 py-6 bg-slate-50/30">
+              <div className="space-y-1">
+                {poemLines.map((line, idx) => (
+                  <div
+                    key={`source-${idx}`}
+                    className="text-lg leading-relaxed text-slate-700 min-h-[2rem] flex items-center"
+                    style={{ fontFamily: "Georgia, serif" }}
                   >
-                    <RotateCcw className="h-4 w-4" />
-                    Reset
-                  </Button>
-                </div>
+                    {line || <span className="opacity-0">.</span>}
+                  </div>
+                ))}
               </div>
             </div>
 
-            {/* Translation Textarea */}
-            <div className="flex-1 p-6 min-h-0">
-              <textarea
-                value={wholeTranslation}
-                onChange={(e) => {
-                  setWholeTranslation(e.target.value);
-                  setHasUnsavedChanges(true);
-                }}
-                className="w-full h-full resize-none border-0 focus:outline-none focus:ring-0 text-base leading-relaxed font-sans text-slate-900 placeholder:text-slate-400"
-                placeholder="Your complete translation will appear here..."
-                spellCheck={false}
-              />
-            </div>
-
-            {/* Translation Footer */}
-            <div className="px-6 py-3 border-t bg-slate-50 flex items-center justify-between text-xs text-slate-500 flex-shrink-0">
-              <div className="flex items-center gap-4">
-                <span>
-                  {wholeTranslation.split("\n").length} line
-                  {wholeTranslation.split("\n").length !== 1 ? "s" : ""}
-                </span>
-                <span className="text-slate-400">•</span>
-                <span>
-                  Press{" "}
-                  <kbd className="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-[11px] font-mono">
-                    ⌘/Ctrl
-                  </kbd>{" "}
-                  +{" "}
-                  <kbd className="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-[11px] font-mono">
-                    Enter
-                  </kbd>{" "}
-                  to save draft
-                </span>
+            {/* Translation Poem Column */}
+            <div className="px-8 py-6 bg-white">
+              <div className="space-y-1">
+                {poemLines.map((_, idx) => {
+                  const lineValue = translationLines[idx] ?? "";
+                  return (
+                    <div
+                      key={`translation-${idx}`}
+                      className="min-h-[2rem] flex items-center"
+                    >
+                      <textarea
+                        value={lineValue}
+                        onChange={(e) => {
+                          const lines = [...translationLines];
+                          // Ensure array has enough elements
+                          while (lines.length <= idx) {
+                            lines.push("");
+                          }
+                          lines[idx] = e.target.value;
+                          setWholeTranslation(lines.join("\n"));
+                          setHasUnsavedChanges(true);
+                        }}
+                        className={cn(
+                          "w-full resize-none border-0 bg-transparent p-0",
+                          "text-lg leading-relaxed text-slate-800",
+                          "focus:outline-none focus:ring-0",
+                          "placeholder:text-slate-300 placeholder:italic",
+                          !lineValue && "italic text-slate-300"
+                        )}
+                        placeholder="..."
+                        spellCheck={false}
+                        rows={1}
+                        style={{
+                          fontFamily: "Georgia, serif",
+                          minHeight: "2rem",
+                          overflow: "hidden",
+                          lineHeight: "1.75",
+                        }}
+                        onInput={(e) => {
+                          const target = e.target as HTMLTextAreaElement;
+                          target.style.height = "auto";
+                          target.style.height = `${Math.max(
+                            32,
+                            target.scrollHeight
+                          )}px`;
+                        }}
+                      />
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>
