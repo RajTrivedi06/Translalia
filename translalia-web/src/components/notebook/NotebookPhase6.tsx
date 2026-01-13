@@ -345,7 +345,6 @@ export default function NotebookPhase6({
                         maxHeight: "6rem",
                         height: "auto",
                         overflowY: "hidden",
-                        fieldSizing: "content",
                       }}
                     />
                   </NotebookDropZone>
