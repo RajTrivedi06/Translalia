@@ -109,7 +109,7 @@ export function NotebookNotesPanel({ className }: NotebookNotesPanelProps) {
     setHasUnsavedChanges(true);
   };
 
-  const handleManualSave = async () => {
+  const handleManualSave = React.useCallback(async () => {
     if (saveStatus === "saving") return;
 
     setSaveStatus("saving");
@@ -127,7 +127,7 @@ export function NotebookNotesPanel({ className }: NotebookNotesPanelProps) {
       setSaveStatus("error");
       setTimeout(() => setSaveStatus("idle"), 3000);
     }
-  };
+  }, [saveStatus, saveNotes, threadNote, lineNotes, updateNotesLastSaved]);
 
   // Keyboard shortcuts
   React.useEffect(() => {
@@ -147,7 +147,7 @@ export function NotebookNotesPanel({ className }: NotebookNotesPanelProps) {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [notesExpanded, setNotesExpanded]);
+  }, [notesExpanded, setNotesExpanded, handleManualSave]);
 
   const currentLineNote =
     currentLineIndex !== null ? lineNotes[currentLineIndex] || null : null;

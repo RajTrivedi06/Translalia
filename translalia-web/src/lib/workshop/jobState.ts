@@ -424,8 +424,12 @@ export function markJobCompletedIfDone(
         // Empty chunk with no lines - check if it should have lines
         // If chunk says it has totalLines but no lines array, it's incomplete
         if (stanza.totalLines > 0) {
+          const chunkState = stanza as TranslationChunkState;
+          const stanzaState = stanza as unknown as TranslationStanzaState;
+          const index =
+            chunkState.chunkIndex ?? stanzaState.stanzaIndex ?? "unknown";
           console.warn(
-            `[markJobCompletedIfDone] Chunk ${stanza.chunkIndex ?? stanza.stanzaIndex} has totalLines=${stanza.totalLines} but no lines array`
+            `[markJobCompletedIfDone] Chunk ${index} has totalLines=${stanza.totalLines} but no lines array`
           );
           return true; // Incomplete
         }
@@ -440,8 +444,12 @@ export function markJobCompletedIfDone(
       );
 
       if (incompleteLines.length > 0) {
+        const chunkState = stanza as TranslationChunkState;
+        const stanzaState = stanza as unknown as TranslationStanzaState;
+        const index =
+          chunkState.chunkIndex ?? stanzaState.stanzaIndex ?? "unknown";
         console.warn(
-          `[markJobCompletedIfDone] Chunk ${stanza.chunkIndex ?? stanza.stanzaIndex} (status: ${stanza.status}) has ${incompleteLines.length} incomplete lines:`,
+          `[markJobCompletedIfDone] Chunk ${index} (status: ${stanza.status}) has ${incompleteLines.length} incomplete lines:`,
           incompleteLines.map((l) => ({
             line_number: l.line_number,
             status: l.translationStatus,
