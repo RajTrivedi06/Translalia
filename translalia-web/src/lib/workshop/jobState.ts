@@ -409,13 +409,68 @@ export function markJobCompletedIfDone(
   job: TranslationJobState
 ): TranslationJobState {
   const chunkOrStanzaStates = job.chunks || job.stanzas || {};
-  const hasPending = Object.values(chunkOrStanzaStates).some(
+
+  // Check chunk-level completion
+  const hasPendingChunks = Object.values(chunkOrStanzaStates).some(
     (stanza) => stanza.status !== "completed" && stanza.status !== "failed"
   );
 
-  if (!hasPending && job.active.length === 0) {
+  // ✅ CRITICAL FIX: Validate line-level completion
+  // A chunk marked "completed" MUST have all its lines properly completed
+  const hasIncompleteLines = Object.values(chunkOrStanzaStates).some(
+    (stanza) => {
+      const lines = stanza.lines || [];
+      if (lines.length === 0) {
+        // Empty chunk with no lines - check if it should have lines
+        // If chunk says it has totalLines but no lines array, it's incomplete
+        if (stanza.totalLines > 0) {
+          console.warn(
+            `[markJobCompletedIfDone] Chunk ${stanza.chunkIndex ?? stanza.stanzaIndex} has totalLines=${stanza.totalLines} but no lines array`
+          );
+          return true; // Incomplete
+        }
+        return false; // Truly empty chunk is ok
+      }
+
+      // Check if ANY line is still pending or missing translationStatus
+      const incompleteLines = lines.filter(
+        (line) =>
+          !line.translationStatus || // Missing status
+          line.translationStatus === "pending" // Still pending
+      );
+
+      if (incompleteLines.length > 0) {
+        console.warn(
+          `[markJobCompletedIfDone] Chunk ${stanza.chunkIndex ?? stanza.stanzaIndex} (status: ${stanza.status}) has ${incompleteLines.length} incomplete lines:`,
+          incompleteLines.map((l) => ({
+            line_number: l.line_number,
+            status: l.translationStatus,
+            hasTranslations: (l.translations?.length ?? 0) > 0,
+          }))
+        );
+        return true; // Has incomplete lines
+      }
+
+      return false;
+    }
+  );
+
+  // ✅ NEW: Check if all chunks are either completed or failed (no processing/queued)
+  const hasActiveWork = job.active.length > 0 || job.queue.length > 0;
+
+  if (!hasPendingChunks && !hasIncompleteLines && !hasActiveWork) {
     job.status = "completed";
     job.queue = [];
+    console.log(
+      `[markJobCompletedIfDone] Job completed: all chunks done, no incomplete lines, no active work`
+    );
+  } else {
+    // Debug: why job is not complete
+    if (hasPendingChunks || hasIncompleteLines || hasActiveWork) {
+      console.log(
+        `[markJobCompletedIfDone] Job NOT complete: hasPendingChunks=${hasPendingChunks}, hasIncompleteLines=${hasIncompleteLines}, hasActiveWork=${hasActiveWork} (active=${job.active.length}, queue=${job.queue.length})`
+      );
+    }
   }
 
   return job;

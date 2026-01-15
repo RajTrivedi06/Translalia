@@ -133,6 +133,10 @@ export async function processStanza({
     ? `${targetLang}${targetVariety ? ` (${targetVariety})` : ""}`
     : "the target language";
 
+  console.log(
+    `[processStanza] Starting stanza ${stanzaIndex} with ${totalLines} lines`
+  );
+
   for (let i = 0; i < totalLines; i += 1) {
     const lineText = stanza.lines[i];
     const globalLineIndex = lineOffset + i;
@@ -145,18 +149,37 @@ export async function processStanza({
         : undefined;
 
     if (!lineText?.trim()) {
-      // Record empty line
-      translatedLines.push({
+      // ✅ DEFENSIVE: Record empty line with proper status markers
+      const emptyLine = {
         line_number: globalLineIndex,
-        original_text: lineText,
+        original_text: lineText || "",
         translations: [],
         updated_at: Date.now(),
-      });
+        translationStatus: "translated" as const, // ✅ Mark empty lines as translated
+        alignmentStatus: "skipped" as const, // ✅ Empty lines don't need alignment
+      };
+      translatedLines.push(emptyLine);
 
-      await updateStanzaStatus(threadId, stanzaIndex, {
-        linesProcessed: i + 1,
-        lastLineTranslated: globalLineIndex,
-      });
+      console.log(
+        `[processStanza] Empty line ${globalLineIndex} in stanza ${stanzaIndex} - marked as translated`
+      );
+
+      // ✅ CRITICAL: Use try-catch to ensure empty lines are always recorded
+      try {
+        await updateStanzaStatus(threadId, stanzaIndex, {
+          linesProcessed: i + 1,
+          lastLineTranslated: globalLineIndex,
+          // Store the empty line with proper status
+          lines: translatedLines,
+        });
+      } catch (error) {
+        console.error(
+          `[processStanza] Failed to update empty line ${globalLineIndex}:`,
+          error
+        );
+        // Don't throw - continue processing other lines
+        // The empty line is still in translatedLines array
+      }
       continue;
     }
 
@@ -247,9 +270,15 @@ export async function processStanza({
         lineData.alignmentStatus = "skipped"; // Method 2 doesn't require alignment by default
         lineData.quality_metadata = qualityMetadata;
       } else {
-        // Method 1: Always translated, alignment pending (Method 1 uses drag-and-drop)
+        // ✅ CRITICAL FIX: Method 1 alignment worker doesn't exist
+        // Marking as "pending" causes lines to stay incomplete forever
+        // Mark as "skipped" until alignment worker is implemented
         lineData.translationStatus = "translated";
-        lineData.alignmentStatus = "pending"; // Method 1 needs alignment for drag-and-drop
+        lineData.alignmentStatus = "skipped"; // ✅ Changed from "pending" to "skipped"
+        // TODO: Implement alignment worker or remove alignment requirement
+        console.log(
+          `[processStanza] Line ${globalLineIndex} (Method 1): alignment skipped (no worker available)`
+        );
       }
 
       translatedLines.push(lineData);
@@ -315,13 +344,40 @@ export async function processStanza({
         }
       }
 
+      // ✅ CRITICAL FIX: Preserve successfully translated lines even on chunk failure
       // Permanent error or max retries exceeded: mark stanza as failed
+      // But keep successfully translated lines as "translated"
+      const updatedLines = translatedLines.map((line) => {
+        // Keep already translated lines as translated
+        if (line.translationStatus === "translated") {
+          return line;
+        }
+        // Mark pending/undefined lines as failed
+        return {
+          ...line,
+          translationStatus: "failed" as const,
+        };
+      });
+
+      // ✅ Log which lines were saved vs failed
+      const successfulLines = updatedLines.filter(
+        (l) => l.translationStatus === "translated"
+      ).length;
+      const failedLines = updatedLines.filter(
+        (l) => l.translationStatus === "failed"
+      ).length;
+
+      console.warn(
+        `[processStanza] Stanza ${stanzaIndex} failed (${code}): ${successfulLines} lines saved, ${failedLines} lines failed`
+      );
+
       await updateStanzaStatus(threadId, stanzaIndex, {
         status: "failed",
         retries:
           stanzaState?.chunks?.[stanzaIndex]?.retries ??
           stanzaState?.stanzas?.[stanzaIndex]?.retries ??
           0,
+        lines: updatedLines,
       });
 
       console.error(
@@ -330,4 +386,42 @@ export async function processStanza({
       throw error; // Propagate to stop processing this stanza
     }
   }
+
+  // ✅ FINAL VALIDATION: Ensure all lines were processed
+  console.log(
+    `[processStanza] Finished stanza ${stanzaIndex}: processed ${translatedLines.length}/${totalLines} lines`
+  );
+
+  if (translatedLines.length !== totalLines) {
+    console.error(
+      `[processStanza] CRITICAL: Stanza ${stanzaIndex} missing lines! Expected ${totalLines}, got ${translatedLines.length}`
+    );
+    throw new Error(
+      `Stanza processing incomplete: ${translatedLines.length}/${totalLines} lines processed`
+    );
+  }
+
+  // Validate all lines have proper status
+  const incompleteLines = translatedLines.filter(
+    (line) =>
+      !line.translationStatus || line.translationStatus === "pending"
+  );
+
+  if (incompleteLines.length > 0) {
+    console.error(
+      `[processStanza] CRITICAL: Stanza ${stanzaIndex} has ${incompleteLines.length} incomplete lines:`,
+      incompleteLines.map((l) => ({
+        line_number: l.line_number,
+        status: l.translationStatus,
+        text: l.original_text?.substring(0, 50),
+      }))
+    );
+    throw new Error(
+      `Stanza has ${incompleteLines.length} incomplete lines`
+    );
+  }
+
+  console.log(
+    `[processStanza] Stanza ${stanzaIndex} successfully completed with all lines properly processed`
+  );
 }

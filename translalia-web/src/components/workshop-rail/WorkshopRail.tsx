@@ -40,7 +40,6 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
   } = useWorkshopStore();
   // Re-enabled: Background translation hydration
   const setLineTranslation = useWorkshopStore((s) => s.setLineTranslation);
-  const completedLines = useWorkshopStore((s) => s.completedLines);
   const setCompletedLines = useWorkshopStore((s) => s.setCompletedLines);
 
   // ✅ Authoritative saved lines from Supabase (chat_threads.state.workshop_lines)
@@ -74,26 +73,35 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
     }
   }, [guideStep, poemLines.length, reset]);
 
-  // ✅ Hydrate completed lines ONLY from Supabase saved state (not from generated variants)
+  // ✅ Hydrate completed lines from Supabase saved state
   React.useEffect(() => {
     if (!threadId || !savedWorkshopLines) return;
 
-    // Only hydrate if we don't already have completed lines in local state.
-    // Avoid clobbering local progress if the user has newer in-memory state.
-    if (Object.keys(completedLines).length > 0) {
-      return;
-    }
-
+    // ✅ ALWAYS hydrate from DB - it's the source of truth
+    // localStorage is just a cache, DB has the authoritative state
     const mapped: Record<number, string> = {};
-    for (const [k, v] of Object.entries(savedWorkshopLines)) {
-      const idx = Number(k);
-      if (Number.isNaN(idx)) continue;
-      // Guard against null/undefined values
-      if (!v || typeof v !== "object") continue;
-      const translated = (v as { translated?: string }).translated;
-      if (typeof translated === "string" && translated.trim().length > 0) {
-        mapped[idx] = translated;
-      }
+
+    // Handle both array format (new) and object format (legacy)
+    if (Array.isArray(savedWorkshopLines)) {
+      // Array format: index = line number
+      savedWorkshopLines.forEach((v, idx) => {
+        if (!v || typeof v !== "object") return;
+        const translated = (v as { translated?: string }).translated;
+        if (typeof translated === "string" && translated.trim().length > 0) {
+          mapped[idx] = translated;
+        }
+      });
+    } else {
+      // Object format: key = line number
+      Object.entries(savedWorkshopLines).forEach(([k, v]) => {
+        const idx = Number(k);
+        if (Number.isNaN(idx)) return;
+        if (!v || typeof v !== "object") return;
+        const translated = (v as { translated?: string }).translated;
+        if (typeof translated === "string" && translated.trim().length > 0) {
+          mapped[idx] = translated;
+        }
+      });
     }
 
     if (Object.keys(mapped).length > 0) {
@@ -103,8 +111,12 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
         } saved completed lines from Supabase`
       );
       setCompletedLines(mapped);
+    } else {
+      // Clear if DB has no lines (user may have reset)
+      console.log("[WorkshopRail] No saved lines in DB, clearing local state");
+      setCompletedLines({});
     }
-  }, [threadId, savedWorkshopLines, completedLines, setCompletedLines]);
+  }, [threadId, savedWorkshopLines, setCompletedLines]);
 
   // Reset stanza selection when poem changes
   React.useEffect(() => {
@@ -250,27 +262,68 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
       const stanzaStatus = stanzaState.status;
       const translatedLines = stanzaState.lines || [];
 
-      // Map each line in the stanza to its status
+      // ✅ CRITICAL FIX: Use line-level translationStatus instead of just checking existence
       stanza.lines.forEach(() => {
-        // Check if this line has been translated
+        // Find the actual line data from the job state
         const translatedLine = translatedLines.find(
           (tl) => tl.line_number === globalLineIndex
         );
 
+        // ✅ NEW: Check line's translationStatus for accurate status
+        const lineTranslationStatus = translatedLine?.translationStatus;
+
         if (stanzaStatus === "completed") {
-          // Stanza completed - line is completed if it was translated
-          statuses[globalLineIndex] = translatedLine ? "completed" : "pending";
+          // Chunk is completed - check individual line status
+          if (translatedLine) {
+            // Line data exists - use its status
+            if (lineTranslationStatus === "translated") {
+              statuses[globalLineIndex] = "completed";
+            } else if (lineTranslationStatus === "failed") {
+              statuses[globalLineIndex] = "failed";
+            } else {
+              // Line exists but status is pending or missing - this is a bug
+              console.warn(
+                `[WorkshopRail] Line ${globalLineIndex} in completed chunk has status: ${lineTranslationStatus}`
+              );
+              statuses[globalLineIndex] = "pending";
+            }
+          } else {
+            // Line data missing from completed chunk - mark as failed
+            console.error(
+              `[WorkshopRail] Line ${globalLineIndex} missing from completed chunk ${stanzaIdx}`
+            );
+            statuses[globalLineIndex] = "failed";
+          }
         } else if (stanzaStatus === "processing") {
-          // Stanza is processing - line is completed if translated, otherwise processing
-          statuses[globalLineIndex] = translatedLine
-            ? "completed"
-            : "processing";
+          // Stanza is processing - check if this specific line is done
+          if (
+            translatedLine &&
+            lineTranslationStatus === "translated"
+          ) {
+            statuses[globalLineIndex] = "completed";
+          } else if (
+            translatedLine &&
+            lineTranslationStatus === "failed"
+          ) {
+            statuses[globalLineIndex] = "failed";
+          } else {
+            statuses[globalLineIndex] = "processing";
+          }
         } else if (stanzaStatus === "queued") {
           // Stanza is queued - line is queued
           statuses[globalLineIndex] = "queued";
         } else if (stanzaStatus === "failed") {
-          // Stanza failed - line is failed
-          statuses[globalLineIndex] = "failed";
+          // Stanza failed - check if individual lines succeeded before failure
+          if (
+            translatedLine &&
+            lineTranslationStatus === "translated"
+          ) {
+            // This line was translated before chunk failed
+            statuses[globalLineIndex] = "completed";
+          } else {
+            // Line failed or never processed
+            statuses[globalLineIndex] = "failed";
+          }
         } else {
           // Stanza is pending - line is pending
           statuses[globalLineIndex] = "pending";
@@ -292,30 +345,78 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
     const job = translationJobQuery.data.job;
     const chunkOrStanzaStates = job.chunks || job.stanzas || {};
 
+    // Track hydration stats for debugging
+    let hydratedCount = 0;
+    let emptyCount = 0;
+    let failedCount = 0;
+    let pendingCount = 0;
+
     // Iterate through all segments/stanzas to collect translated lines
     Object.values(chunkOrStanzaStates).forEach((chunk) => {
       if (chunk.lines && Array.isArray(chunk.lines)) {
         chunk.lines.forEach((line) => {
-          if (line.translations && line.translations.length > 0) {
-            if (line.line_number !== undefined) {
-              // Also hydrate the full LineTranslationResponse for the new workflow
-              if (line.translations.length === 3) {
-                setLineTranslation(line.line_number, {
-                  lineOriginal:
-                    line.original_text || poemLines[line.line_number] || "",
-                  translations: line.translations as [
-                    LineTranslationVariant,
-                    LineTranslationVariant,
-                    LineTranslationVariant
-                  ],
-                  modelUsed: line.model_used || "unknown",
-                });
-              }
+          if (line.line_number === undefined) return;
+
+          // ✅ CRITICAL FIX: Handle all line states, not just "translated"
+          const lineStatus = line.translationStatus;
+
+          if (lineStatus === "translated") {
+            // For non-empty lines with 3 variants
+            if (line.translations && line.translations.length === 3) {
+              setLineTranslation(line.line_number, {
+                lineOriginal:
+                  line.original_text || poemLines[line.line_number] || "",
+                translations: line.translations as [
+                  LineTranslationVariant,
+                  LineTranslationVariant,
+                  LineTranslationVariant
+                ],
+                modelUsed: line.model_used || "unknown",
+              });
+              hydratedCount++;
             }
+            // ✅ For empty lines (translations: [], but translationStatus: "translated")
+            else if (
+              line.translations &&
+              line.translations.length === 0 &&
+              (!line.original_text || line.original_text.trim() === "")
+            ) {
+              // Empty lines don't need translation variants - they're just markers
+              // The UI will skip them automatically when rendering
+              emptyCount++;
+              console.log(
+                `[WorkshopRail] Empty line ${line.line_number} marked as translated`
+              );
+            } else {
+              // Line marked as translated but has wrong number of translations
+              console.warn(
+                `[WorkshopRail] Line ${line.line_number} marked as translated but has ${line.translations?.length ?? 0} translations (expected 3 or 0 for empty)`
+              );
+            }
+          } else if (lineStatus === "failed") {
+            // ✅ NEW: Track failed lines for visibility
+            failedCount++;
+            console.warn(
+              `[WorkshopRail] Line ${line.line_number} failed translation`
+            );
+            // Note: Failed lines don't get hydrated into lineTranslations
+            // They will show as "failed" in the UI via lineStatuses
+          } else if (lineStatus === "pending" || !lineStatus) {
+            // ✅ NEW: Track pending lines for debugging
+            pendingCount++;
+            // Note: Don't log every pending line to avoid spam
           }
         });
       }
     });
+
+    // Log hydration summary for debugging
+    const totalProcessed = hydratedCount + emptyCount + failedCount + pendingCount;
+    if (totalProcessed > 0) {
+      console.log(
+        `[WorkshopRail] Hydration summary: ${hydratedCount} translated, ${emptyCount} empty, ${failedCount} failed, ${pendingCount} pending (total: ${totalProcessed})`
+      );
+    }
   }, [translationJobQuery.data, threadId, setLineTranslation, poemLines]);
 
   // Avoid UI/state races with persisted hydration (can otherwise auto-select a line
@@ -544,25 +645,54 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
                     threadId &&
                     selectedStanzaIndex !== null
                       ? async () => {
-                          // Retry failed stanza by calling retry API
+                          // ✅ NEW: Retry individual failed line (not entire stanza)
+                          console.log(
+                            `[WorkshopRail] Retrying line ${globalLineIndex} in stanza ${selectedStanzaIndex}`
+                          );
                           try {
                             const response = await fetch(
-                              "/api/workshop/retry-stanza",
+                              "/api/workshop/retry-line",
                               {
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({
                                   threadId,
                                   stanzaIndex: selectedStanzaIndex,
+                                  lineNumber: globalLineIndex,
                                 }),
                               }
                             );
-                            if (response.ok) {
-                              // Refetch translation job to get updated status
-                              await translationJobQuery.refetch();
+
+                            if (!response.ok) {
+                              const errorData = await response.json();
+                              console.error(
+                                `[WorkshopRail] Line retry failed:`,
+                                errorData
+                              );
+                              alert(
+                                `Failed to retry line: ${errorData.error || "Unknown error"}`
+                              );
+                              return;
                             }
+
+                            const result = await response.json();
+                            console.log(
+                              `[WorkshopRail] Line retry successful:`,
+                              result
+                            );
+
+                            // Refetch translation job to get updated status
+                            await translationJobQuery.refetch();
+
+                            // Show success message
+                            console.log(
+                              `✅ Line ${globalLineIndex} successfully retried and translated`
+                            );
                           } catch (error) {
-                            console.error("Failed to retry stanza:", error);
+                            console.error("Failed to retry line:", error);
+                            alert(
+                              `Failed to retry line: ${error instanceof Error ? error.message : "Unknown error"}`
+                            );
                           }
                         }
                       : undefined

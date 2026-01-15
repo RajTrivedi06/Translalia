@@ -16,6 +16,8 @@ import { NotebookDropZone } from "./NotebookDropZone";
 import { FullTranslationEditor } from "./FullTranslationEditor";
 import { CompletionConfirmationDialog } from "./CompletionConfirmationDialog";
 import { CongratulationsModal } from "@/components/workshop/CongratulationsModal";
+import { NotebookNotesPanel } from "./NotebookNotesPanel";
+import { useNotebookStore } from "@/store/notebookSlice";
 
 interface NotebookPhase6Props {
   projectId?: string;
@@ -46,6 +48,7 @@ export default function NotebookPhase6({
 
   const threadId = useThreadId();
   const saveManualLine = useSaveManualLine();
+  const toggleNotesPanel = useNotebookStore((s) => s.toggleNotesPanel);
 
   const [showFullEditor, setShowFullEditor] = React.useState(false);
   const [isDragActive, setIsDragActive] = React.useState(false);
@@ -125,6 +128,30 @@ export default function NotebookPhase6({
       return () => clearTimeout(timer);
     }
   }, [allLinesCompleted, hasShownCompletionDialog, showCompletionDialog]);
+
+  // Keyboard shortcut: ⌘/Ctrl + N to toggle notes panel
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isMac = navigator.platform.toUpperCase().includes("MAC");
+      const modifier = isMac ? e.metaKey : e.ctrlKey;
+
+      if (modifier && e.key === "n" && !e.shiftKey) {
+        // Only trigger if not typing in an input/textarea
+        const target = e.target as HTMLElement;
+        if (
+          target.tagName !== "INPUT" &&
+          target.tagName !== "TEXTAREA" &&
+          !target.isContentEditable
+        ) {
+          e.preventDefault();
+          toggleNotesPanel();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [toggleNotesPanel]);
 
   const activeIdx = currentLineIndex ?? 0;
   const isSaving = saveManualLine.isPending;
@@ -380,6 +407,9 @@ export default function NotebookPhase6({
           </div>
         </div>
       )}
+
+      {/* Notes Panel */}
+      <NotebookNotesPanel />
 
       {/* Full Translation Editor */}
       <FullTranslationEditor

@@ -284,16 +284,51 @@ export async function runTranslationTick(
         auditProjectId: context.projectId,
       });
 
-      // Update job state to mark chunk as completed
+      // ✅ CRITICAL FIX: Only mark chunk as completed if ALL lines are translated
       await updateTranslationJob(threadId, (draft) => {
         applyMetadata(draft);
         const chunkOrStanzaStates = draft.chunks || draft.stanzas || {};
         const stanzaState = chunkOrStanzaStates[stanzaIndex];
         if (stanzaState) {
-          stanzaState.status = "completed";
-          stanzaState.completedAt = Date.now();
-          stanzaState.linesProcessed = stanzaState.totalLines;
-          stanzaState.error = undefined;
+          // Check if all lines in this chunk are actually translated
+          const lines = stanzaState.lines || [];
+          const allLinesTranslated = lines.every(
+            (line) => line.translationStatus === "translated"
+          );
+          const hasFailedLines = lines.some(
+            (line) => line.translationStatus === "failed"
+          );
+
+          if (allLinesTranslated && lines.length > 0) {
+            // All lines successfully translated
+            stanzaState.status = "completed";
+            stanzaState.completedAt = Date.now();
+            stanzaState.linesProcessed = stanzaState.totalLines;
+            stanzaState.error = undefined;
+            console.log(
+              `[runTranslationTick] Chunk ${stanzaIndex} completed: all ${lines.length} lines translated`
+            );
+          } else if (hasFailedLines) {
+            // Some lines failed - mark chunk as failed
+            stanzaState.status = "failed";
+            stanzaState.completedAt = Date.now();
+            const failedCount = lines.filter(
+              (l) => l.translationStatus === "failed"
+            ).length;
+            const translatedCount = lines.filter(
+              (l) => l.translationStatus === "translated"
+            ).length;
+            stanzaState.error = `${failedCount} line(s) failed, ${translatedCount} succeeded`;
+            console.warn(
+              `[runTranslationTick] Chunk ${stanzaIndex} failed: ${failedCount} lines failed, ${translatedCount} translated`
+            );
+          } else {
+            // Lines still pending - keep as processing
+            console.warn(
+              `[runTranslationTick] Chunk ${stanzaIndex} finished but has incomplete lines (expected bug fix to prevent this)`
+            );
+            stanzaState.status = "processing"; // Don't mark as completed
+          }
         }
         draft.active = draft.active.filter((index) => index !== stanzaIndex);
         return markJobCompletedIfDone(draft);

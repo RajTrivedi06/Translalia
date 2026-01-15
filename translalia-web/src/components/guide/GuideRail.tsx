@@ -767,13 +767,21 @@ export function GuideRail({
 
     setShowConfirmDialog(false);
     setValidationError(null);
+
+    // Trigger auto-collapse callback first to update section states
+    const hasExistingWork = Object.keys(completedLines || {}).length > 0;
+    if (!hasExistingWork) {
+      onAutoCollapse?.();
+    }
+
+    // Unlock workshop after state updates
     unlockWorkshop();
 
-    const hasExistingWork = Object.keys(completedLines || {}).length > 0;
-
-    if (!hasExistingWork) onAutoCollapse?.();
-
-    router.push(`/workspaces/${projectId}/threads/${threadId}`);
+    // Small delay to ensure state updates propagate before navigation
+    // The navigation is to the same route, so it's mainly for state refresh
+    setTimeout(() => {
+      router.push(`/workspaces/${projectId}/threads/${threadId}`);
+    }, 0);
 
     (async () => {
       try {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   DndContext,
@@ -11,11 +11,12 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { ChevronLeft, ChevronRight, ArrowLeft } from "lucide-react";
-import { PanelGroup, Panel, PanelResizeHandle } from "react-resizable-panels";
+import { motion, AnimatePresence } from "framer-motion";
+import { ChevronLeft, ArrowLeft } from "lucide-react";
 import { GuideRail } from "@/components/guide";
 import { WorkshopRail } from "@/components/workshop-rail/WorkshopRail";
 import { NotebookViewContainer } from "@/components/notebook/NotebookViewContainer";
+import { ReflectionRail } from "@/components/reflection-rail/ReflectionRail";
 import { CollapsedPanelTab } from "../../../../../../../components/common/CollapsedPanelTab";
 import {
   setActiveThreadId,
@@ -96,6 +97,13 @@ export default function ThreadPageClient({
 
   // Track if user manually expanded the Guide Rail (should show in full width)
   const [isManuallyExpanded, setIsManuallyExpanded] = useState(false);
+
+  // Track collapsed state for Workshop, Notebook, and Reflection
+  // When workshop starts: Workshop and Notebook are open (not collapsed)
+  // Only 1-2 sections can be open at once (besides "Let's get started")
+  const [isWorkshopCollapsed, setIsWorkshopCollapsed] = useState(true);
+  const [isNotebookCollapsed, setIsNotebookCollapsed] = useState(true);
+  const [isReflectionCollapsed, setIsReflectionCollapsed] = useState(true);
 
   // Startup focus mode: show Guide Rail at 80% width when:
   // 1. Workshop is not unlocked AND Guide Rail is not collapsed, OR
@@ -227,12 +235,122 @@ export default function ThreadPageClient({
     if (hasWorkshopData || guideState.isWorkshopUnlocked) {
       setIsGettingStartedCollapsed(true);
       setIsManuallyExpanded(false); // Reset manual expansion on auto-collapse
+
+      // When workshop starts: Workshop and Notebook should be open
+      setIsWorkshopCollapsed(false);
+      setIsNotebookCollapsed(false);
+      setIsReflectionCollapsed(true); // Reflection starts collapsed
     }
   }, [workshopState.completedLines, guideState.isWorkshopUnlocked]);
 
   const handleDragStart = (event: DragStartEvent) => {
     const dragData = event.active.data.current as DragData;
     setActiveDragData(dragData);
+  };
+
+  // Handlers for toggling Workshop, Notebook, and Reflection sections
+  // Rules:
+  // - "Let's get started" must always be open if all other sections are collapsed
+  // - Other sections can't open until workshop is unlocked/started
+  // - Only 2 of the 3 sections (Workshop, Notebook, Reflection) can be open at a time
+  // - Either Notebook + Workshop OR Notebook + Reflection
+  // - Workshop and Reflection cannot both be open simultaneously
+  // - All sections maintain their position (order: Workshop, Notebook, Reflection)
+  const handleToggleWorkshop = () => {
+    // Prevent opening if workshop hasn't started
+    if (isWorkshopCollapsed && !isWorkshopUnlocked) {
+      return;
+    }
+
+    if (isWorkshopCollapsed) {
+      // Opening Workshop: close Reflection if it's open, ensure Notebook is open
+      setIsWorkshopCollapsed(false);
+      setIsReflectionCollapsed(true);
+      setIsNotebookCollapsed(false);
+    } else {
+      // Closing Workshop: only allow if Reflection is open (so we still have Notebook + Reflection)
+      if (!isReflectionCollapsed) {
+        setIsWorkshopCollapsed(true);
+      }
+    }
+  };
+
+  const handleToggleNotebook = () => {
+    // Prevent opening if workshop hasn't started
+    if (isNotebookCollapsed && !isWorkshopUnlocked) {
+      return;
+    }
+    setIsNotebookCollapsed(!isNotebookCollapsed);
+  };
+
+  const handleToggleReflection = () => {
+    // Prevent opening if workshop hasn't started
+    if (isReflectionCollapsed && !isWorkshopUnlocked) {
+      return;
+    }
+
+    if (isReflectionCollapsed) {
+      // Opening Reflection: close Workshop if it's open, ensure Notebook is open
+      setIsReflectionCollapsed(false);
+      setIsWorkshopCollapsed(true);
+      setIsNotebookCollapsed(false);
+    } else {
+      // Closing Reflection: only allow if Workshop is open (so we still have Notebook + Workshop)
+      if (!isWorkshopCollapsed) {
+        setIsReflectionCollapsed(true);
+      }
+    }
+  };
+
+  // Ensure "Let's get started" is always open if all other sections are collapsed
+  useEffect(() => {
+    const allOtherSectionsCollapsed =
+      isWorkshopCollapsed && isNotebookCollapsed && isReflectionCollapsed;
+
+    if (allOtherSectionsCollapsed && isGettingStartedCollapsed) {
+      // If all sections including "Let's get started" are collapsed, open "Let's get started"
+      setIsGettingStartedCollapsed(false);
+    }
+  }, [
+    isWorkshopCollapsed,
+    isNotebookCollapsed,
+    isReflectionCollapsed,
+    isGettingStartedCollapsed,
+  ]);
+
+  // Prevent "Let's get started" from being collapsed if all other sections are collapsed
+  const handleToggleGettingStarted = () => {
+    const allOtherSectionsCollapsed =
+      isWorkshopCollapsed && isNotebookCollapsed && isReflectionCollapsed;
+
+    // If trying to collapse "Let's get started" and all other sections are already collapsed, prevent it
+    if (allOtherSectionsCollapsed && !isGettingStartedCollapsed) {
+      // Can't collapse if all other sections are already collapsed
+      return;
+    }
+
+    setIsGettingStartedCollapsed((prev) => {
+      const newState = !prev;
+      if (newState) {
+        // Collapsing: clear manual expansion flag
+        setIsManuallyExpanded(false);
+      } else {
+        // Expanding: set manual expansion flag to show in full width
+        setIsManuallyExpanded(true);
+      }
+      return newState;
+    });
+  };
+
+  // Animation variants for panel transitions
+  const panelVariants = {
+    hidden: { opacity: 0, x: -10 },
+    visible: {
+      opacity: 1,
+      x: 0,
+      transition: { duration: 0.3, ease: "easeOut" },
+    },
+    exit: { opacity: 0, transition: { duration: 0.2 } },
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -277,8 +395,6 @@ export default function ThreadPageClient({
     // Cell reordering removed - no longer using cells
   };
 
-  const threadLabel = threadId?.slice(0, 6).toUpperCase() ?? "CURRENT THREAD";
-
   return (
     <DndContext
       sensors={sensors}
@@ -317,82 +433,100 @@ export default function ThreadPageClient({
           <div
             className={cn(
               "relative grid h-full min-h-0 gap-0",
-              "transition-[grid-template-columns] duration-500 ease-in-out"
+              "transition-[grid-template-columns] duration-500 ease-[cubic-bezier(0.4,0,0.2,1)]"
             )}
             style={{
-              // Startup focus: 80% guide, 10/10 tabs. Working: 3 columns. Collapsed: skinny guide + 50/50.
+              // Startup focus: flexible guide (approx 80% equivalent), thin fixed-width tabs (60px each = 180px total).
+              // Working mode: maintain order - each section can be open (1fr) or collapsed (60px)
               gridTemplateColumns: isStartupFocusMode
-                ? "80% 10% 10%"
-                : isGettingStartedCollapsed
-                ? "72px minmax(0,1fr) minmax(0,1fr)"
-                : "minmax(280px,22%) minmax(0,1fr) minmax(0,1fr)",
+                ? "1fr 60px 60px 60px"
+                : (() => {
+                    const guideCol = isGettingStartedCollapsed
+                      ? "60px"
+                      : "minmax(280px,18%)";
+                    const workshopCol = isWorkshopCollapsed ? "60px" : "1fr";
+                    const notebookCol = isNotebookCollapsed ? "60px" : "1fr";
+                    const reflectionCol = isReflectionCollapsed
+                      ? "60px"
+                      : "1fr";
+                    return `${guideCol} ${workshopCol} ${notebookCol} ${reflectionCol}`;
+                  })(),
             }}
           >
-            {/* LEFT: Let’s get started / collapsed rail */}
-            <div className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-l-2xl rounded-r-none bg-white shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
-              {!isGettingStartedCollapsed ? (
-                <>
-                  <div className="relative px-4 py-3">
-                    <div>
-                      <h2 className="text-xl font-semibold tracking-tight text-slate-900">
-                        {t("gettingStarted")}
-                      </h2>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsGettingStartedCollapsed(true);
-                        setIsManuallyExpanded(false);
-                      }}
-                      className="absolute right-4 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-slate-300 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
-                      aria-label={t("collapseGuidePanel")}
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </button>
-                  </div>
-                  <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4">
-                    <GuideRail
-                      projectId={projectId}
-                      threadId={threadId}
-                      showHeading={false}
-                      onCollapseToggle={() => {
-                        setIsGettingStartedCollapsed((prevState) => {
-                          const newState = !prevState;
-                          if (newState) {
-                            // Collapsing: clear manual expansion flag
-                            setIsManuallyExpanded(false);
-                          } else {
-                            // Expanding: set manual expansion flag to show in full width
-                            setIsManuallyExpanded(true);
-                          }
-                          return newState;
-                        });
-                      }}
-                      onAutoCollapse={() => setIsGettingStartedCollapsed(true)}
-                      isCollapsed={isGettingStartedCollapsed}
-                    />
-                  </div>
-                </>
-              ) : (
-                // COLLAPSED skinny rail – provide re-open button
-                <div className="flex h-full flex-col items-center justify-center gap-3 pb-6 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsGettingStartedCollapsed(false);
-                      setIsManuallyExpanded(true); // Mark as manually expanded to show in full width
-                    }}
-                    className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow transition hover:border-slate-300 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
-                    aria-label={t("expandGuidePanel")}
-                  >
-                    <ChevronRight className="h-5 w-5" />
-                  </button>
-                  <div className="h-full w-px rounded-full bg-slate-100" />
-                </div>
+            {/* LEFT: Let's get started / collapsed rail */}
+            <motion.div
+              layout
+              className={cn(
+                "relative flex h-full min-h-0 flex-col overflow-hidden rounded-l-2xl rounded-r-none",
+                isGettingStartedCollapsed
+                  ? "bg-white shadow-sm transition-colors duration-500 bg-white/70 hover:bg-white/90"
+                  : "bg-white shadow-[0_10px_30px_rgba(15,23,42,0.06)]"
               )}
-            </div>
+            >
+              <AnimatePresence mode="wait">
+                {!isGettingStartedCollapsed ? (
+                  <motion.div
+                    key="full-guide"
+                    variants={panelVariants}
+                    initial="hidden"
+                    animate="visible"
+                    exit="exit"
+                    className="flex h-full flex-col"
+                  >
+                    <div className="relative px-4 py-3">
+                      <div>
+                        <h2 className="text-xl font-semibold tracking-tight text-slate-900">
+                          {t("gettingStarted")}
+                        </h2>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleToggleGettingStarted}
+                        className="absolute right-4 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-slate-300 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+                        aria-label={t("collapseGuidePanel")}
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4">
+                      <GuideRail
+                        projectId={projectId}
+                        threadId={threadId}
+                        showHeading={false}
+                        onCollapseToggle={handleToggleGettingStarted}
+                        onAutoCollapse={() => {
+                          setIsGettingStartedCollapsed(true);
+                          // When workshop starts, open Workshop and Notebook
+                          setIsWorkshopCollapsed(false);
+                          setIsNotebookCollapsed(false);
+                          setIsReflectionCollapsed(true);
+                        }}
+                        isCollapsed={isGettingStartedCollapsed}
+                      />
+                    </div>
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="collapsed-guide"
+                    variants={panelVariants}
+                    initial="hidden"
+                    animate="visible"
+                    exit="exit"
+                    className="h-full"
+                  >
+                    <CollapsedPanelTab
+                      label={t("gettingStarted")}
+                      onClick={() => {
+                        setIsGettingStartedCollapsed(false);
+                        setIsManuallyExpanded(true); // Mark as manually expanded to show in full width
+                      }}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
 
-            {/* CENTER + RIGHT: Workshop and Notebook with resizable splitter */}
+            {/* CENTER + RIGHT: Workshop, Notebook, and Reflection with resizable splitter */}
             {isStartupFocusMode ? (
               // When in startup focus mode, show collapsed tabs side by side
               <>
@@ -402,7 +536,25 @@ export default function ThreadPageClient({
                     "rounded-none transition-all duration-500 ease-in-out bg-white/70"
                   )}
                 >
-                  <CollapsedPanelTab label={t("workshop")} />
+                  <CollapsedPanelTab
+                    label={t("workshop")}
+                    onClick={
+                      isWorkshopUnlocked ? handleToggleWorkshop : undefined
+                    }
+                  />
+                </div>
+                <div
+                  className={cn(
+                    "flex h-full min-h-0 flex-col overflow-hidden border-l border-slate-200/50 bg-white shadow-sm",
+                    "rounded-none transition-all duration-500 ease-in-out bg-white/70"
+                  )}
+                >
+                  <CollapsedPanelTab
+                    label={t("notebook")}
+                    onClick={
+                      isWorkshopUnlocked ? handleToggleNotebook : undefined
+                    }
+                  />
                 </div>
                 <div
                   className={cn(
@@ -410,63 +562,176 @@ export default function ThreadPageClient({
                     "rounded-r-2xl rounded-l-none transition-all duration-500 ease-in-out bg-white/70"
                   )}
                 >
-                  <CollapsedPanelTab label={t("notebook")} />
+                  <CollapsedPanelTab
+                    label={t("reflection")}
+                    onClick={
+                      isWorkshopUnlocked ? handleToggleReflection : undefined
+                    }
+                  />
                 </div>
               </>
             ) : (
-              // When not in startup focus mode, show resizable panels
-              // PanelGroup spans across the last 2 grid columns
-              <div className="col-span-2 flex h-full min-h-0">
-                <PanelGroup
-                  direction="horizontal"
-                  className="flex-1 min-h-0"
-                  autoSaveId={`workshop-notebook-split-${threadId}`}
+              // When not in startup focus mode, render sections in order maintaining their positions
+              <>
+                {/* Workshop section */}
+                <motion.div
+                  layout
+                  className={cn(
+                    "flex h-full min-h-0 flex-col overflow-hidden border-l border-slate-200/50 bg-white shadow-sm",
+                    "transition-colors duration-500 bg-white/70 hover:bg-white/90",
+                    isNotebookCollapsed &&
+                      isReflectionCollapsed &&
+                      "rounded-r-2xl",
+                    !isWorkshopCollapsed && "rounded-none"
+                  )}
                 >
-                  {/* CENTER: Workshop – full-height, scrolls inside */}
-                  <Panel
-                    defaultSize={50}
-                    minSize={20}
-                    className={cn(
-                      "flex h-full min-h-0 flex-col overflow-hidden border-l border-slate-200/50 bg-white shadow-sm",
-                      "rounded-none transition-all duration-500 ease-in-out"
+                  <AnimatePresence mode="wait">
+                    {isWorkshopCollapsed ? (
+                      <motion.div
+                        key="collapsed-workshop"
+                        variants={panelVariants}
+                        initial="hidden"
+                        animate="visible"
+                        exit="exit"
+                        className="h-full"
+                      >
+                        <CollapsedPanelTab
+                          label={t("workshop")}
+                          onClick={
+                            isWorkshopUnlocked
+                              ? handleToggleWorkshop
+                              : undefined
+                          }
+                        />
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="full-workshop"
+                        variants={panelVariants}
+                        initial="hidden"
+                        animate="visible"
+                        exit="exit"
+                        className="flex h-full flex-col"
+                      >
+                        <div className="px-4 py-3 border-b border-slate-200 relative">
+                          <h2 className="text-xl font-semibold tracking-tight text-slate-900">
+                            {t("workshop")}
+                          </h2>
+                          <p className="text-sm text-slate-500">
+                            {t("workshopDescription")}
+                          </p>
+                        </div>
+                        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-2 md:p-3">
+                          <WorkshopRail showHeaderTitle={false} />
+                        </div>
+                      </motion.div>
                     )}
-                  >
-                    <div className="px-4 py-3">
-                      <h2 className="text-xl font-semibold tracking-tight text-slate-900">
-                        {t("workshop")}
-                      </h2>
-                      <p className="text-sm text-slate-500">
-                        {t("workshopDescription")}
-                      </p>
-                    </div>
-                    <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-2 md:p-3">
-                      <WorkshopRail showHeaderTitle={false} />
-                    </div>
-                  </Panel>
+                  </AnimatePresence>
+                </motion.div>
 
-                  {/* Resize handle */}
-                  <PanelResizeHandle className="w-1 bg-slate-200 hover:bg-slate-300 transition-colors cursor-col-resize active:bg-slate-400" />
-
-                  {/* RIGHT: Notebook – full-height, scrolls inside */}
-                  <Panel
-                    defaultSize={50}
-                    minSize={20}
-                    className={cn(
-                      "flex h-full min-h-0 flex-col overflow-hidden bg-white shadow-sm",
-                      "rounded-r-2xl rounded-l-none transition-all duration-500 ease-in-out"
+                {/* Notebook section */}
+                <motion.div
+                  layout
+                  className={cn(
+                    "flex h-full min-h-0 flex-col overflow-hidden border-l border-slate-200/50 bg-white shadow-sm",
+                    "transition-colors duration-500 bg-white/70 hover:bg-white/90",
+                    isReflectionCollapsed && "rounded-r-2xl",
+                    !isNotebookCollapsed && "rounded-none"
+                  )}
+                >
+                  <AnimatePresence mode="wait">
+                    {isNotebookCollapsed ? (
+                      <motion.div
+                        key="collapsed-notebook"
+                        variants={panelVariants}
+                        initial="hidden"
+                        animate="visible"
+                        exit="exit"
+                        className="h-full"
+                      >
+                        <CollapsedPanelTab
+                          label={t("notebook")}
+                          onClick={
+                            isWorkshopUnlocked
+                              ? handleToggleNotebook
+                              : undefined
+                          }
+                        />
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="full-notebook"
+                        variants={panelVariants}
+                        initial="hidden"
+                        animate="visible"
+                        exit="exit"
+                        className="flex h-full flex-col"
+                      >
+                        <div className="px-4 py-3 border-b border-slate-200 relative">
+                          <h2 className="text-xl font-semibold tracking-tight text-slate-900">
+                            {t("notebook")}
+                          </h2>
+                        </div>
+                        <div className="flex-1 min-h-0 overflow-hidden">
+                          <NotebookViewContainer projectId={projectId} />
+                        </div>
+                      </motion.div>
                     )}
-                  >
-                    <div className="px-4 py-3">
-                      <h2 className="text-xl font-semibold tracking-tight text-slate-900">
-                        {t("notebook")}
-                      </h2>
-                    </div>
-                    <div className="flex-1 min-h-0 overflow-hidden">
-                      <NotebookViewContainer projectId={projectId} />
-                    </div>
-                  </Panel>
-                </PanelGroup>
-              </div>
+                  </AnimatePresence>
+                </motion.div>
+
+                {/* Reflection section */}
+                <motion.div
+                  layout
+                  className={cn(
+                    "flex h-full min-h-0 flex-col overflow-hidden border-l border-slate-200/50 bg-white shadow-sm",
+                    "transition-colors duration-500 bg-white/70 hover:bg-white/90 rounded-r-2xl"
+                  )}
+                >
+                  <AnimatePresence mode="wait">
+                    {isReflectionCollapsed ? (
+                      <motion.div
+                        key="collapsed-reflection"
+                        variants={panelVariants}
+                        initial="hidden"
+                        animate="visible"
+                        exit="exit"
+                        className="h-full"
+                      >
+                        <CollapsedPanelTab
+                          label={t("reflection")}
+                          onClick={
+                            isWorkshopUnlocked
+                              ? handleToggleReflection
+                              : undefined
+                          }
+                        />
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="full-reflection"
+                        variants={panelVariants}
+                        initial="hidden"
+                        animate="visible"
+                        exit="exit"
+                        className="flex h-full flex-col"
+                      >
+                        <div className="px-4 py-3 border-b border-slate-200 relative">
+                          <h2 className="text-xl font-semibold tracking-tight text-slate-900">
+                            {t("reflection")}
+                          </h2>
+                          <p className="text-sm text-slate-500">
+                            {t("reflectionDescription")}
+                          </p>
+                        </div>
+                        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-2 md:p-3">
+                          <ReflectionRail showHeaderTitle={false} />
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              </>
             )}
           </div>
         </div>
