@@ -19,6 +19,7 @@ import { translateLineInternal } from "@/lib/workshop/translateLineInternal";
 import { translateLineWithRecipesInternal } from "@/lib/translation/method2/translateLineWithRecipesInternal";
 import type { GuideAnswers } from "@/store/guideSlice";
 import type { StanzaDetectionResult } from "@/lib/poem/stanzaDetection";
+import type { LineQualityMetadata } from "@/types/translationJob";
 
 const RequestSchema = z.object({
   threadId: z.string().uuid(),
@@ -262,7 +263,7 @@ export async function POST(req: Request) {
       alignmentStatus: "skipped" as const,
       quality_metadata:
         translationMethod === "method-2" && "qualityMetadata" in lineTranslation
-          ? (lineTranslation as { qualityMetadata?: unknown }).qualityMetadata
+          ? (lineTranslation as { qualityMetadata?: LineQualityMetadata }).qualityMetadata
           : undefined,
     };
 
