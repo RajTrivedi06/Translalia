@@ -244,8 +244,8 @@ export async function translateLineWithRecipesInternal({
 
   // ISS-001: Output token cap for main-gen
   const mainGenMaxOutputTokens = Math.min(
-    Math.max(300, Number(process.env.MAIN_GEN_MAX_OUTPUT_TOKENS) || 2000),
-    4000
+    Math.max(300, Number(process.env.MAIN_GEN_MAX_OUTPUT_TOKENS) || 4000),
+    5000
   );
 
   const requestId = trackCallStart("main-gen", {

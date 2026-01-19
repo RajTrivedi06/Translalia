@@ -50,7 +50,18 @@ export const MAIN_GEN_JSON_SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["label", "text"],
+        // GPT-5 strict mode requires ALL properties to be in required array
+        // Code-level validation handles variant-specific requirements (B needs b_image_shift_summary, C needs c_world_shift_summary, etc.)
+        required: [
+          "label",
+          "text",
+          // Include optional fields in required array for GPT-5 strict mode compatibility
+          // Code validation will handle variant-specific requirements
+          ...(process.env.OMIT_ANCHOR_REALIZATIONS_FROM_PROMPT === "1" ? [] : ["anchor_realizations"]),
+          "b_image_shift_summary",
+          "c_world_shift_summary",
+          ...(process.env.OMIT_SUBJECT_FORM_FROM_PROMPT === "1" ? [] : ["c_subject_form_used"]),
+        ],
         properties: {
           label: {
             type: "string",
@@ -75,10 +86,12 @@ export const MAIN_GEN_JSON_SCHEMA = {
           c_world_shift_summary: {
             type: "string",
           },
-          c_subject_form_used: {
-            type: "string",
-            enum: ["we", "you", "third_person", "impersonal", "i"],
-          },
+          ...(process.env.OMIT_SUBJECT_FORM_FROM_PROMPT === "1" ? {} : {
+            c_subject_form_used: {
+              type: "string",
+              enum: ["we", "you", "third_person", "impersonal", "i"],
+            },
+          }),
         },
       },
     },
