@@ -184,9 +184,17 @@ export function SegmentEditor({
 
   // Re-run smart detection
   const rerunSmartDetection = React.useCallback(() => {
+    if (!poemText || poemText.trim().length === 0) {
+      console.warn("[SegmentEditor] Cannot run smart detection: poem text is empty");
+      return;
+    }
+    try {
     const breakpoints = detectSmartBreakpoints(poemText);
     const newSegmentation = breakpointsToSegments(poemText, breakpoints);
     setLineToSegment(newSegmentation);
+    } catch (error) {
+      console.error("[SegmentEditor] Error running smart detection:", error);
+    }
   }, [poemText]);
 
   // Handle confirm
@@ -258,7 +266,12 @@ export function SegmentEditor({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={rerunSmartDetection}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    rerunSmartDetection();
+                  }}
+                  disabled={!poemText || poemText.trim().length === 0}
                   className="gap-2"
                 >
                   <Sparkles className="h-4 w-4" />

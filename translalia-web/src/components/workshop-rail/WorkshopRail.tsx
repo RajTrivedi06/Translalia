@@ -517,16 +517,16 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
 
         <div className="flex-1 overflow-y-auto p-4">
           <WorkshopNavigationToggle
-            title={t("chunkSelection")}
-            subtitle={t("step1ChooseChunk")}
+            title={t("segmentSelection")}
+            subtitle={t("step1ChooseSegment")}
             activeTab="chunks"
             onChunksClick={() => {}}
             onLinesClick={() => {}}
             disableChunks
             disableLines
-            lineLabel={t("linesSelectChunkFirst")}
+            lineLabel={t("linesSelectSegmentFirst")}
           />
-          <h2 className="text-xl font-bold mb-4">{t("selectChunk")}</h2>
+          <h2 className="text-xl font-bold mb-4">{t("selectSegment")}</h2>
           <div className="space-y-2">
             {poemStanzas.stanzas.map((stanza, idx) => {
               // ✅ Get real segment status from translation progress (use chunks or stanzas)
@@ -548,7 +548,7 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
                 >
                   <div className="flex items-center justify-between mb-2">
                     <div className="font-semibold text-lg">
-                      {t("chunk", { number: stanza.number })}
+                      {t("segment", { number: stanza.number })}
                     </div>
                     {statusMeta && (
                       <span
@@ -607,7 +607,7 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
 
       <div className="flex-1 overflow-y-auto p-4">
         <WorkshopNavigationToggle
-          title={t("chunk", { number: currentStanza.number })}
+          title={t("segment", { number: currentStanza.number })}
           subtitle={
             currentLineIndex === null
               ? t("step2ChooseLine")
@@ -619,7 +619,7 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
         />
         {/* Current segment title */}
         <h2 className="text-xl font-bold mb-4">
-          {t("chunk", { number: currentStanza.number })}
+          {t("segment", { number: currentStanza.number })}
         </h2>
 
         {/* Line selector */}

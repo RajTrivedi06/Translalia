@@ -333,6 +333,26 @@ export async function POST(request: NextRequest) {
       },
     };
 
+    // ✅ LOG: State write activity (before write)
+    const translationJob = state.translation_job as { version?: number; chunks?: Record<number, { lines?: unknown[] }>; active?: number[]; queue?: number[] } | undefined;
+    const jobVersion = translationJob?.version ?? "none";
+    const chunks = translationJob?.chunks || {};
+    const chunk0Lines = chunks[0]?.lines?.length ?? "none";
+    const chunk1Lines = chunks[1]?.lines?.length ?? "none";
+    const activeIndices = translationJob?.active || [];
+    const queueLength = translationJob?.queue?.length ?? "none";
+    const activeLength = activeIndices.length;
+    const activeDisplay = activeLength > 0 ? `[${activeIndices.join(",")}]` : "[]";
+    const writingVersion = translationJob?.version ?? "none";
+    const prevSeenVersion = translationJob?.version ?? "none"; // Same as what we read
+    
+    console.log(
+      `[STATE_WRITE] writer=grade-line threadId=${threadId} jobVersion=${jobVersion} ` +
+      `chunks[0].lines=${chunk0Lines} chunks[1].lines=${chunk1Lines} ` +
+      `queue.length=${queueLength} active=${activeDisplay} updating=workshop_lines ` +
+      `versionCheck=no prevSeenVersion=${prevSeenVersion} writingVersion=${writingVersion}`
+    );
+
     const { error: updateError } = await supabase
       .from("chat_threads")
       .update({

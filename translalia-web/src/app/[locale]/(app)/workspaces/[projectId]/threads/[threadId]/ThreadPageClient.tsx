@@ -23,7 +23,6 @@ import {
   clearActiveThreadId,
   getActiveThreadId,
   initializeThreadId,
-  threadStorage,
 } from "@/lib/threadStorage";
 import { type DragData } from "@/types/drag";
 import { Badge } from "@/components/ui/badge";
@@ -90,76 +89,63 @@ export default function ThreadPageClient({
   const workshopStoreMeta = useWorkshopStore((s) => s.meta);
   const completedLines = useWorkshopStore((s) => s.completedLines);
 
-  // Initialize collapse state to false for new threads
-  // Will be updated in useEffect based on actual thread state
-  const [isGettingStartedCollapsed, setIsGettingStartedCollapsed] =
-    useState(false);
+  // Always start expanded; we only collapse once workshop data is confirmed.
+  const [isGettingStartedCollapsed, setIsGettingStartedCollapsed] = useState(false);
 
-  // Track if user manually expanded the Guide Rail (should show in full width)
-  const [isManuallyExpanded, setIsManuallyExpanded] = useState(false);
-
-  // Track collapsed state for Workshop, Notebook, and Reflection
+  // Track collapsed state for Workshop, Notebook, and Editing
   // When workshop starts: Workshop and Notebook are open (not collapsed)
   // Only 1-2 sections can be open at once (besides "Let's get started")
   const [isWorkshopCollapsed, setIsWorkshopCollapsed] = useState(true);
   const [isNotebookCollapsed, setIsNotebookCollapsed] = useState(true);
   const [isReflectionCollapsed, setIsReflectionCollapsed] = useState(true);
 
-  // Startup focus mode: show Guide Rail at 80% width when:
-  // 1. Workshop is not unlocked AND Guide Rail is not collapsed, OR
-  // 2. User manually expanded the Guide Rail (regardless of workshop state)
-  const isStartupFocusMode =
-    (!isWorkshopUnlocked && !isGettingStartedCollapsed) ||
-    (isManuallyExpanded && !isGettingStartedCollapsed);
+  const isStoreReady =
+    guideStoreHydrated &&
+    workshopStoreHydrated &&
+    guideStoreMeta.threadId === threadId &&
+    workshopStoreMeta.threadId === threadId;
 
-  // Reset and update collapse state when threadId changes or store state updates
-  // Only collapse if:
-  // 1. Stores are hydrated
-  // 2. The store's meta.threadId matches the current threadId (ensures we're looking at the right thread's data)
-  // 3. AND (workshop is unlocked OR has existing work)
+  const hasWorkshopData =
+    isStoreReady && Object.keys(completedLines || {}).length > 0;
+  const isWorkshopStarted = isStoreReady && (isWorkshopUnlocked || hasWorkshopData);
+
+  // New threads: always show the guide expanded in the startup layout.
+  const showStartupLayout = !isStoreReady || !isWorkshopStarted;
+
+  // Once the workshop has started, allow the guide to collapse.
+  const isGuideCollapsed = isWorkshopStarted ? isGettingStartedCollapsed : false;
+
+  // Reset collapse state when threadId changes - always start expanded for new threads
   useEffect(() => {
-    // Wait for stores to be hydrated before making decisions
-    if (!guideStoreHydrated || !workshopStoreHydrated) {
-      // Keep expanded while stores are hydrating
+    // When threadId changes, reset to expanded state
+    setIsGettingStartedCollapsed(false);
+    setIsWorkshopCollapsed(true);
+    setIsNotebookCollapsed(true);
+    setIsReflectionCollapsed(true);
+  }, [threadId]);
+
+  // Update collapse state based on store data (only after stores are ready for this thread).
+  useEffect(() => {
+    if (!isStoreReady) {
       setIsGettingStartedCollapsed(false);
       return;
     }
 
-    // Verify we're looking at the correct thread's store data
-    const isGuideStoreForThisThread = guideStoreMeta.threadId === threadId;
-    const isWorkshopStoreForThisThread =
-      workshopStoreMeta.threadId === threadId;
-
-    // Only use store values if they belong to this thread
-    if (isGuideStoreForThisThread && isWorkshopStoreForThisThread) {
-      const hasWorkshopData = Object.keys(completedLines || {}).length > 0;
-      if (isWorkshopUnlocked || hasWorkshopData) {
-        setIsGettingStartedCollapsed(true);
-        setIsManuallyExpanded(false); // Reset manual expansion on auto-collapse
-      } else {
-        // If no work exists for this thread, ensure it's expanded
-        setIsGettingStartedCollapsed(false);
-        setIsManuallyExpanded(false); // Reset manual expansion
-      }
-    } else {
-      // If stores are for a different thread, start expanded
-      setIsGettingStartedCollapsed(false);
-      setIsManuallyExpanded(false); // Reset manual expansion
+    if (hasWorkshopData && !isWorkshopUnlocked) {
+      useGuideStore.getState().unlockWorkshop();
     }
-  }, [
-    threadId,
-    guideStoreHydrated,
-    guideStoreMeta.threadId,
-    workshopStoreHydrated,
-    workshopStoreMeta.threadId,
-    isWorkshopUnlocked,
-    completedLines,
-  ]);
 
-  // Persist collapse state to threadStorage
-  useEffect(() => {
-    threadStorage.setItem("guide-collapsed", String(isGettingStartedCollapsed));
-  }, [isGettingStartedCollapsed]);
+    if (isWorkshopStarted) {
+      setIsGettingStartedCollapsed(true);
+
+      // When workshop starts: Workshop and Notebook should be open
+      setIsWorkshopCollapsed(false);
+      setIsNotebookCollapsed(false);
+      setIsReflectionCollapsed(true);
+    } else {
+      setIsGettingStartedCollapsed(false);
+    }
+  }, [isStoreReady, hasWorkshopData, isWorkshopUnlocked, isWorkshopStarted]);
 
   // ============================================================
   // Effect: Initialize thread ID properly after mount
@@ -219,56 +205,32 @@ export default function ThreadPageClient({
     notebookState.meta.threadId,
   ]);
 
-  // ============================================================
-  // Effect: Cross-store coordination (guide <-> workshop)
-  // ============================================================
-  useEffect(() => {
-    // If workshop has data, ensure guide is unlocked and collapsed
-    const hasWorkshopData =
-      Object.keys(workshopState.completedLines || {}).length > 0;
-
-    if (hasWorkshopData && !guideState.isWorkshopUnlocked) {
-      console.log("[ThreadPageClient] Workshop has data. Unlocking guide.");
-      useGuideStore.getState().unlockWorkshop();
-    }
-
-    if (hasWorkshopData || guideState.isWorkshopUnlocked) {
-      setIsGettingStartedCollapsed(true);
-      setIsManuallyExpanded(false); // Reset manual expansion on auto-collapse
-
-      // When workshop starts: Workshop and Notebook should be open
-      setIsWorkshopCollapsed(false);
-      setIsNotebookCollapsed(false);
-      setIsReflectionCollapsed(true); // Reflection starts collapsed
-    }
-  }, [workshopState.completedLines, guideState.isWorkshopUnlocked]);
-
   const handleDragStart = (event: DragStartEvent) => {
     const dragData = event.active.data.current as DragData;
     setActiveDragData(dragData);
   };
 
-  // Handlers for toggling Workshop, Notebook, and Reflection sections
+  // Handlers for toggling Workshop, Notebook, and Editing sections
   // Rules:
   // - "Let's get started" must always be open if all other sections are collapsed
   // - Other sections can't open until workshop is unlocked/started
-  // - Only 2 of the 3 sections (Workshop, Notebook, Reflection) can be open at a time
-  // - Either Notebook + Workshop OR Notebook + Reflection
-  // - Workshop and Reflection cannot both be open simultaneously
-  // - All sections maintain their position (order: Workshop, Notebook, Reflection)
+  // - Only 2 of the 3 sections (Workshop, Notebook, Editing) can be open at a time
+  // - Either Notebook + Workshop OR Notebook + Editing
+  // - Workshop and Editing cannot both be open simultaneously
+  // - All sections maintain their position (order: Workshop, Notebook, Editing)
   const handleToggleWorkshop = () => {
-    // Prevent opening if workshop hasn't started
-    if (isWorkshopCollapsed && !isWorkshopUnlocked) {
+    if (!isStoreReady) return;
+    if (isWorkshopCollapsed && !isWorkshopStarted) {
       return;
     }
 
     if (isWorkshopCollapsed) {
-      // Opening Workshop: close Reflection if it's open, ensure Notebook is open
+      // Opening Workshop: close Editing if it's open, ensure Notebook is open
       setIsWorkshopCollapsed(false);
       setIsReflectionCollapsed(true);
       setIsNotebookCollapsed(false);
     } else {
-      // Closing Workshop: only allow if Reflection is open (so we still have Notebook + Reflection)
+      // Closing Workshop: only allow if Editing is open (so we still have Notebook + Editing)
       if (!isReflectionCollapsed) {
         setIsWorkshopCollapsed(true);
       }
@@ -276,26 +238,26 @@ export default function ThreadPageClient({
   };
 
   const handleToggleNotebook = () => {
-    // Prevent opening if workshop hasn't started
-    if (isNotebookCollapsed && !isWorkshopUnlocked) {
+    if (!isStoreReady) return;
+    if (isNotebookCollapsed && !isWorkshopStarted) {
       return;
     }
     setIsNotebookCollapsed(!isNotebookCollapsed);
   };
 
   const handleToggleReflection = () => {
-    // Prevent opening if workshop hasn't started
-    if (isReflectionCollapsed && !isWorkshopUnlocked) {
+    if (!isStoreReady) return;
+    if (isReflectionCollapsed && !isWorkshopStarted) {
       return;
     }
 
     if (isReflectionCollapsed) {
-      // Opening Reflection: close Workshop if it's open, ensure Notebook is open
+      // Opening Editing: close Workshop if it's open, ensure Notebook is open
       setIsReflectionCollapsed(false);
       setIsWorkshopCollapsed(true);
       setIsNotebookCollapsed(false);
     } else {
-      // Closing Reflection: only allow if Workshop is open (so we still have Notebook + Workshop)
+      // Closing Editing: only allow if Workshop is open (so we still have Notebook + Workshop)
       if (!isWorkshopCollapsed) {
         setIsReflectionCollapsed(true);
       }
@@ -304,42 +266,35 @@ export default function ThreadPageClient({
 
   // Ensure "Let's get started" is always open if all other sections are collapsed
   useEffect(() => {
+    if (!isStoreReady) return;
     const allOtherSectionsCollapsed =
       isWorkshopCollapsed && isNotebookCollapsed && isReflectionCollapsed;
 
-    if (allOtherSectionsCollapsed && isGettingStartedCollapsed) {
+    if (allOtherSectionsCollapsed && isGuideCollapsed) {
       // If all sections including "Let's get started" are collapsed, open "Let's get started"
       setIsGettingStartedCollapsed(false);
     }
   }, [
+    isStoreReady,
     isWorkshopCollapsed,
     isNotebookCollapsed,
     isReflectionCollapsed,
-    isGettingStartedCollapsed,
+    isGuideCollapsed,
   ]);
 
   // Prevent "Let's get started" from being collapsed if all other sections are collapsed
   const handleToggleGettingStarted = () => {
+    if (!isStoreReady || !isWorkshopStarted) return;
     const allOtherSectionsCollapsed =
       isWorkshopCollapsed && isNotebookCollapsed && isReflectionCollapsed;
 
     // If trying to collapse "Let's get started" and all other sections are already collapsed, prevent it
-    if (allOtherSectionsCollapsed && !isGettingStartedCollapsed) {
+    if (allOtherSectionsCollapsed && !isGuideCollapsed) {
       // Can't collapse if all other sections are already collapsed
       return;
     }
 
-    setIsGettingStartedCollapsed((prev) => {
-      const newState = !prev;
-      if (newState) {
-        // Collapsing: clear manual expansion flag
-        setIsManuallyExpanded(false);
-      } else {
-        // Expanding: set manual expansion flag to show in full width
-        setIsManuallyExpanded(true);
-      }
-      return newState;
-    });
+    setIsGettingStartedCollapsed((prev) => !prev);
   };
 
   // Animation variants for panel transitions
@@ -436,12 +391,12 @@ export default function ThreadPageClient({
               "transition-[grid-template-columns] duration-500 ease-[cubic-bezier(0.4,0,0.2,1)]"
             )}
             style={{
-              // Startup focus: flexible guide (approx 80% equivalent), thin fixed-width tabs (60px each = 180px total).
-              // Working mode: maintain order - each section can be open (1fr) or collapsed (60px)
-              gridTemplateColumns: isStartupFocusMode
-                ? "1fr 60px 60px 60px"
+              // Startup layout (new thread or not yet started): guide expanded at 80% width.
+              // Working mode: maintain order - each section can be open (1fr) or collapsed (60px).
+              gridTemplateColumns: showStartupLayout
+                ? "1fr 60px 60px 60px" // Startup layout: guide + three collapsed tabs
                 : (() => {
-                    const guideCol = isGettingStartedCollapsed
+                    const guideCol = isGuideCollapsed
                       ? "60px"
                       : "minmax(280px,18%)";
                     const workshopCol = isWorkshopCollapsed ? "60px" : "1fr";
@@ -458,13 +413,13 @@ export default function ThreadPageClient({
               layout
               className={cn(
                 "relative flex h-full min-h-0 flex-col overflow-hidden rounded-l-2xl rounded-r-none",
-                isGettingStartedCollapsed
+                isGuideCollapsed
                   ? "bg-white shadow-sm transition-colors duration-500 bg-white/70 hover:bg-white/90"
                   : "bg-white shadow-[0_10px_30px_rgba(15,23,42,0.06)]"
               )}
             >
               <AnimatePresence mode="wait">
-                {!isGettingStartedCollapsed ? (
+                {!isGuideCollapsed ? (
                   <motion.div
                     key="full-guide"
                     variants={panelVariants}
@@ -495,13 +450,14 @@ export default function ThreadPageClient({
                         showHeading={false}
                         onCollapseToggle={handleToggleGettingStarted}
                         onAutoCollapse={() => {
+                          if (!isStoreReady) return;
                           setIsGettingStartedCollapsed(true);
                           // When workshop starts, open Workshop and Notebook
                           setIsWorkshopCollapsed(false);
                           setIsNotebookCollapsed(false);
                           setIsReflectionCollapsed(true);
                         }}
-                        isCollapsed={isGettingStartedCollapsed}
+                        isCollapsed={isGuideCollapsed}
                       />
                     </div>
                   </motion.div>
@@ -517,8 +473,8 @@ export default function ThreadPageClient({
                     <CollapsedPanelTab
                       label={t("gettingStarted")}
                       onClick={() => {
+                        if (!isStoreReady) return;
                         setIsGettingStartedCollapsed(false);
-                        setIsManuallyExpanded(true); // Mark as manually expanded to show in full width
                       }}
                     />
                   </motion.div>
@@ -526,9 +482,9 @@ export default function ThreadPageClient({
               </AnimatePresence>
             </motion.div>
 
-            {/* CENTER + RIGHT: Workshop, Notebook, and Reflection with resizable splitter */}
-            {isStartupFocusMode ? (
-              // When in startup focus mode, show collapsed tabs side by side
+            {/* CENTER + RIGHT: Workshop, Notebook, and Editing with resizable splitter */}
+            {showStartupLayout ? (
+              // When hydrating or in startup focus mode, show collapsed tabs side by side
               <>
                 <div
                   className={cn(
@@ -539,7 +495,7 @@ export default function ThreadPageClient({
                   <CollapsedPanelTab
                     label={t("workshop")}
                     onClick={
-                      isWorkshopUnlocked ? handleToggleWorkshop : undefined
+                      isWorkshopStarted ? handleToggleWorkshop : undefined
                     }
                   />
                 </div>
@@ -552,7 +508,7 @@ export default function ThreadPageClient({
                   <CollapsedPanelTab
                     label={t("notebook")}
                     onClick={
-                      isWorkshopUnlocked ? handleToggleNotebook : undefined
+                      isWorkshopStarted ? handleToggleNotebook : undefined
                     }
                   />
                 </div>
@@ -565,7 +521,7 @@ export default function ThreadPageClient({
                   <CollapsedPanelTab
                     label={t("reflection")}
                     onClick={
-                      isWorkshopUnlocked ? handleToggleReflection : undefined
+                      isWorkshopStarted ? handleToggleReflection : undefined
                     }
                   />
                 </div>
@@ -598,7 +554,7 @@ export default function ThreadPageClient({
                         <CollapsedPanelTab
                           label={t("workshop")}
                           onClick={
-                            isWorkshopUnlocked
+                            isWorkshopStarted
                               ? handleToggleWorkshop
                               : undefined
                           }
@@ -652,7 +608,7 @@ export default function ThreadPageClient({
                         <CollapsedPanelTab
                           label={t("notebook")}
                           onClick={
-                            isWorkshopUnlocked
+                            isWorkshopStarted
                               ? handleToggleNotebook
                               : undefined
                           }
@@ -673,14 +629,22 @@ export default function ThreadPageClient({
                           </h2>
                         </div>
                         <div className="flex-1 min-h-0 overflow-hidden">
-                          <NotebookViewContainer projectId={projectId} />
+                          <NotebookViewContainer
+                            projectId={projectId}
+                            onOpenEditing={() => {
+                              // Open editing section and close workshop
+                              setIsReflectionCollapsed(false);
+                              setIsWorkshopCollapsed(true);
+                              setIsNotebookCollapsed(false);
+                            }}
+                          />
                         </div>
                       </motion.div>
                     )}
                   </AnimatePresence>
                 </motion.div>
 
-                {/* Reflection section */}
+                {/* Editing section */}
                 <motion.div
                   layout
                   className={cn(
@@ -701,7 +665,7 @@ export default function ThreadPageClient({
                         <CollapsedPanelTab
                           label={t("reflection")}
                           onClick={
-                            isWorkshopUnlocked
+                            isWorkshopStarted
                               ? handleToggleReflection
                               : undefined
                           }

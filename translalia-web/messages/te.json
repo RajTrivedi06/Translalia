@@ -189,10 +189,10 @@
     "confirmDialogDescription": "మీ కవిత, అనువాద ప్రాంతం, మరియు అనువాద ఉద్దేశ్యం సెట్ అయ్యాయి. మీరు ఎప్పుడైనా మార్పులు చేయవచ్చు. అనువదించడం ప్రారంభించడానికి 'వర్క్‌షాప్ ప్రారంభించండి' ను క్లిక్ చేయండి.",
     "confirmDialogConfirm": "వర్క్‌షాప్ ప్రారంభించండి",
     "confirmDialogCancel": "రద్దు",
-    "viewpointRange": "దృక్కోణ పరిధి",
-    "viewpointRangeHelper": "మీ అనువాద వేరియంట్లు ఎంత భిన్నంగా ఉంటాయో నియంత్రించండి",
-    "viewpointRangeRequired": "కొనసాగించడానికి దయచేసి దృక్కోణ పరిధిని ఎంచుకోండి",
-    "viewpointMode": {
+    "translationRange": "అనువాద పరిధి",
+    "translationRangeHelper": "మీ అనువాద వేరియంట్లు ఎంత భిన్నంగా ఉంటాయో నియంత్రించండి",
+    "translationRangeRequired": "కొనసాగించడానికి దయచేసి అనువాద పరిధిని ఎంచుకోండి",
+    "translationMode": {
       "focused": "కేంద్రీకృతం",
       "balanced": "సమతుల్యం",
       "adventurous": "సాహసోపేతం"

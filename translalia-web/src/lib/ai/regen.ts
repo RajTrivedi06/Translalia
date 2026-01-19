@@ -8,19 +8,34 @@
 
 import { z } from "zod";
 import { openai } from "./openai";
+import { buildSamplingParams } from "./buildSamplingParams";
+import {
+  chatCompletionsWithRetry,
+  getCompletionTokenCount,
+} from "./chatCompletionsWithRetry";
+import { getTokenLimitParam } from "./tokenLimitParam";
+import type { TickInstrumentation } from "@/lib/workshop/runTranslationTick";
 import { TRANSLATOR_MODEL } from "@/lib/models";
 import type {
   VariantRecipe,
   VariantRecipesBundle,
-  ViewpointRangeMode,
+  TranslationRangeMode,
 } from "./variantRecipes";
-import type { Anchor } from "./anchorsValidation";
 import { trackCallStart, trackCallEnd } from "./openaiInstrumentation";
 import {
   validateAnchorRealizations,
   validateSelfReportMetadata,
+  type Anchor,
 } from "./anchorsValidation";
 import { pickStopwords } from "./stopwords";
+import {
+  computeAnchorRealizations,
+  compareRealizations,
+} from "../translation/method2/computeAnchorRealizations";
+import {
+  detectSubjectForm,
+  normalizeSubjectForm,
+} from "../translation/method2/detectSubjectForm";
 import {
   openerType,
   structuralSignature,
@@ -48,7 +63,7 @@ export interface RegenContext {
   lineText: string;
   sourceLanguage: string;
   targetLanguage: string;
-  mode: ViewpointRangeMode;
+  mode: TranslationRangeMode;
   prevLine?: string;
   nextLine?: string;
   stancePlanSubjectForm?: string;
@@ -82,7 +97,7 @@ export function validateCandidate(
   anchors: Anchor[],
   targetLanguage: string,
   variantLabel: "A" | "B" | "C",
-  mode: ViewpointRangeMode,
+  mode: TranslationRangeMode,
   stancePlanSubjectForm?: string,
   desiredOpenerType?: OpenerType,
   fixedVariants?: FixedVariant[]
@@ -98,15 +113,55 @@ export function validateCandidate(
   // Anchors validation
   if (anchors.length > 0) {
     const anchorIds = anchors.map((a) => a.id);
+    const useLocalRealizations = process.env.ENABLE_LOCAL_ANCHOR_REALIZATIONS === "1";
+    
+    // ISS-011: Compute local realizations for comparison/debugging
+    const localRealizations = computeAnchorRealizations(
+      candidate.text,
+      anchors,
+      targetLanguage
+    );
+    
+    // ISS-011: Dual-mode comparison logging
+    if (process.env.DEBUG_ANCHOR_REALIZATIONS === "1") {
+      const comparison = compareRealizations(
+        candidate.anchor_realizations,
+        localRealizations,
+        anchors
+      );
+      
+      console.log(`[ANCHOR_REALIZATIONS][regen][comparison]`, JSON.stringify({
+        variantLabel,
+        anchorCount: comparison.anchorCount,
+        modelCount: comparison.modelCount,
+        localCount: comparison.localCount,
+        matches: comparison.matches,
+        mismatches: comparison.mismatches.length,
+        modelStopwordOnly: comparison.modelStopwordOnly,
+        localStopwordOnly: comparison.localStopwordOnly,
+        timestamp: Date.now(),
+      }));
+    }
+    
+    // ISS-011: Use local realizations if flag is enabled, else use model-provided
+    const realizationsToValidate = useLocalRealizations
+      ? localRealizations
+      : candidate.anchor_realizations;
+    
     const realizationsCheck = validateAnchorRealizations(
       candidate.text,
-      candidate.anchor_realizations,
+      realizationsToValidate,
       anchorIds,
       targetLanguage
     );
 
     if (!realizationsCheck.valid) {
       reasons.push(`anchors: ${realizationsCheck.reason}`);
+    }
+    
+    // ISS-011: If using local realizations, update candidate with computed realizations
+    if (useLocalRealizations && realizationsCheck.valid) {
+      candidate.anchor_realizations = localRealizations;
     }
   }
 
@@ -208,7 +263,7 @@ export function scoreDissimilarity(
 export function scoreFluency(
   candidate: RegenCandidate,
   fixedVariants: FixedVariant[],
-  mode: ViewpointRangeMode
+  mode: TranslationRangeMode
 ): number {
   let penalty = 0;
 
@@ -251,7 +306,7 @@ export function selectBestCandidate(
   candidates: RegenCandidate[],
   fixedVariants: FixedVariant[],
   targetLanguage: string,
-  mode: ViewpointRangeMode
+  mode: TranslationRangeMode
 ): RegenCandidate {
   if (candidates.length === 0) {
     throw new Error("No candidates to select from");
@@ -315,9 +370,46 @@ export async function regenerateVariantWithSalvage(
   context: RegenContext,
   anchors: Anchor[],
   gateReason: string,
-  model?: string
-): Promise<RegenCandidate> {
-  const K = context.mode === "focused" ? 1 : 6; // Multi-sample only for balanced/adventurous
+  model?: string,
+  options?: {
+    maxTimeMs?: number; // ✅ D) Escape hatch: Max total regen time
+    regenAttemptNumber?: number; // Track which regen round this is (1-indexed)
+    maxRegenRounds?: number; // Max regen rounds per line
+  }
+): Promise<RegenCandidate & { degraded?: boolean; degradationReason?: string }> {
+  // ✅ D) Escape hatch: Enforce max regen rounds
+  const regenAttempt = options?.regenAttemptNumber ?? 1;
+  const maxRegenRounds = options?.maxRegenRounds ?? 1; // Default: 1 attempt
+  if (regenAttempt > maxRegenRounds) {
+    throw new Error(
+      `Max regen rounds (${maxRegenRounds}) exceeded. Attempt: ${regenAttempt}`
+    );
+  }
+
+  const regenStartTime = Date.now();
+  const maxTimeMs = options?.maxTimeMs ?? 90000; // Default: 90s max per regen
+  
+  // ISS-007: Configurable K for GPT-5 vs default
+  const modelToUse = model ?? TRANSLATOR_MODEL;
+  const isGpt5 = modelToUse.startsWith("gpt-5");
+  const parallelRegenEnabled = process.env.ENABLE_GPT5_REGEN_PARALLEL !== "0";
+  
+  // Determine K based on mode and model
+  const defaultK = context.mode === "focused" ? 1 : 6;
+  const gpt5K = parallelRegenEnabled
+    ? Math.min(
+        Math.max(1, Number(process.env.GPT5_REGEN_K) || 3),
+        6
+      )
+    : defaultK;
+  const defaultRegenK = Math.min(
+    Math.max(1, Number(process.env.DEFAULT_REGEN_K) || 6),
+    6
+  );
+  
+  // ISS-007: Use GPT-5-specific K if GPT-5, else use default
+  const K = isGpt5 ? gpt5K : (context.mode === "focused" ? 1 : defaultRegenK);
+  
   const label = ["A", "B", "C"][worstIndex] as "A" | "B" | "C";
 
   // Build fixed variants with structural info
@@ -366,24 +458,68 @@ export async function regenerateVariantWithSalvage(
     });
   }
 
-  // Generate K candidates
-  const modelToUse = model ?? TRANSLATOR_MODEL;
-  const isGpt5 = modelToUse.startsWith("gpt-5");
+  // ISS-001: Output token cap for regen
+  const regenMaxOutputTokens = Math.min(
+    Math.max(200, Number(process.env.REGEN_MAX_OUTPUT_TOKENS) || 1500),
+    3000
+  );
+
+  // ISS-007: Configurable concurrency for GPT-5 vs default
+  // GPT-5: Higher concurrency (default 6) to reduce batching
+  // Default: Lower concurrency (default 3) for safety
+  const gpt5RegenConcurrency = parallelRegenEnabled
+    ? Math.min(
+        Math.max(1, Number(process.env.GPT5_REGEN_CONCURRENCY) || 6),
+        8
+      )
+    : 3;
+  const defaultRegenConcurrency = Math.min(
+    Math.max(1, Number(process.env.DEFAULT_REGEN_CONCURRENCY) || 3),
+    8
+  );
+  
+  // Use GPT-5-specific concurrency if GPT-5, else use default
+  // Clamp concurrency to not exceed K (no point in more concurrency than candidates)
+  const REGEN_CONCURRENCY = Math.min(
+    isGpt5 ? gpt5RegenConcurrency : defaultRegenConcurrency,
+    K
+  );
 
   const candidates: RegenCandidate[] = [];
 
+  // ✅ D) Helper: Check if we've exceeded time budget
+  const checkTimeBudget = (): boolean => {
+    const elapsed = Date.now() - regenStartTime;
+    if (elapsed > maxTimeMs) {
+      console.warn(
+        `[regen] ⚠️  Time budget exceeded (${elapsed}ms > ${maxTimeMs}ms), using best available candidate`
+      );
+      return true;
+    }
+    return false;
+  };
+
   try {
-    // Attempt n=K if supported (GPT-4 supports n parameter)
+    // ISS-007: Attempt n=K if supported (GPT-4 supports n parameter)
+    // This path is unchanged - GPT-4 still uses efficient n=K batch generation
     if (!isGpt5 && K > 1) {
       const requestId = trackCallStart("regen");
       const regenStart = Date.now();
+      
+      // ISS-007: Log GPT-4 batch generation start
+      console.log(
+        `[REGEN][START] GPT-4 batch regen: K=${K}, n=${K}, ` +
+        `model=${modelToUse}, mode=${context.mode}, label=${label}`
+      );
+      
       let completion;
       try {
         completion = await openai.chat.completions.create({
           model: modelToUse,
-          temperature: 0.9, // Higher for diversity
+          ...buildSamplingParams(modelToUse, { temperature: 0.9 }), // Higher for diversity
           n: K,
           response_format: { type: "json_object" },
+          ...getTokenLimitParam(modelToUse, regenMaxOutputTokens),
           messages: [
             {
               role: "system",
@@ -392,6 +528,27 @@ export async function regenerateVariantWithSalvage(
             { role: "user", content: promptText },
           ],
         });
+
+        // ISS-001: Safety logging for regen (n=K case)
+        const completionTokens = completion.usage?.completion_tokens;
+        const finishReason = completion.choices[0]?.finish_reason;
+        const likelyCapped =
+          finishReason === "length" ||
+          (completionTokens !== undefined &&
+            completionTokens >= regenMaxOutputTokens * 0.98);
+
+        console.log(`[REGEN]`, JSON.stringify({
+          model: modelToUse,
+          cap: regenMaxOutputTokens,
+          n: K,
+          promptTokens: completion.usage?.prompt_tokens ?? null,
+          completionTokens: completionTokens ?? null,
+          totalTokens: completion.usage?.total_tokens ?? null,
+          latencyMs: Date.now() - regenStart,
+          finishReason: finishReason ?? null,
+          likelyCapped,
+        }));
+
         trackCallEnd(requestId, {
           status: "ok",
           latencyMs: Date.now() - regenStart,
@@ -399,7 +556,8 @@ export async function regenerateVariantWithSalvage(
           completionTokens: completion.usage?.completion_tokens,
           totalTokens: completion.usage?.total_tokens,
           model: modelToUse,
-          temperature: 0.9,
+          ...buildSamplingParams(modelToUse, { temperature: 0.9 }),
+          maxTokens: regenMaxOutputTokens,
         });
       } catch (error: unknown) {
         const errorObj = error as {
@@ -414,11 +572,19 @@ export async function regenerateVariantWithSalvage(
           httpStatus: errorObj.status,
           errorMessageShort: errorObj.message?.slice(0, 100),
           model: modelToUse,
-          temperature: 0.9,
+          ...buildSamplingParams(modelToUse, { temperature: 0.9 }),
         });
         throw error;
       }
 
+      // ISS-007: Log GPT-4 batch completion
+      const gpt4BatchLatency = Date.now() - regenStart;
+      console.log(
+        `[REGEN][COMPLETE] GPT-4 batch regen finished: ` +
+        `K=${K}, n=${K}, totalWallTimeMs=${gpt4BatchLatency}, ` +
+        `choices=${completion.choices.length}, model=${modelToUse}`
+      );
+      
       for (const choice of completion.choices) {
         const text = choice.message?.content?.trim() ?? "{}";
         try {
@@ -426,22 +592,60 @@ export async function regenerateVariantWithSalvage(
           const validated = RegenCandidateSchema.safeParse(parsed);
           if (validated.success) {
             candidates.push(validated.data);
+          } else {
+            // ISS-001: Log Zod validation failures
+            console.warn(`[REGEN][VALIDATION_FAIL]`, JSON.stringify({
+              model: modelToUse,
+              cap: regenMaxOutputTokens,
+              error: "Zod validation failed",
+              textPreview: text.length > 400
+                ? `${text.slice(0, 200)}...${text.slice(-200)}`
+                : text,
+              fullText: process.env.DEBUG_OAI_RAW_OUTPUT === "1" ? text : undefined,
+            }));
           }
         } catch (e) {
-          // Skip unparseable
+          // ISS-001: Parse failure handling for regen (n=K case)
+          const errorMessage = e instanceof Error ? e.message : String(e);
+          console.error(`[REGEN][PARSE_FAIL]`, JSON.stringify({
+            error: errorMessage,
+            model: modelToUse,
+            cap: regenMaxOutputTokens,
+            completionTokens: completion.usage?.completion_tokens ?? null,
+            finishReason: choice.finish_reason ?? null,
+            textLength: text.length,
+            textPreview: text.length > 400
+              ? `${text.slice(0, 200)}...${text.slice(-200)}`
+              : text,
+            fullText: process.env.DEBUG_OAI_RAW_OUTPUT === "1" ? text : undefined,
+          }));
         }
       }
     } else {
       // Fall back to loop (GPT-5 doesn't support n parameter, or K=1)
-      for (let i = 0; i < K; i++) {
-        const requestId = trackCallStart("regen");
-        const regenStart = Date.now();
-        let completion;
-        try {
-          completion = isGpt5
-            ? await openai.chat.completions.create({
+      // PART 1 FIX: Bounded parallelization for GPT-5 regen
+      if (K === 1 || !isGpt5) {
+        // Single call or non-GPT-5: keep sequential behavior
+        for (let i = 0; i < K; i++) {
+          const requestId = trackCallStart("regen");
+          const regenStart = Date.now();
+          let completion;
+          try {
+            // ISS-013: Parse callback for stop sequence fallback (sequential case)
+            const parseCallback = (text: string) => {
+              return JSON.parse(text);
+            };
+            
+            // ISS-012: Use safe sampling params with retry-on-unsupported-param
+            // ISS-017: Pass instrumentation for OpenAI call tracking
+            // ISS-018: Pass metadata for raw output logging
+            completion = await chatCompletionsWithRetry(
+              openai,
+              {
                 model: modelToUse,
+                ...buildSamplingParams(modelToUse, { temperature: 0.9 }),
                 response_format: { type: "json_object" },
+                ...getTokenLimitParam(modelToUse, regenMaxOutputTokens),
                 messages: [
                   {
                     role: "system",
@@ -449,56 +653,307 @@ export async function regenerateVariantWithSalvage(
                   },
                   { role: "user", content: promptText },
                 ],
-              })
-            : await openai.chat.completions.create({
-                model: modelToUse,
-                temperature: 0.9,
-                response_format: { type: "json_object" },
-                messages: [
-                  {
-                    role: "system",
-                    content: "You are a translation variant generator.",
-                  },
-                  { role: "user", content: promptText },
-                ],
-              });
-          trackCallEnd(requestId, {
-            status: "ok",
-            latencyMs: Date.now() - regenStart,
-            promptTokens: completion.usage?.prompt_tokens,
-            completionTokens: completion.usage?.completion_tokens,
-            totalTokens: completion.usage?.total_tokens,
-            model: modelToUse,
-            temperature: isGpt5 ? undefined : 0.9,
-          });
-        } catch (error: unknown) {
-          const errorObj = error as {
-            name?: string;
-            status?: number;
-            message?: string;
-          };
-          trackCallEnd(requestId, {
-            status: "error",
-            latencyMs: Date.now() - regenStart,
-            errorName: errorObj.name,
-            httpStatus: errorObj.status,
-            errorMessageShort: errorObj.message?.slice(0, 100),
-            model: modelToUse,
-            temperature: isGpt5 ? undefined : 0.9,
-          });
-          throw error;
-        }
+              },
+              parseCallback, // ISS-013: Pass parse callback for fallback retry
+              undefined, // ISS-017: Pass instrumentation (not available in this context)
+              "regen", // ISS-017: Call kind
+              undefined // ISS-018: Metadata (not available in RegenContext)
+            );
+            
+            // ISS-012: Log completion token count for instrumentation
+            if (process.env.DEBUG_SAMPLING === "1") {
+              const tokenCount = getCompletionTokenCount(completion);
+              if (tokenCount !== null) {
+                console.log(
+                  `[sampling] model=${modelToUse} completion_tokens=${tokenCount} (regen sequential, attempt=${i + 1})`
+                );
+              }
+            }
 
-        const text = completion.choices[0]?.message?.content?.trim() ?? "{}";
-        try {
-          const parsed = JSON.parse(text);
-          const validated = RegenCandidateSchema.safeParse(parsed);
-          if (validated.success) {
-            candidates.push(validated.data);
+            // ISS-001: Safety logging for regen (sequential case)
+            const completionTokens = completion.usage?.completion_tokens;
+            const finishReason = completion.choices[0]?.finish_reason;
+            const likelyCapped =
+              finishReason === "length" ||
+              (completionTokens !== undefined &&
+                completionTokens >= regenMaxOutputTokens * 0.98);
+
+            console.log(`[REGEN]`, JSON.stringify({
+              model: modelToUse,
+              cap: regenMaxOutputTokens,
+              promptTokens: completion.usage?.prompt_tokens ?? null,
+              completionTokens: completionTokens ?? null,
+              totalTokens: completion.usage?.total_tokens ?? null,
+              latencyMs: Date.now() - regenStart,
+              finishReason: finishReason ?? null,
+              likelyCapped,
+            }));
+
+            trackCallEnd(requestId, {
+              status: "ok",
+              latencyMs: Date.now() - regenStart,
+              promptTokens: completion.usage?.prompt_tokens,
+              completionTokens: completion.usage?.completion_tokens,
+              totalTokens: completion.usage?.total_tokens,
+              model: modelToUse,
+              temperature: isGpt5 ? undefined : 0.9,
+              maxTokens: regenMaxOutputTokens,
+            });
+          } catch (error: unknown) {
+            const errorObj = error as {
+              name?: string;
+              status?: number;
+              message?: string;
+            };
+            trackCallEnd(requestId, {
+              status: "error",
+              latencyMs: Date.now() - regenStart,
+              errorName: errorObj.name,
+              httpStatus: errorObj.status,
+              errorMessageShort: errorObj.message?.slice(0, 100),
+              model: modelToUse,
+              temperature: isGpt5 ? undefined : 0.9,
+            });
+            throw error;
           }
-        } catch (e) {
-          // Skip unparseable
+
+          const text = completion.choices[0]?.message?.content?.trim() ?? "{}";
+          try {
+            const parsed = JSON.parse(text);
+            const validated = RegenCandidateSchema.safeParse(parsed);
+            if (validated.success) {
+              candidates.push(validated.data);
+            } else {
+              // ISS-001: Log Zod validation failures
+              console.warn(`[REGEN][VALIDATION_FAIL]`, JSON.stringify({
+                model: modelToUse,
+                cap: regenMaxOutputTokens,
+                error: "Zod validation failed",
+                textPreview: text.length > 400
+                  ? `${text.slice(0, 200)}...${text.slice(-200)}`
+                  : text,
+                fullText: process.env.DEBUG_OAI_RAW_OUTPUT === "1" ? text : undefined,
+              }));
+            }
+          } catch (e) {
+            // ISS-001: Parse failure handling for regen (sequential case)
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            const completionTokens = completion.usage?.completion_tokens;
+            const finishReason = completion.choices[0]?.finish_reason;
+            console.error(`[REGEN][PARSE_FAIL]`, JSON.stringify({
+              error: errorMessage,
+              model: modelToUse,
+              cap: regenMaxOutputTokens,
+              completionTokens: completionTokens ?? null,
+              finishReason: finishReason ?? null,
+              textLength: text.length,
+              textPreview: text.length > 400
+                ? `${text.slice(0, 200)}...${text.slice(-200)}`
+                : text,
+              fullText: process.env.DEBUG_OAI_RAW_OUTPUT === "1" ? text : undefined,
+            }));
+          }
         }
+      } else {
+        // ✅ GPT-5 with K > 1: Use bounded parallelization
+        // ISS-007: Processes K candidates with configurable concurrency
+        // Helper function for a single regen attempt
+        const regenStartWallTime = Date.now();
+        console.log(
+          `[REGEN][START] GPT-5 parallel regen: K=${K}, concurrency=${REGEN_CONCURRENCY}, ` +
+          `model=${modelToUse}, mode=${context.mode}, label=${label}`
+        );
+        const runOneRegenAttempt = async (
+          attemptIndex: number
+        ): Promise<RegenCandidate | null> => {
+          const requestId = trackCallStart("regen");
+          const regenStart = Date.now();
+          const candidateStartTime = Date.now();
+          
+          // ISS-007: Log candidate start
+          if (process.env.DEBUG_REGEN === "1") {
+            console.log(
+              `[REGEN][CANDIDATE_START] candidate=${attemptIndex + 1}/${K}, ` +
+              `concurrency=${REGEN_CONCURRENCY}, model=${modelToUse}`
+            );
+          }
+          
+          try {
+            const completion = await chatCompletionsWithRetry(openai, {
+              model: modelToUse,
+              response_format: { type: "json_object" },
+              ...getTokenLimitParam(modelToUse, regenMaxOutputTokens),
+              messages: [
+                {
+                  role: "system",
+                  content: "You are a translation variant generator.",
+                },
+                { role: "user", content: promptText },
+              ],
+            });
+
+            // ISS-001: Safety logging for regen (parallel case)
+            const completionTokens = completion.usage?.completion_tokens;
+            const finishReason = completion.choices[0]?.finish_reason;
+            const likelyCapped =
+              finishReason === "length" ||
+              (completionTokens !== undefined &&
+                completionTokens >= regenMaxOutputTokens * 0.98);
+
+            console.log(`[REGEN]`, JSON.stringify({
+              model: modelToUse,
+              cap: regenMaxOutputTokens,
+              promptTokens: completion.usage?.prompt_tokens ?? null,
+              completionTokens: completionTokens ?? null,
+              totalTokens: completion.usage?.total_tokens ?? null,
+              latencyMs: Date.now() - regenStart,
+              finishReason: finishReason ?? null,
+              likelyCapped,
+            }));
+
+            trackCallEnd(requestId, {
+              status: "ok",
+              latencyMs: Date.now() - regenStart,
+              promptTokens: completion.usage?.prompt_tokens,
+              completionTokens: completion.usage?.completion_tokens,
+              totalTokens: completion.usage?.total_tokens,
+              model: modelToUse,
+              maxTokens: regenMaxOutputTokens,
+            });
+
+            const text =
+              completion.choices[0]?.message?.content?.trim() ?? "{}";
+            try {
+              const parsed = JSON.parse(text);
+            const validated = RegenCandidateSchema.safeParse(parsed);
+            if (validated.success) {
+              // ISS-007: Log candidate completion
+              const candidateLatency = Date.now() - candidateStartTime;
+              if (process.env.DEBUG_REGEN === "1") {
+                console.log(
+                  `[REGEN][CANDIDATE_COMPLETE] candidate=${attemptIndex + 1}/${K}, ` +
+                  `latencyMs=${candidateLatency}, tokens=${completionTokens ?? "unknown"}, ` +
+                  `outcome=pass`
+                );
+              }
+              return validated.data;
+            } else {
+                // ISS-001: Log Zod validation failures
+                console.warn(`[REGEN][VALIDATION_FAIL]`, JSON.stringify({
+                  model: modelToUse,
+                  cap: regenMaxOutputTokens,
+                  error: "Zod validation failed",
+                  textPreview: text.length > 400
+                    ? `${text.slice(0, 200)}...${text.slice(-200)}`
+                    : text,
+                  fullText: process.env.DEBUG_OAI_RAW_OUTPUT === "1" ? text : undefined,
+                }));
+              }
+            } catch (e) {
+              // ISS-001: Parse failure handling for regen (parallel case)
+              const errorMessage = e instanceof Error ? e.message : String(e);
+              const completionTokens = completion.usage?.completion_tokens;
+              const finishReason = completion.choices[0]?.finish_reason;
+              console.error(`[REGEN][PARSE_FAIL]`, JSON.stringify({
+                error: errorMessage,
+                model: modelToUse,
+                cap: regenMaxOutputTokens,
+                completionTokens: completionTokens ?? null,
+                finishReason: finishReason ?? null,
+                textLength: text.length,
+                textPreview: text.length > 400
+                  ? `${text.slice(0, 200)}...${text.slice(-200)}`
+                  : text,
+                fullText: process.env.DEBUG_OAI_RAW_OUTPUT === "1" ? text : undefined,
+              }));
+            }
+            return null;
+          } catch (error: unknown) {
+            const errorObj = error as {
+              name?: string;
+              status?: number;
+              message?: string;
+            };
+            trackCallEnd(requestId, {
+              status: "error",
+              latencyMs: Date.now() - regenStart,
+              errorName: errorObj.name,
+              httpStatus: errorObj.status,
+              errorMessageShort: errorObj.message?.slice(0, 100),
+              model: modelToUse,
+            });
+            // Don't throw - return null to allow other attempts to succeed
+            return null;
+          }
+        };
+
+        // ISS-007: Process with bounded concurrency
+        // If concurrency >= K, all candidates run in parallel (single "batch")
+        // If concurrency < K, candidates run in batches
+        // ✅ D) Escape hatch: Check time budget between batches
+        const totalBatches = Math.ceil(K / REGEN_CONCURRENCY);
+        let batchNumber = 0;
+        
+        for (
+          let start = 0;
+          start < K;
+          start += REGEN_CONCURRENCY
+        ) {
+          batchNumber++;
+          // Check time budget before starting new batch
+          if (checkTimeBudget()) {
+            console.warn(
+              `[REGEN][BATCH_SKIP] Time budget exceeded before batch ${batchNumber}/${totalBatches}, ` +
+              `using ${candidates.length} candidates so far`
+            );
+            break; // Use candidates generated so far
+          }
+
+          const batchSize = Math.min(REGEN_CONCURRENCY, K - start);
+          const batchStartTime = Date.now();
+          
+          // ISS-007: Log batch start
+          console.log(
+            `[REGEN][BATCH_START] batch=${batchNumber}/${totalBatches}, ` +
+            `candidates=${start + 1}-${start + batchSize}/${K}, ` +
+            `concurrency=${batchSize}, model=${modelToUse}`
+          );
+          
+          const batchPromises = Array.from({ length: batchSize }, (_, j) =>
+            runOneRegenAttempt(start + j)
+          );
+
+          const settled = await Promise.allSettled(batchPromises);
+          const batchLatency = Date.now() - batchStartTime;
+          let batchPassed = 0;
+          let batchFailed = 0;
+          
+          for (const result of settled) {
+            if (result.status === "fulfilled" && result.value !== null) {
+              candidates.push(result.value);
+              batchPassed++;
+            } else {
+              batchFailed++;
+            }
+          }
+          
+          // ISS-007: Log batch completion
+          console.log(
+            `[REGEN][BATCH_COMPLETE] batch=${batchNumber}/${totalBatches}, ` +
+            `latencyMs=${batchLatency}, passed=${batchPassed}, failed=${batchFailed}, ` +
+            `totalCandidates=${candidates.length}/${K}`
+          );
+        }
+        
+        // ISS-007: Log overall regen completion
+        const totalRegenWallTime = Date.now() - regenStartWallTime;
+        console.log(
+          `[REGEN][COMPLETE] GPT-5 parallel regen finished: ` +
+          `K=${K}, concurrency=${REGEN_CONCURRENCY}, ` +
+          `totalWallTimeMs=${totalRegenWallTime}, ` +
+          `candidatesGenerated=${candidates.length}, ` +
+          `batches=${batchNumber}/${totalBatches}, model=${modelToUse}`
+        );
       }
     }
   } catch (error) {
@@ -506,10 +961,45 @@ export async function regenerateVariantWithSalvage(
     throw error;
   }
 
+  // ✅ D) Escape hatch: Check time budget and mark as degraded if exceeded
+  const totalRegenTime = Date.now() - regenStartTime;
+  const timeExceeded = totalRegenTime > maxTimeMs;
+  const degradationReason = timeExceeded
+    ? `regen_time_exceeded_${totalRegenTime}ms`
+    : undefined;
+
   if (candidates.length === 0) {
     throw new Error(
       `Failed to generate any valid candidates for variant ${label}`
     );
+  }
+
+  // ✅ D) If time exceeded, use first available candidate (best-effort)
+  if (timeExceeded && candidates.length > 0) {
+    console.warn(
+      `[regen] ⚠️  Using degraded result: Time budget exceeded (${totalRegenTime}ms > ${maxTimeMs}ms)`
+    );
+    // Return first candidate with degraded flag - validation will happen but may fail gate
+    const degradedCandidate = candidates[0];
+    
+    // ISS-014: Compute c_subject_form_used locally from Variant C text (time-exceeded case)
+    let cSubjectFormUsed: string | undefined = degradedCandidate.c_subject_form_used;
+    if (label === "C") {
+      const detected = detectSubjectForm(degradedCandidate.text);
+      const normalized = normalizeSubjectForm(detected);
+      if (normalized) {
+        cSubjectFormUsed = normalized;
+      } else if (degradedCandidate.c_subject_form_used) {
+        cSubjectFormUsed = degradedCandidate.c_subject_form_used;
+      }
+    }
+    
+    return {
+      ...degradedCandidate,
+      c_subject_form_used: cSubjectFormUsed,
+      degraded: true,
+      degradationReason,
+    };
   }
 
   // Stage 1: Validate candidates against hard constraints
@@ -538,6 +1028,7 @@ export async function regenerateVariantWithSalvage(
   }
 
   // Fallback: If all fail hard constraints, pick least bad
+  // ✅ D) Mark as degraded if we had to use fallback
   if (validCandidates.length === 0) {
     console.warn(
       `[regenerateVariantWithSalvage] All ${candidates.length} candidates failed hard constraints for ${label}`
@@ -559,7 +1050,26 @@ export async function regenerateVariantWithSalvage(
     });
 
     scored.sort((a, b) => a.failCount - b.failCount);
-    return scored[0].candidate;
+    const fallbackCandidate = scored[0].candidate;
+    
+    // ISS-014: Compute c_subject_form_used locally from Variant C text (fallback case)
+    let cSubjectFormUsed: string | undefined = fallbackCandidate.c_subject_form_used;
+    if (label === "C") {
+      const detected = detectSubjectForm(fallbackCandidate.text);
+      const normalized = normalizeSubjectForm(detected);
+      if (normalized) {
+        cSubjectFormUsed = normalized;
+      } else if (fallbackCandidate.c_subject_form_used) {
+        cSubjectFormUsed = fallbackCandidate.c_subject_form_used;
+      }
+    }
+    
+    return {
+      ...fallbackCandidate,
+      c_subject_form_used: cSubjectFormUsed,
+      degraded: true,
+      degradationReason: `all_candidates_failed_hard_constraints`,
+    };
   }
 
   // Stage 2 + 3: Select best candidate by dissimilarity + fluency
@@ -569,6 +1079,55 @@ export async function regenerateVariantWithSalvage(
     context.targetLanguage,
     context.mode
   );
+
+  // ISS-014: Compute c_subject_form_used locally from Variant C text
+  const bestText = best.text;
+  let cSubjectFormUsed: string | undefined = best.c_subject_form_used;
+  
+  if (label === "C") {
+    const detected = detectSubjectForm(bestText);
+    const normalized = normalizeSubjectForm(detected);
+    
+    // ISS-014: Prefer local computation over model-provided value
+    if (normalized) {
+      cSubjectFormUsed = normalized;
+      
+      // ISS-014: Debug logging
+      if (process.env.DEBUG_SUBJECT_FORM === "1") {
+        const modelProvided = best.c_subject_form_used;
+        console.log(`[SUBJECT_FORM][regen]`, JSON.stringify({
+          variantLabel: label,
+          computed: normalized,
+          modelProvided: modelProvided || null,
+          textSnippet: bestText.slice(0, 80),
+          match: modelProvided === normalized,
+        }));
+      }
+    } else if (best.c_subject_form_used) {
+      // Fallback: use model-provided if local detection failed
+      cSubjectFormUsed = best.c_subject_form_used;
+      
+      if (process.env.DEBUG_SUBJECT_FORM === "1") {
+        console.warn(`[SUBJECT_FORM][regen]`, JSON.stringify({
+          variantLabel: label,
+          computed: null,
+          modelProvided: best.c_subject_form_used,
+          textSnippet: bestText.slice(0, 80),
+          warning: "local_detection_failed_using_model_value",
+        }));
+      }
+    }
+  }
+  
+  const resultWithSubjectForm = {
+    ...best,
+    c_subject_form_used: cSubjectFormUsed,
+  };
+  
+  // ✅ D) Return with degradation flag if time exceeded
+  return timeExceeded
+    ? { ...resultWithSubjectForm, degraded: true, degradationReason }
+    : resultWithSubjectForm;
 
   if (process.env.DEBUG_GATE === "1" || process.env.DEBUG_REGEN === "1") {
     const dissim = scoreDissimilarity(
@@ -608,7 +1167,7 @@ export async function regenerateVariantWithSalvage(
 
 function determineDesiredOpenerType(
   fixedOpeners: OpenerType[],
-  mode: ViewpointRangeMode,
+  mode: TranslationRangeMode,
   gateReason: string
 ): OpenerType | undefined {
   if (mode === "focused") {
@@ -649,7 +1208,7 @@ interface RegenPromptParams {
   lineText: string;
   sourceLanguage: string;
   targetLanguage: string;
-  mode: ViewpointRangeMode;
+  mode: TranslationRangeMode;
   prevLine?: string;
   nextLine?: string;
   label: "A" | "B" | "C";
@@ -700,9 +1259,9 @@ function buildRegenPrompt(params: RegenPromptParams): string {
       ? `
 CRITICAL STANCE PLAN (poem-level, MUST follow exactly):
 - Subject form: ${recipe.stance_plan.subject_form}
-- You MUST set c_subject_form_used to exactly "${
-          recipe.stance_plan.subject_form
-        }"
+${process.env.OMIT_SUBJECT_FORM_FROM_PROMPT === "1"
+  ? `- Use this subject form in your translation (it will be detected automatically)`
+  : `- You MUST set c_subject_form_used to exactly "${recipe.stance_plan.subject_form}"`}
 ${
   recipe.stance_plan.world_frame
     ? `- World frame: ${recipe.stance_plan.world_frame}`
@@ -738,7 +1297,9 @@ VARIANT B ARCHETYPE RULES (prismatic_reimagining):
 VARIANT C ARCHETYPE RULES (world_voice_transposition):
 - MUST shift narrator stance/world frame vs the original variants
 - MUST include c_world_shift_summary: 1 sentence, English, concrete about voice/world shift
-- MUST include c_subject_form_used: exactly as specified in stance plan above`
+${process.env.OMIT_SUBJECT_FORM_FROM_PROMPT === "1"
+  ? `- Use the subject form specified in stance plan above (it will be detected automatically)`
+  : `- MUST include c_subject_form_used: exactly as specified in stance plan above`}`
       : "";
 
   // Structural targets
@@ -815,11 +1376,20 @@ ${anchors
   )
   .join("\n")}
 
-You MUST include "anchor_realizations" with ALL anchor IDs as keys.
+${process.env.OMIT_ANCHOR_REALIZATIONS_FROM_PROMPT === "1" 
+  ? "NOTE: anchor_realizations will be computed automatically - do not include them in your output."
+  : `You MUST include "anchor_realizations" with ALL anchor IDs as keys.
 Each realization MUST be:
 - An EXACT substring that appears in your translated text (case-insensitive)
 - Meaningful (not empty, not just punctuation, not stopword-only)
 - Short phrases you will literally include
+
+ANCHOR REALIZATION RULES (ISS-008):
+- Each anchor_realization must include at least one non-stopword content word
+- Invalid examples: "the", "a", "my", "it", "of", "to", "in", "on", "at"
+- Valid examples: "my darling", "the river", "her name", "that overhead beam"
+- If the best realization would be a stopword, expand it to include the nearest content word from the same phrase
+- Never output empty strings or single stopwords`}
 
 ${archetypeRules}
 
@@ -838,10 +1408,10 @@ OUTPUT FORMAT (JSON only, no markdown):
   }${
     label === "C"
       ? `,
+  "c_world_shift_summary": "1 sentence about world/voice shift"${process.env.OMIT_SUBJECT_FORM_FROM_PROMPT === "1" ? "" : `,
   "c_subject_form_used": "${
     recipe.stance_plan?.subject_form || "third_person"
-  }",
-  "c_world_shift_summary": "1 sentence about world/voice shift"`
+  }"`}`
       : ""
   }
 }

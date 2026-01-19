@@ -2,11 +2,12 @@
 
 import * as React from "react";
 import { useDndMonitor } from "@dnd-kit/core";
-import { FileText, X } from "lucide-react";
+import { FileText, X, Save } from "lucide-react";
 
 import { useWorkshopStore } from "@/store/workshopSlice";
 import { useThreadId } from "@/hooks/useThreadId";
-import { useSaveManualLine } from "@/lib/hooks/useWorkshopFlow";
+import { useSaveManualLine, useSaveManualLineWithoutInvalidation } from "@/lib/hooks/useWorkshopFlow";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +23,7 @@ import { useNotebookStore } from "@/store/notebookSlice";
 interface NotebookPhase6Props {
   projectId?: string;
   showTitle?: boolean;
+  onOpenEditing?: () => void;
 }
 
 /**
@@ -35,6 +37,7 @@ export default function NotebookPhase6({
   // projectId currently unused in this simplified surface (kept for compatibility)
   projectId: _projectId,
   showTitle = true,
+  onOpenEditing,
 }: NotebookPhase6Props = {}) {
   const poemLines = useWorkshopStore((s) => s.poemLines);
   const currentLineIndex = useWorkshopStore((s) => s.currentLineIndex);
@@ -48,11 +51,14 @@ export default function NotebookPhase6({
 
   const threadId = useThreadId();
   const saveManualLine = useSaveManualLine();
+  const saveManualLineBatch = useSaveManualLineWithoutInvalidation();
+  const queryClient = useQueryClient();
   const toggleNotesPanel = useNotebookStore((s) => s.toggleNotesPanel);
 
   const [showFullEditor, setShowFullEditor] = React.useState(false);
   const [isDragActive, setIsDragActive] = React.useState(false);
   const [saveError, setSaveError] = React.useState<string | null>(null);
+  const [isSavingAll, setIsSavingAll] = React.useState(false);
   const [hoveredLineIndex, setHoveredLineIndex] = React.useState<number | null>(
     null
   );
@@ -60,9 +66,11 @@ export default function NotebookPhase6({
   const [showCongratulations, setShowCongratulations] = React.useState(false);
   const [hasShownCompletionDialog, setHasShownCompletionDialog] =
     React.useState(false);
+  const [hasOpenedEditing, setHasOpenedEditing] = React.useState(false);
   const textareaRefs = React.useRef<Record<number, HTMLTextAreaElement | null>>(
     {}
   );
+  const autoSaveTimeoutRef = React.useRef<Record<number, NodeJS.Timeout>>({});
 
   // Auto-resize textareas when text changes
   React.useEffect(() => {
@@ -114,6 +122,41 @@ export default function NotebookPhase6({
       .join("\n");
   }, [poemLines, completedLines]);
 
+  // Auto-save lines when they change (debounced)
+  React.useEffect(() => {
+    // Clean up all timeouts on unmount
+    const timeouts = autoSaveTimeoutRef.current;
+    return () => {
+      Object.values(timeouts).forEach((timeout) => {
+        if (timeout) clearTimeout(timeout);
+      });
+    };
+  }, []);
+
+  // Auto-save function for a specific line
+  const autoSaveLine = React.useCallback(
+    async (lineIndex: number) => {
+      if (!threadId) return;
+
+      const translatedLine = (getDisplayText(lineIndex) ?? "").trim();
+      if (!translatedLine) return;
+
+      try {
+        await saveManualLine.mutateAsync({
+          threadId,
+          lineIndex,
+          originalLine: poemLines[lineIndex] ?? "",
+          translatedLine,
+        });
+        setCompletedLine(lineIndex, translatedLine);
+      } catch (e) {
+        console.error("[Notebook] Auto-save failed for line:", lineIndex, e);
+        // Don't show error for auto-save - it's silent
+      }
+    },
+    [threadId, getDisplayText, poemLines, saveManualLine, setCompletedLine]
+  );
+
   // Show completion dialog when all lines are completed (only once)
   React.useEffect(() => {
     if (
@@ -128,6 +171,17 @@ export default function NotebookPhase6({
       return () => clearTimeout(timer);
     }
   }, [allLinesCompleted, hasShownCompletionDialog, showCompletionDialog]);
+
+  // Auto-open editing section when all lines are completed
+  React.useEffect(() => {
+    if (allLinesCompleted && onOpenEditing && !hasOpenedEditing) {
+      const timer = setTimeout(() => {
+        onOpenEditing();
+        setHasOpenedEditing(true);
+      }, 1000); // Wait 1 second after completion
+      return () => clearTimeout(timer);
+    }
+  }, [allLinesCompleted, onOpenEditing, hasOpenedEditing]);
 
   // Keyboard shortcut: ⌘/Ctrl + N to toggle notes panel
   React.useEffect(() => {
@@ -160,6 +214,12 @@ export default function NotebookPhase6({
     async (lineIndex: number) => {
       if (!threadId) return;
 
+      // Clear any pending auto-save for this line
+      if (autoSaveTimeoutRef.current[lineIndex]) {
+        clearTimeout(autoSaveTimeoutRef.current[lineIndex]);
+        delete autoSaveTimeoutRef.current[lineIndex];
+      }
+
       setSaveError(null);
       const translatedLine = (getDisplayText(lineIndex) ?? "").trim();
       if (!translatedLine) return;
@@ -180,6 +240,93 @@ export default function NotebookPhase6({
     },
     [threadId, getDisplayText, poemLines, saveManualLine, setCompletedLine]
   );
+
+  // Save all lines with content (both draft and completed)
+  const handleSaveAll = React.useCallback(async () => {
+    if (!threadId) return;
+
+    setIsSavingAll(true);
+    setSaveError(null);
+
+    // Collect all lines that have content
+    const linesToSave: Array<{ lineIndex: number; text: string }> = [];
+
+    for (let idx = 0; idx < poemLines.length; idx++) {
+      const currentText = getDisplayText(idx);
+      const trimmedText = currentText.trim();
+
+      if (trimmedText.length > 0) {
+        linesToSave.push({
+          lineIndex: idx,
+          text: trimmedText,
+        });
+      }
+    }
+
+    if (linesToSave.length === 0) {
+      setIsSavingAll(false);
+      return;
+    }
+
+    try {
+      // Save all lines to the database sequentially
+      // Using the non-invalidating mutation to prevent race conditions
+      const saveResults: Array<{ lineIndex: number; success: boolean }> = [];
+
+      for (const { lineIndex, text } of linesToSave) {
+        try {
+          await saveManualLineBatch.mutateAsync({
+            threadId,
+            lineIndex,
+            originalLine: poemLines[lineIndex] ?? "",
+            translatedLine: text,
+          });
+          saveResults.push({ lineIndex, success: true });
+        } catch (lineError) {
+          console.error(
+            `[Notebook] Failed to save line ${lineIndex}:`,
+            lineError
+          );
+          saveResults.push({ lineIndex, success: false });
+        }
+      }
+
+      // Count results
+      const successCount = saveResults.filter((r) => r.success).length;
+      const failCount = saveResults.filter((r) => !r.success).length;
+
+      console.log(
+        `[Notebook] Save All completed: ${successCount} succeeded, ${failCount} failed`
+      );
+
+      // NOW invalidate and refetch once
+      // This will trigger WorkshopRail effect to update Zustand store
+      await queryClient.invalidateQueries({
+        queryKey: ["workshop-state", threadId],
+      });
+
+      // Wait a bit for the effect to run
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Report errors if any
+      if (failCount > 0) {
+        setSaveError(
+          `Saved ${successCount} of ${linesToSave.length} lines. ${failCount} failed. Please try again.`
+        );
+      }
+    } catch (e) {
+      console.error("[Notebook] Failed to save lines:", e);
+      setSaveError("Couldn't save lines. Please try again.");
+    } finally {
+      setIsSavingAll(false);
+    }
+  }, [
+    threadId,
+    poemLines,
+    getDisplayText,
+    saveManualLineBatch,
+    queryClient,
+  ]);
 
   if (poemLines.length === 0) {
     return (
@@ -208,16 +355,38 @@ export default function NotebookPhase6({
           <Badge variant="secondary" className="text-[11px]">
             Line {activeIdx + 1} of {totalLines}
           </Badge>
+          {Object.keys(draftLines).length > 0 && (
+            <Badge
+              variant="secondary"
+              className="text-[11px] text-amber-600 bg-amber-50"
+            >
+              {Object.keys(draftLines).length} unsaved
+            </Badge>
+          )}
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-8"
-          onClick={() => setShowFullEditor(true)}
-        >
-          <FileText className="w-4 h-4 mr-2" />
-          Full comparison
-        </Button>
+        <div className="flex items-center gap-2">
+          {Object.keys(draftLines).length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8"
+              onClick={handleSaveAll}
+              disabled={isSaving || isSavingAll}
+            >
+              <Save className="w-4 h-4 mr-2" />
+              {isSavingAll ? "Saving..." : "Save All"}
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8"
+            onClick={() => setShowFullEditor(true)}
+          >
+            <FileText className="w-4 h-4 mr-2" />
+            Full comparison
+          </Button>
+        </div>
       </div>
 
       {/* Column Headers - Sticky */}
@@ -313,7 +482,8 @@ export default function NotebookPhase6({
                       }}
                       value={text}
                       onChange={(e) => {
-                        setDraft(idx, e.target.value);
+                        const newValue = e.target.value;
+                        setDraft(idx, newValue);
                         setCurrentLineIndex(idx);
                         const target = e.target as HTMLTextAreaElement;
                         target.style.height = "auto";
@@ -328,6 +498,16 @@ export default function NotebookPhase6({
                         target.style.height = `${newHeight}px`;
                         target.style.overflowY =
                           scrollHeight > maxHeight ? "auto" : "hidden";
+
+                        // Auto-save after 2 seconds of no typing
+                        if (autoSaveTimeoutRef.current[idx]) {
+                          clearTimeout(autoSaveTimeoutRef.current[idx]);
+                        }
+                        autoSaveTimeoutRef.current[idx] = setTimeout(() => {
+                          if (newValue.trim().length > 0) {
+                            void autoSaveLine(idx);
+                          }
+                        }, 2000);
                       }}
                       onFocus={() => {
                         setCurrentLineIndex(idx);

@@ -10,7 +10,7 @@
  * Enables fast debugging: "Why was this line paraphrase-y?"
  */
 
-import type { ViewpointRangeMode, RecipeCacheInfo } from "./variantRecipes";
+import type { TranslationRangeMode, RecipeCacheInfo } from "./variantRecipes";
 
 // =============================================================================
 // Types
@@ -29,7 +29,7 @@ export interface LineAudit {
   lineIndex?: number;
   stanzaIndex?: number;
 
-  mode: ViewpointRangeMode;
+  mode: TranslationRangeMode;
   model: string; // model used for generation (and regen if different)
 
   recipe: {
@@ -102,7 +102,7 @@ export function makeLineAuditBase(params: {
   threadId: string;
   lineIndex?: number;
   stanzaIndex?: number;
-  mode: ViewpointRangeMode;
+  mode: TranslationRangeMode;
   model: string;
   recipeCache: RecipeCacheInfo;
 }): LineAudit {
@@ -244,8 +244,12 @@ export function auditToLogLine(audit: LineAudit): string {
 // =============================================================================
 
 /**
- * Append audit to thread state, keeping last N audits to avoid bloat.
+ * Append audit to thread state using ATOMIC SQL append.
  * Only persists if PERSIST_METHOD2_AUDIT=1 environment variable is set.
+ *
+ * ✅ CRITICAL FIX: Uses atomic JSONB array append to avoid clobbering translation_job.
+ * Previous implementation did read-modify-write on the entire state, which could
+ * overwrite concurrent writes from runTranslationTick/mutateTranslationJob.
  */
 export async function pushAuditToThreadState(
   threadId: string,
@@ -262,41 +266,46 @@ export async function pushAuditToThreadState(
     const { supabaseServer } = await import("@/lib/supabaseServer");
     const supabase = await supabaseServer();
 
-    // Fetch current state
-    const { data: thread, error: fetchError } = await supabase
-      .from("chat_threads")
-      .select("state")
-      .eq("id", threadId)
-      .single();
+    // ✅ LOG: Atomic audit append (no state read required)
+    console.log(
+      `[STATE_WRITE] writer=pushAuditToThreadState threadId=${threadId} ` +
+      `updating=method2_audit versionCheck=N/A (atomic append) maxN=${maxN}`
+    );
 
-    if (fetchError || !thread) {
-      console.warn(`[pushAuditToThreadState] Failed to fetch thread ${threadId}`);
-      return;
+    // ✅ ATOMIC FIX: Use append_method2_audit RPC for atomic array append
+    // This appends to the method2_audit array without reading/writing the entire state
+    // CRITICAL: NO FALLBACK - if RPC is missing, fail fast to prevent state clobber
+    const { error: rpcError } = await supabase.rpc("append_method2_audit", {
+      p_thread_id: threadId,
+      p_audit: audit,
+      p_max_n: maxN,
+    });
+
+    if (rpcError) {
+      // ✅ FAIL FAST: If RPC is missing or fails, throw an error
+      // DO NOT fallback to read-modify-write which can clobber translation_job state
+      if (rpcError.code === "42883" || rpcError.message?.includes("function")) {
+        const errorMsg =
+          `[pushAuditToThreadState] CRITICAL: append_method2_audit RPC not found. ` +
+          `This RPC is required for atomic audit writes. ` +
+          `Add migration in supabase/migrations/*.sql to create the function. ` +
+          `Falling back to read-modify-write would clobber translation state. ` +
+          `Error: ${rpcError.message} (code: ${rpcError.code})`;
+        console.error(errorMsg);
+        throw new Error(errorMsg);
+      }
+
+      // For other errors (permission, connection, etc.), log and throw
+      const errorMsg =
+        `[pushAuditToThreadState] RPC failed for thread ${threadId}: ` +
+        `${rpcError.message} (code: ${rpcError.code || "unknown"})`;
+      console.error(errorMsg, rpcError);
+      throw new Error(errorMsg);
     }
 
-    const state = (thread.state as Record<string, unknown>) || {};
-    const existingAudits = (state.method2_audit as LineAudit[]) || [];
-
-    // Append new audit and keep last maxN
-    const updatedAudits = [...existingAudits, audit].slice(-maxN);
-
-    // Update state with JSONB patch
-    const { error: updateError } = await supabase
-      .from("chat_threads")
-      .update({
-        state: {
-          ...state,
-          method2_audit: updatedAudits,
-        },
-      })
-      .eq("id", threadId);
-
-    if (updateError) {
-      console.warn(
-        `[pushAuditToThreadState] Failed to update thread ${threadId}:`,
-        updateError
-      );
-    }
+    console.log(
+      `[pushAuditToThreadState] ✅ Successfully appended audit for thread ${threadId}`
+    );
   } catch (error) {
     console.warn("[pushAuditToThreadState] Error:", error);
   }

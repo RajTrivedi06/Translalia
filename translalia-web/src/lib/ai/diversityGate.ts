@@ -82,7 +82,7 @@ export interface LineContext {
  * Uses CONTENT TOKEN count (stopword-removed) to scale thresholds.
  * Short lines get more lenient thresholds to avoid Jaccard noise.
  *
- * @param mode - Viewpoint range mode
+ * @param mode - Translation range mode
  * @param contentTokenCount - Number of content tokens (after stopword removal)
  * @returns Overlap threshold for this mode/length combination
  */

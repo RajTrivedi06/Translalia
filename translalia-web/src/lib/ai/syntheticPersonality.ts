@@ -7,7 +7,7 @@
  */
 
 import type { GuideAnswers } from "@/store/guideSlice";
-import type { ViewpointRangeMode } from "./variantRecipes";
+import type { TranslationRangeMode } from "./variantRecipes";
 
 // =============================================================================
 // Types
@@ -33,7 +33,7 @@ export interface SyntheticPersonality {
  */
 export function deriveSyntheticPersonality(
   guideAnswers: GuideAnswers,
-  mode: ViewpointRangeMode
+  mode: TranslationRangeMode
 ): SyntheticPersonality {
   const intent = (guideAnswers.translationIntent || "").toLowerCase();
   const zone = (guideAnswers.translationZone || "").toLowerCase();

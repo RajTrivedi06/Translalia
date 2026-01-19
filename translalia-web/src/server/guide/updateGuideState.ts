@@ -62,7 +62,7 @@ const StyleAnchorsSchema = z.array(z.string()).optional();
 const GuideAnswersSchema = z
   .object({
     translationIntent: z.string().nullable().optional(),
-    viewpointRangeMode: z
+    translationRangeMode: z
       .enum(["focused", "balanced", "adventurous"])
       .optional(),
     translationModel: z
@@ -167,6 +167,26 @@ export async function updateGuideState(
         currentAnswers.translationMethod ??
         "method-2",
     };
+
+    // ✅ LOG: State write activity (before write)
+    const translationJob = currentState.translation_job;
+    const jobVersion = translationJob?.version ?? "none";
+    const chunks = translationJob?.chunks || {};
+    const chunk0Lines = chunks[0]?.lines?.length ?? "none";
+    const chunk1Lines = chunks[1]?.lines?.length ?? "none";
+    const activeIndices = translationJob?.active || [];
+    const queueLength = translationJob?.queue?.length ?? "none";
+    const activeLength = activeIndices.length;
+    const activeDisplay = activeLength > 0 ? `[${activeIndices.join(",")}]` : "[]";
+    const writingVersion = translationJob?.version ?? "none";
+    const prevSeenVersion = translationJob?.version ?? "none"; // Same as what we read
+    
+    console.log(
+      `[STATE_WRITE] writer=updateGuideState threadId=${threadId} jobVersion=${jobVersion} ` +
+      `chunks[0].lines=${chunk0Lines} chunks[1].lines=${chunk1Lines} ` +
+      `queue.length=${queueLength} active=${activeDisplay} updating=guide_answers ` +
+      `versionCheck=no prevSeenVersion=${prevSeenVersion} writingVersion=${writingVersion}`
+    );
 
     // Update the state
     const { error: updateError } = await supabase
@@ -291,6 +311,26 @@ export async function savePoemState({
       poem_stanzas: stanzaDetectionResult,
     };
 
+    // ✅ LOG: State write activity (before write)
+    const translationJob = currentState.translation_job;
+    const jobVersion = translationJob?.version ?? "none";
+    const chunks = translationJob?.chunks || {};
+    const chunk0Lines = chunks[0]?.lines?.length ?? "none";
+    const chunk1Lines = chunks[1]?.lines?.length ?? "none";
+    const activeIndices = translationJob?.active || [];
+    const queueLength = translationJob?.queue?.length ?? "none";
+    const activeLength = activeIndices.length;
+    const activeDisplay = activeLength > 0 ? `[${activeIndices.join(",")}]` : "[]";
+    const writingVersion = translationJob?.version ?? "none";
+    const prevSeenVersion = translationJob?.version ?? "none"; // Same as what we read
+    
+    console.log(
+      `[STATE_WRITE] writer=savePoemState threadId=${threadId} jobVersion=${jobVersion} ` +
+      `chunks[0].lines=${chunk0Lines} chunks[1].lines=${chunk1Lines} ` +
+      `queue.length=${queueLength} active=${activeDisplay} updating=raw_poem,poem_stanzas ` +
+      `versionCheck=no prevSeenVersion=${prevSeenVersion} writingVersion=${writingVersion}`
+    );
+
     // Update the state
     const { error: updateError } = await supabase
       .from("chat_threads")
@@ -364,20 +404,26 @@ export async function patchThreadStateField(
       params: [pathStr, valueJson, threadId, user.id],
     });
 
-    // If RPC doesn't exist, fall back to read-modify-write with warning
+    // ✅ PRIORITY 0 FIX: Hard-fail when RPC isn't available
+    // The fallback was silently clobbering translation_job state during concurrent writes.
+    // We now FAIL FAST instead of silently corrupting data.
     if (
       updateError?.message?.includes("function") ||
       updateError?.code === "42883"
     ) {
-      console.warn(
-        "[patchThreadStateField] exec_sql RPC not available, falling back to read-modify-write"
-      );
-      return patchThreadStateFieldFallback(
-        threadId,
-        fieldPath,
-        value,
-        supabase,
-        user.id
+      const errorMsg =
+        "[patchThreadStateField] CRITICAL: exec_sql RPC not available. " +
+        "This would cause state clobber. Create the RPC function in Supabase or use direct jsonb_set. " +
+        `Path: ${fieldPath.join(".")}`;
+      console.error(errorMsg);
+
+      // In production, fail hard to prevent data corruption
+      // In development, also fail but with more context
+      throw new Error(
+        `ATOMIC_PATCH_UNAVAILABLE: The exec_sql RPC function is not available in your Supabase project. ` +
+        `This is REQUIRED to prevent state corruption. ` +
+        `Please create the RPC function or use the Supabase migration provided. ` +
+        `Attempted path: ${fieldPath.join(".")}`
       );
     }
 
@@ -393,56 +439,9 @@ export async function patchThreadStateField(
   }
 }
 
-/**
- * Fallback for patchThreadStateField when RPC is not available.
- * Uses read-modify-write but logs a warning.
- */
-async function patchThreadStateFieldFallback(
-  threadId: string,
-  fieldPath: string[],
-  value: unknown,
-  supabase: Awaited<ReturnType<typeof supabaseServer>>,
-  userId: string
-): Promise<UpdateGuideStateResult> {
-  // Fetch current state
-  const { data: thread, error: fetchError } = await supabase
-    .from("chat_threads")
-    .select("state")
-    .eq("id", threadId)
-    .eq("created_by", userId)
-    .single();
-
-  if (fetchError || !thread) {
-    return { success: false, error: "Thread not found or unauthorized" };
-  }
-
-  // Build nested path update
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const currentState = (thread.state as any) || {};
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let target: any = currentState;
-
-  // Navigate to parent of final key
-  for (let i = 0; i < fieldPath.length - 1; i++) {
-    if (!target[fieldPath[i]]) {
-      target[fieldPath[i]] = {};
-    }
-    target = target[fieldPath[i]];
-  }
-
-  // Set the final key
-  target[fieldPath[fieldPath.length - 1]] = value;
-
-  // Write back
-  const { error: updateError } = await supabase
-    .from("chat_threads")
-    .update({ state: currentState })
-    .eq("id", threadId);
-
-  if (updateError) {
-    console.error("[patchThreadStateFieldFallback] Update error:", updateError);
-    return { success: false, error: "Failed to patch state field" };
-  }
-
-  return { success: true };
-}
+// =============================================================================
+// NOTE: The dangerous patchThreadStateFieldFallback has been REMOVED.
+// It was causing state clobber by doing read-modify-write without version checks.
+// The exec_sql RPC function is now REQUIRED. See:
+//   supabase/migrations/20240117_add_exec_sql_rpc.sql
+// =============================================================================

@@ -6,7 +6,7 @@ import OpenAI from "openai";
 import { TRANSLATOR_MODEL } from "@/lib/models";
 import {
   getOrCreateVariantRecipes,
-  type ViewpointRangeMode,
+  type TranslationRangeMode,
   type VariantRecipesBundle,
 } from "@/lib/ai/variantRecipes";
 import { buildRecipeAwarePrismaticPrompt } from "@/lib/ai/workshopPrompts";
@@ -140,9 +140,9 @@ export async function POST(req: NextRequest) {
       guideAnswers.targetLanguage?.lang ||
       "English";
 
-    // 5) Determine viewpoint range mode
-    const mode: ViewpointRangeMode =
-      guideAnswers.viewpointRangeMode ?? "balanced";
+    // 5) Determine translation range mode
+    const mode: TranslationRangeMode =
+      guideAnswers.translationRangeMode ?? "balanced";
     log("mode", { mode });
 
     // 6) Get or create variant recipes (cached per thread + context)
@@ -549,6 +549,23 @@ export async function POST(req: NextRequest) {
             modelToUse // Pass the model used for initial generation
           );
 
+          // ISS-014: Compute c_subject_form_used locally from Variant C text
+          let cSubjectFormUsed: string | undefined = regenResult.c_subject_form_used;
+          if (label === "C") {
+            const { detectSubjectForm, normalizeSubjectForm } = await import(
+              "@/lib/translation/method2/detectSubjectForm"
+            );
+            const detected = detectSubjectForm(regenResult.text);
+            const normalized = normalizeSubjectForm(detected);
+            
+            if (normalized) {
+              cSubjectFormUsed = normalized;
+            } else if (regenResult.c_subject_form_used) {
+              // Fallback: use model-provided if local detection failed
+              cSubjectFormUsed = regenResult.c_subject_form_used;
+            }
+          }
+          
           // Update variant with regenerated result
           variants[idx] = {
             label,
@@ -556,7 +573,7 @@ export async function POST(req: NextRequest) {
             anchor_realizations: regenResult.anchor_realizations,
             b_image_shift_summary: regenResult.b_image_shift_summary,
             c_world_shift_summary: regenResult.c_world_shift_summary,
-            c_subject_form_used: regenResult.c_subject_form_used,
+            c_subject_form_used: cSubjectFormUsed,
           };
 
           // Debug: check if regen returned the same text

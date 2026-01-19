@@ -83,6 +83,8 @@ export interface TranslatedLine {
   alignmentStatus?: AlignmentStatus;
   /** Quality metadata: phase1, gate, regen results, quality tier */
   quality_metadata?: LineQualityMetadata;
+  /** Number of times this line has been retried (for automatic retry tracking) */
+  retry_count?: number;
 }
 
 /**

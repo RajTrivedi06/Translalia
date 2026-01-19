@@ -28,6 +28,11 @@ function generateRequestId(): string {
 
 /**
  * Track an OpenAI call starting
+ * 
+ * ✅ NOTE: If you see duplicate "[OAI][INFLIGHT] +1" logs for the same line/stanza,
+ * this is expected when parallel calls occur (e.g., regen with K>1, parallel chunks).
+ * Each call gets a unique requestId and inflightCount is incremented exactly once per call.
+ * The counter tracks concurrent calls, not logical operations.
  */
 export function trackCallStart(
   callType: CallType,

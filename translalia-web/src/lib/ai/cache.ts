@@ -47,6 +47,7 @@ let redisClient: unknown = null;
 /**
  * Get Upstash Redis client (lazy-initialized singleton)
  * Returns null if not configured in development, throws in production
+ * ✅ CRITICAL: If USE_REDIS_LOCK=true is set, always throws if Redis is missing
  */
 export async function getUpstashRedis(): Promise<unknown> {
   if (redisClient) return redisClient;
@@ -55,6 +56,14 @@ export async function getUpstashRedis(): Promise<unknown> {
     !process.env.UPSTASH_REDIS_REST_URL ||
     !process.env.UPSTASH_REDIS_REST_TOKEN
   ) {
+    // ✅ FAIL FAST: If USE_REDIS_LOCK=true is set, Redis is REQUIRED (no graceful fallback)
+    if (process.env.USE_REDIS_LOCK === "true") {
+      throw new Error(
+        `USE_REDIS_LOCK=true is set but Redis is not configured. ` +
+        `Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN environment variables. ` +
+        `In-memory locks are not safe for multi-process/serverless environments.`
+      );
+    }
     if (process.env.NODE_ENV === "production") {
       throw new Error(
         "UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are required in production for atomic locking"
@@ -97,13 +106,21 @@ export const lockHelper = {
     const token = randomUUID();
 
     // Production or explicit Redis flag: use Upstash Redis
+    // ✅ PRIORITY 1 FIX: Set USE_REDIS_LOCK=true in dev for multi-process safety
+    // In-memory locks don't work across instances/processes (Vercel/serverless)
     if (
       process.env.NODE_ENV === "production" ||
       process.env.USE_REDIS_LOCK === "true"
     ) {
+      // ✅ getUpstashRedis() will throw if USE_REDIS_LOCK=true but Redis is missing
       const redis = await getUpstashRedis();
       if (!redis) {
-        throw new Error("Redis required for locking in production");
+        // This should never happen if USE_REDIS_LOCK=true (getUpstashRedis throws)
+        // But handle it defensively for production mode
+        throw new Error(
+          "Redis required for locking but getUpstashRedis() returned null. " +
+          "Check Redis configuration."
+        );
       }
       // SET key <uuid> NX EX ttlSec - returns "OK" if acquired, null if already exists
       const result = await (
@@ -201,4 +218,187 @@ export const lockHelper = {
  */
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// =============================================================================
+// Lock Heartbeat System
+// =============================================================================
+
+/**
+ * Active heartbeat timers, keyed by lock key.
+ * Used to stop heartbeats when locks are released.
+ */
+const activeHeartbeats = new Map<string, NodeJS.Timeout>();
+
+/**
+ * Start a heartbeat that periodically extends the lock TTL.
+ * This prevents the lock from expiring during long-running operations.
+ *
+ * The heartbeat uses a Lua script to atomically check the token before extending,
+ * ensuring we don't extend a lock we no longer own.
+ *
+ * @param key - The lock key
+ * @param token - The token returned by acquire()
+ * @param ttlSec - The TTL to reset to on each heartbeat
+ * @param intervalMs - How often to refresh (default: TTL/3)
+ * @returns A function to stop the heartbeat
+ */
+export function startLockHeartbeat(
+  key: string,
+  token: string,
+  ttlSec: number,
+  intervalMs?: number
+): () => void {
+  // Default interval: refresh at 1/3 of TTL (e.g., 200s for 600s TTL)
+  const interval = intervalMs ?? Math.floor((ttlSec * 1000) / 3);
+
+  // Clear any existing heartbeat for this key
+  const existingTimer = activeHeartbeats.get(key);
+  if (existingTimer) {
+    clearInterval(existingTimer);
+    activeHeartbeats.delete(key);
+  }
+
+  let heartbeatCount = 0;
+  const startTime = Date.now();
+
+  const timer = setInterval(async () => {
+    heartbeatCount++;
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+
+    try {
+      // Production or explicit Redis flag: use Upstash Redis
+      if (
+        process.env.NODE_ENV === "production" ||
+        process.env.USE_REDIS_LOCK === "true"
+      ) {
+        const redis = await getUpstashRedis();
+        if (!redis) {
+          console.warn(`[lockHeartbeat] Redis not available, stopping heartbeat for ${key}`);
+          clearInterval(timer);
+          activeHeartbeats.delete(key);
+          return;
+        }
+
+        // Lua script: Only extend TTL if we still own the lock (token matches)
+        // EXPIRE returns 1 if timeout was set, 0 if key doesn't exist
+        const luaScript = `
+          if redis.call("get", KEYS[1]) == ARGV[1] then
+            return redis.call("expire", KEYS[1], ARGV[2])
+          else
+            return -1
+          end
+        `;
+
+        try {
+          const result = await (
+            redis as {
+              eval: (
+                script: string,
+                keys: string[],
+                args: string[]
+              ) => Promise<number>;
+            }
+          ).eval(luaScript, [key], [token, ttlSec.toString()]);
+
+          if (result === -1) {
+            // We no longer own the lock - stop heartbeat
+            console.warn(
+              `[lockHeartbeat] Lock ${key} no longer owned (token mismatch), stopping heartbeat ` +
+              `(beat #${heartbeatCount}, elapsed=${elapsed}s)`
+            );
+            clearInterval(timer);
+            activeHeartbeats.delete(key);
+            return;
+          }
+
+          if (result === 0) {
+            // Key doesn't exist - stop heartbeat
+            console.warn(
+              `[lockHeartbeat] Lock ${key} expired/deleted, stopping heartbeat ` +
+              `(beat #${heartbeatCount}, elapsed=${elapsed}s)`
+            );
+            clearInterval(timer);
+            activeHeartbeats.delete(key);
+            return;
+          }
+
+          console.log(
+            `[lockHeartbeat] ❤️ Extended ${key} TTL to ${ttlSec}s ` +
+            `(beat #${heartbeatCount}, elapsed=${elapsed}s)`
+          );
+        } catch (evalError) {
+          // Fallback for Redis clients that don't support eval
+          console.warn(`[lockHeartbeat] Lua eval failed, using fallback:`, evalError);
+
+          const currentValue = await (
+            redis as { get: (key: string) => Promise<string | null> }
+          ).get(key);
+
+          if (currentValue === token) {
+            await (
+              redis as { expire: (key: string, seconds: number) => Promise<number> }
+            ).expire(key, ttlSec);
+            console.log(
+              `[lockHeartbeat] ❤️ Extended ${key} TTL to ${ttlSec}s (fallback) ` +
+              `(beat #${heartbeatCount}, elapsed=${elapsed}s)`
+            );
+          } else {
+            console.warn(
+              `[lockHeartbeat] Lock ${key} no longer owned, stopping heartbeat (fallback)`
+            );
+            clearInterval(timer);
+            activeHeartbeats.delete(key);
+          }
+        }
+        return;
+      }
+
+      // DEV ONLY: In-memory lock extension
+      const existing = await cacheGet<string>(key);
+      if (existing === token) {
+        await cacheSet(key, token, ttlSec);
+        console.log(
+          `[lockHeartbeat] ❤️ Extended ${key} TTL to ${ttlSec}s (in-memory) ` +
+          `(beat #${heartbeatCount}, elapsed=${elapsed}s)`
+        );
+      } else {
+        console.warn(
+          `[lockHeartbeat] Lock ${key} no longer owned (in-memory), stopping heartbeat`
+        );
+        clearInterval(timer);
+        activeHeartbeats.delete(key);
+      }
+    } catch (error) {
+      console.error(`[lockHeartbeat] Error extending ${key}:`, error);
+      // Don't stop on transient errors - the lock might still be valid
+    }
+  }, interval);
+
+  activeHeartbeats.set(key, timer);
+
+  console.log(
+    `[lockHeartbeat] Started heartbeat for ${key} (interval=${interval}ms, TTL=${ttlSec}s)`
+  );
+
+  // Return a function to stop the heartbeat
+  return () => {
+    clearInterval(timer);
+    activeHeartbeats.delete(key);
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    console.log(
+      `[lockHeartbeat] Stopped heartbeat for ${key} (${heartbeatCount} beats, elapsed=${elapsed}s)`
+    );
+  };
+}
+
+/**
+ * Stop all active heartbeats. Useful for cleanup in tests.
+ */
+export function stopAllHeartbeats(): void {
+  for (const [key, timer] of activeHeartbeats.entries()) {
+    clearInterval(timer);
+    console.log(`[lockHeartbeat] Stopped heartbeat for ${key} (cleanup)`);
+  }
+  activeHeartbeats.clear();
 }

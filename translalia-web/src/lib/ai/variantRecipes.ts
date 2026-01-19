@@ -25,14 +25,14 @@ import type { GuideAnswers } from "@/store/guideSlice";
 // =============================================================================
 
 /**
- * Viewpoint range mode - controls how wide the variants range
+ * Translation range mode - controls how wide the variants range
  */
-export const ViewpointRangeModeSchema = z.enum([
+export const TranslationRangeModeSchema = z.enum([
   "focused",
   "balanced",
   "adventurous",
 ]);
-export type ViewpointRangeMode = z.infer<typeof ViewpointRangeModeSchema>;
+export type TranslationRangeMode = z.infer<typeof TranslationRangeModeSchema>;
 
 /**
  * Lens configuration for translation perspective
@@ -118,7 +118,7 @@ export const VariantRecipeSchema = z.object({
   /** How unusual/creative this variant is allowed to be */
   unusualnessBudget: UnusualnessBudgetSchema,
   /** Which mode created this recipe */
-  mode: ViewpointRangeModeSchema,
+  mode: TranslationRangeModeSchema,
   /** Phase 1: Stance plan (only for variant C / world_voice_transposition) */
   stance_plan: StancePlanSchema.optional(),
 });
@@ -131,8 +131,8 @@ export type VariantRecipe = z.infer<typeof VariantRecipeSchema>;
 export const VariantRecipesBundleSchema = z.object({
   /** Thread ID this bundle belongs to */
   threadId: z.string(),
-  /** Viewpoint range mode used to generate these recipes */
-  mode: ViewpointRangeModeSchema,
+  /** Translation range mode used to generate these recipes */
+  mode: TranslationRangeModeSchema,
   /** SHA-256 hash of relevant context (for cache invalidation) */
   contextHash: z.string(),
   /** The three recipes (A, B, C) */
@@ -239,7 +239,7 @@ export interface ModeConstraints {
 /**
  * Get mode-specific constraints for recipe generation
  */
-export function getModeConstraints(mode: ViewpointRangeMode): ModeConstraints {
+export function getModeConstraints(mode: TranslationRangeMode): ModeConstraints {
   switch (mode) {
     case "focused":
       return {
@@ -302,7 +302,7 @@ export interface ArchetypeLensConstraints {
  */
 export function getArchetypeLensConstraints(
   archetype: Archetype,
-  mode: ViewpointRangeMode
+  mode: TranslationRangeMode
 ): ArchetypeLensConstraints {
   switch (archetype) {
     case "essence_cut":
@@ -466,7 +466,7 @@ export function buildRecipeGenerationUserPrompt(
     sourceLanguage: string;
     targetLanguage: string;
   },
-  mode: ViewpointRangeMode
+  mode: TranslationRangeMode
 ): string {
   const constraints = getModeConstraints(mode);
 
@@ -610,7 +610,7 @@ OUTPUT FORMAT (JSON only):
  */
 export function validateRecipes(
   recipes: VariantRecipe[],
-  mode: ViewpointRangeMode
+  mode: TranslationRangeMode
 ): { valid: boolean; issues: string[] } {
   const issues: string[] = [];
 
@@ -728,6 +728,8 @@ import { supabaseServer } from "@/lib/supabaseServer";
 import { openai } from "./openai";
 import { TRANSLATOR_MODEL } from "@/lib/models";
 import { trackCallStart, trackCallEnd } from "./openaiInstrumentation";
+import { createRetryTelemetryCollector, noOpRetryTelemetry } from "@/lib/telemetry/retryTelemetry";
+import type { TickInstrumentation } from "@/lib/workshop/runTranslationTick";
 
 /** Constants for lock retry */
 // Reduced to fail faster on true contention
@@ -787,9 +789,10 @@ async function generateRecipesLLM(
     sourceLanguage: string;
     targetLanguage: string;
   },
-  mode: ViewpointRangeMode,
+  mode: TranslationRangeMode,
   contextHash: string,
-  threadId: string
+  threadId: string,
+  instrumentation?: TickInstrumentation
 ): Promise<VariantRecipesBundle> {
   const systemPrompt = buildRecipeGenerationSystemPrompt();
   const userPrompt = buildRecipeGenerationUserPrompt(
@@ -809,6 +812,11 @@ async function generateRecipesLLM(
   const recipeStart = Date.now();
 
   try {
+    // ISS-017: Track OpenAI call for recipe generation
+    if (instrumentation) {
+      instrumentation.openaiCalls.recipe++;
+    }
+    
     const completion = isGpt5
       ? await openai.chat.completions.create({
           model: modelToUse,
@@ -827,6 +835,19 @@ async function generateRecipesLLM(
             { role: "user", content: userPrompt },
           ],
         });
+    
+    // ISS-017: Track duration and tokens
+    const recipeDuration = Date.now() - recipeStart;
+    if (instrumentation) {
+      instrumentation.openaiDurations.recipe.push(recipeDuration);
+      const usage = (completion as { usage?: { prompt_tokens?: number; completion_tokens?: number } }).usage;
+      if (usage) {
+        instrumentation.openaiTokens.recipe.push({
+          prompt: usage.prompt_tokens ?? 0,
+          completion: usage.completion_tokens ?? 0,
+        });
+      }
+    }
 
     trackCallEnd(requestId, {
       status: "ok",
@@ -997,7 +1018,7 @@ async function generateRecipesLLM(
  */
 function createFallbackRecipe(
   label: "A" | "B" | "C",
-  mode: ViewpointRangeMode
+  mode: TranslationRangeMode
 ): VariantRecipe {
   const constraints = getModeConstraints(mode);
   const archetype = LABEL_TO_ARCHETYPE[label];
@@ -1036,7 +1057,7 @@ function createFallbackRecipe(
  */
 function createFallbackBundle(
   threadId: string,
-  mode: ViewpointRangeMode,
+  mode: TranslationRangeMode,
   contextHash: string
 ): VariantRecipesBundle {
   const recipeA = createFallbackRecipe("A", mode);
@@ -1062,12 +1083,12 @@ function createFallbackBundle(
  * This ensures consistency across regenerations and prevents per-line voice flipping.
  *
  * @param threadId - Thread ID for deterministic selection
- * @param mode - Viewpoint range mode
+ * @param mode - Translation range mode
  * @returns A deterministic stance plan for variant C
  */
 export function generateDeterministicStancePlan(
   threadId: string,
-  mode: ViewpointRangeMode
+  mode: TranslationRangeMode
 ): StancePlan {
   // Allowed subject forms (NO "i" in balanced/adventurous by default)
   const allowedForms: Array<StancePlan["subject_form"]> =
@@ -1099,7 +1120,7 @@ export function generateDeterministicStancePlan(
  * @param threadId - The thread to get/create recipes for
  * @param guideAnswers - User's translation preferences
  * @param poemContext - Full poem and language info
- * @param mode - Viewpoint range mode (focused/balanced/adventurous)
+ * @param mode - Translation range mode (focused/balanced/adventurous)
  */
 export async function getOrCreateVariantRecipes(
   threadId: string,
@@ -1109,7 +1130,8 @@ export async function getOrCreateVariantRecipes(
     sourceLanguage: string;
     targetLanguage: string;
   },
-  mode: ViewpointRangeMode
+  mode: TranslationRangeMode,
+  instrumentation?: TickInstrumentation
 ): Promise<VariantRecipesBundle> {
   // Compute context hash for cache invalidation
   const poemHash = stableHash(poemContext.fullPoem);
@@ -1223,14 +1245,21 @@ export async function getOrCreateVariantRecipes(
 
   // Need to generate new recipes - use lock to prevent concurrent generation
   const lockKey = `recipe-gen:${threadId}:${mode}:${contextHash}`;
+  
+  // ISS-016: Instrument lock retry telemetry
+  const retryTelemetry = instrumentation?.retries
+    ? createRetryTelemetryCollector({ retries: instrumentation.retries })
+    : noOpRetryTelemetry;
 
   for (let attempt = 0; attempt < MAX_LOCK_ATTEMPTS; attempt++) {
     // Try atomic lock acquisition - returns UUID token if acquired, null if failed
+    const attemptStart = Date.now();
     console.log(
       `[LOCK] Attempt ${attempt + 1}/${MAX_LOCK_ATTEMPTS} for ${lockKey.slice(
         -20
       )}`
     );
+    
     const lockToken = await lockHelper.acquire(lockKey, LOCK_TTL_SECONDS);
 
     // TEMP DEBUG: Verify lock token is acquired
@@ -1243,7 +1272,8 @@ export async function getOrCreateVariantRecipes(
     }
 
     if (lockToken) {
-      console.log(`[LOCK] ACQUIRED on attempt ${attempt + 1}`);
+      const lockAcquiredMs = Date.now() - attemptStart;
+      console.log(`[LOCK] ACQUIRED on attempt ${attempt + 1} (${lockAcquiredMs}ms)`);
       try {
         // Double-check DB in case another process just finished
         // Check v3 first, then fall back to v2
@@ -1279,7 +1309,8 @@ export async function getOrCreateVariantRecipes(
           poemContext,
           mode,
           contextHash,
-          threadId
+          threadId,
+          instrumentation
         );
 
         if (process.env.DEBUG_VARIANTS === "1") {
@@ -1354,6 +1385,26 @@ export async function getOrCreateVariantRecipes(
     const backoff = Math.min(
       BASE_BACKOFF_MS * Math.pow(2, attempt),
       MAX_BACKOFF_MS
+    );
+    
+    // ISS-016: Record lock wait delay
+    retryTelemetry.recordRetry({
+      layer: "recipe_lock",
+      operation: `lock_${lockKey.slice(-20)}`,
+      attempt: attempt + 1,
+      maxAttempts: MAX_LOCK_ATTEMPTS,
+      reason: "Lock contention - waiting",
+      delayMs: Math.min(
+        BASE_BACKOFF_MS * Math.pow(2, attempt),
+        MAX_BACKOFF_MS
+      ),
+    });
+    
+    await sleep(
+      Math.min(
+        BASE_BACKOFF_MS * Math.pow(2, attempt),
+        MAX_BACKOFF_MS
+      )
     );
     const jitter = Math.random() * 500;
     console.log(`[LOCK] WAITING ${Math.round(backoff + jitter)}ms`);

@@ -5,7 +5,6 @@ import { X, RotateCcw, Save, Check } from "lucide-react";
 import { useWorkshopStore } from "@/store/workshopSlice";
 import { useThreadId } from "@/hooks/useThreadId";
 import { useWorkshopState } from "@/lib/hooks/useWorkshopFlow";
-import { useSaveManualLine } from "@/lib/hooks/useWorkshopFlow";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -13,28 +12,23 @@ import { cn } from "@/lib/utils";
 export interface FullTranslationEditorProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onFinalize?: () => void;
 }
 
 export function FullTranslationEditor({
   open,
   onOpenChange,
-  onFinalize,
 }: FullTranslationEditorProps) {
   const poemLines = useWorkshopStore((s) => s.poemLines);
   const draftLines = useWorkshopStore((s) => s.draftLines);
   const setDraftLines = useWorkshopStore((s) => s.setDraftLines);
-  const setCompletedLine = useWorkshopStore((s) => s.setCompletedLine);
 
   const threadId = useThreadId() || undefined;
   const { data: savedWorkshopLines } = useWorkshopState(threadId);
-  const saveManualLine = useSaveManualLine();
 
   const [wholeTranslation, setWholeTranslation] = React.useState("");
   const [hasUnsavedChanges, setHasUnsavedChanges] = React.useState(false);
   const [saveSuccess, setSaveSuccess] = React.useState(false);
   const [isSaving, setIsSaving] = React.useState(false);
-  const [isFinalizing, setIsFinalizing] = React.useState(false);
 
   // Get confirmed translations
   const getConfirmedTranslation = React.useCallback(
@@ -165,69 +159,6 @@ export function FullTranslationEditor({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [open, hasUnsavedChanges, isSaving, handleClose, handleSaveDraft]);
-
-  // Finalize and submit all lines
-  const handleFinalize = React.useCallback(async () => {
-    if (!threadId) return;
-
-    setIsFinalizing(true);
-    const translationLines = wholeTranslation.split("\n");
-
-    try {
-      const savePromises = translationLines
-        .map((line) => line.trim())
-        .map((translatedLine, idx) => {
-          if (idx >= poemLines.length || !translatedLine) return null;
-
-          return saveManualLine.mutateAsync({
-            threadId,
-            lineIndex: idx,
-            originalLine: poemLines[idx] ?? "",
-            translatedLine,
-          });
-        })
-        .filter(
-          (
-            p
-          ): p is Promise<{
-            ok: boolean;
-            translatedLine: string;
-            lineIndex: number;
-          }> => p !== null
-        );
-
-      await Promise.all(savePromises);
-
-      translationLines.forEach((line, idx) => {
-        if (idx < poemLines.length && line.trim()) {
-          setCompletedLine(idx, line.trim());
-        }
-      });
-
-      setDraftLines({});
-      setHasUnsavedChanges(false);
-
-      if (onFinalize) {
-        onFinalize();
-      }
-
-      onOpenChange(false);
-    } catch (error) {
-      console.error("[FullTranslationEditor] Failed to finalize:", error);
-      alert("Failed to finalize some lines. Please try again.");
-    } finally {
-      setIsFinalizing(false);
-    }
-  }, [
-    threadId,
-    wholeTranslation,
-    poemLines,
-    saveManualLine,
-    setCompletedLine,
-    setDraftLines,
-    onOpenChange,
-    onFinalize,
-  ]);
 
   // Reset to original
   const handleReset = React.useCallback(() => {
@@ -446,14 +377,6 @@ export function FullTranslationEditor({
             >
               <Save className="h-4 w-4" />
               {isSaving ? "Saving..." : "Save Draft"}
-            </Button>
-            <Button
-              onClick={handleFinalize}
-              disabled={isFinalizing || !wholeTranslation.trim()}
-              className="gap-2 bg-slate-900 hover:bg-slate-800"
-            >
-              <Check className="h-4 w-4" />
-              {isFinalizing ? "Finalizing..." : "Finalize & Submit"}
             </Button>
           </div>
         </div>

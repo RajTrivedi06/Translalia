@@ -647,12 +647,6 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
         <FullTranslationEditor
           open={showFullEditor}
           onOpenChange={setShowFullEditor}
-          onFinalize={() => {
-            // Show congratulations after a short delay to allow editor to close
-            setTimeout(() => {
-              setShowCongratulations(true);
-            }, 500);
-          }}
         />
 
         {/* Congratulations Modal */}

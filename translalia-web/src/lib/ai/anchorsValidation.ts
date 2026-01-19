@@ -215,20 +215,32 @@ export function validateAnchorRealizations(
 
   const realizationKeys = Object.keys(anchorRealizations);
 
-  // Check that all anchor IDs are present
+  // ISS-011: If using local realizations, allow partial coverage (not all anchors need realizations)
+  const useLocalRealizations = process.env.ENABLE_LOCAL_ANCHOR_REALIZATIONS === "1";
+  
+  // Check that all anchor IDs are present (unless using local realizations)
   const missingIds = anchorIds.filter((id) => !realizationKeys.includes(id));
-  if (missingIds.length > 0) {
+  if (missingIds.length > 0 && !useLocalRealizations) {
     return {
       valid: false,
       reason: `anchor_realizations missing keys: ${missingIds.join(", ")}`,
     };
   }
+  
+  // ISS-011: If using local realizations, only validate anchors that have realizations
+  const anchorsToValidate = useLocalRealizations
+    ? anchorIds.filter((id) => realizationKeys.includes(id))
+    : anchorIds;
 
   // Get stopwords for target language
   const stopwords = pickStopwords(targetLanguage);
 
-  // Validate each realization
-  for (const anchorId of anchorIds) {
+  // ISS-008: Track stopword-only failures for instrumentation
+  const stopwordOnlyFailures: Record<string, number> = {};
+  let regenTriggeredByStopwordOnly = false;
+
+  // Validate each realization (only those present if using local realizations)
+  for (const anchorId of anchorsToValidate) {
     const realization = anchorRealizations[anchorId];
 
     if (typeof realization !== "string") {
@@ -239,11 +251,30 @@ export function validateAnchorRealizations(
     }
 
     // Check meaningfulness (length, alphanumeric, not stopword-only)
+    // ISS-008: Pass anchorId for allowlist checking
     const meaningCheck = validateRealizationMeaningfulness(
       realization,
-      stopwords
+      stopwords,
+      anchorId
     );
     if (!meaningCheck.valid) {
+      // ISS-008: Track stopword-only failures
+      if (meaningCheck.reason === "stopword-only") {
+        stopwordOnlyFailures[anchorId] = (stopwordOnlyFailures[anchorId] || 0) + 1;
+        regenTriggeredByStopwordOnly = true;
+        
+        // ISS-008: Log stopword-only failure with context
+        if (process.env.DEBUG_ANCHOR_VALIDATION === "1") {
+          console.log(`[ANCHOR_VALIDATION][stopword-only]`, JSON.stringify({
+            anchorId,
+            realization,
+            variantText: variantText.slice(0, 100),
+            targetLanguage,
+            timestamp: Date.now(),
+          }));
+        }
+      }
+      
       return {
         valid: false,
         reason: `anchor_realizations["${anchorId}"] is invalid: ${meaningCheck.reason}`,
@@ -260,6 +291,16 @@ export function validateAnchorRealizations(
         )}${variantText.length > 100 ? "..." : ""}"`,
       };
     }
+  }
+
+  // ISS-008: Log summary if stopword-only failures occurred
+  if (Object.keys(stopwordOnlyFailures).length > 0 && process.env.DEBUG_ANCHOR_VALIDATION === "1") {
+    console.log(`[ANCHOR_VALIDATION][summary]`, JSON.stringify({
+      stopwordOnlyFailures,
+      regenTriggeredByStopwordOnly,
+      totalAnchors: anchorIds.length,
+      timestamp: Date.now(),
+    }));
   }
 
   return { valid: true };
@@ -281,7 +322,7 @@ export function validateAnchorRealizations(
  * @param variant - Variant object with metadata
  * @param label - Variant label ("A", "B", or "C")
  * @param anchorIds - Array of anchor IDs (for B validation)
- * @param mode - Viewpoint range mode
+ * @param mode - Translation range mode
  * @param stancePlanSubjectForm - Expected subject_form from recipe C stance plan (for C validation)
  * @returns Validation result
  */

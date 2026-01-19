@@ -189,10 +189,10 @@
     "confirmDialogDescription": "आपकी कविता, अनुवाद क्षेत्र, और अनुवाद उद्देश्य सेट हैं। आप कभी भी परिवर्तन कर सकते हैं। अनुवाद शुरू करने के लिए 'कार्यशाला शुरू करें' पर क्लिक करें।",
     "confirmDialogConfirm": "कार्यशाला शुरू करें",
     "confirmDialogCancel": "रद्द करें",
-    "viewpointRange": "दृष्टिकोण सीमा",
-    "viewpointRangeHelper": "नियंत्रित करें कि आपके अनुवाद विकल्प कितने अलग होंगे",
-    "viewpointRangeRequired": "जारी रखने के लिए कृपया एक दृष्टिकोण सीमा चुनें",
-    "viewpointMode": {
+    "translationRange": "अनुवाद सीमा",
+    "translationRangeHelper": "नियंत्रित करें कि आपके अनुवाद विकल्प कितने अलग होंगे",
+    "translationRangeRequired": "जारी रखने के लिए कृपया एक अनुवाद सीमा चुनें",
+    "translationMode": {
       "focused": "केंद्रित",
       "balanced": "संतुलित",
       "adventurous": "साहसिक"

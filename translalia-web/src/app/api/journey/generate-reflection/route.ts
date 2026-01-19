@@ -10,6 +10,7 @@ import {
   getSystemPrompt,
   getLanguageInstruction,
 } from "@/lib/ai/localePrompts";
+import { formatNotebookNotesForPrompt } from "@/lib/ai/workshopPrompts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -83,10 +84,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 3) Thread ownership
+    // 3) Thread ownership and fetch state (including notes)
     const { data: thread, error: threadErr } = await supabase
       .from("chat_threads")
-      .select("id,created_by,project_id")
+      .select("id,created_by,project_id,state")
       .eq("id", body.threadId)
       .single();
 
@@ -113,6 +114,18 @@ export async function POST(req: NextRequest) {
     const userLocale = profile?.locale || "en";
     log("user_locale", { locale: userLocale, hasProfile: !!profile });
 
+    // 3b) Extract notes from thread state
+    const state = (thread.state as any) || {};
+    const notebookNotes = state.notebook_notes || {
+      thread_note: null,
+      line_notes: {},
+      updated_at: null,
+    };
+    log("notes_extracted", {
+      hasThreadNote: !!notebookNotes.thread_note,
+      lineNotesCount: Object.keys(notebookNotes.line_notes || {}).length
+    });
+
     // 4) OpenAI call for journey reflection
     const key = process.env.OPENAI_API_KEY;
     if (!key) {
@@ -137,6 +150,18 @@ export async function POST(req: NextRequest) {
     const translationIntent = (context.guideAnswers as any)?.translationIntent?.trim?.() || context.translationIntent?.trim?.() || "";
     const translationStrategy = translationZone || translationIntent || "Not specified";
 
+    // Format notes for inclusion in prompt
+    const completedLinesRecord: Record<number, string> = {};
+    Object.entries(context.completedLines).forEach(([idx, text]) => {
+      completedLinesRecord[parseInt(idx)] = text;
+    });
+
+    const notesSection = formatNotebookNotesForPrompt(
+      notebookNotes,
+      context.poemLines,
+      completedLinesRecord
+    );
+
     const systemPrompt = getSystemPrompt("journeyReflection", userLocale);
 
     const baseUserPrompt = `Translation Journey Context:
@@ -151,8 +176,9 @@ Guide Answers: ${JSON.stringify(context.guideAnswers, null, 2)}
 
 Completed Translations:
 ${completedLinesText || "No lines completed yet"}
+${notesSection}
 
-Please provide a reflective journey summary focusing on the translator's process, growth, and decisions (NOT a quality comparison of source vs translation).`;
+Please provide a reflective journey summary focusing on the translator's process, growth, and decisions (NOT a quality comparison of source vs translation). If the student has written notes, pay special attention to their reflections and incorporate their thinking process into the summary.`;
 
     const userPrompt = `${baseUserPrompt}\n\n${getLanguageInstruction(userLocale)}`;
 
