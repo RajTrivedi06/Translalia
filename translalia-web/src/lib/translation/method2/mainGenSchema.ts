@@ -9,10 +9,12 @@
 /**
  * JSON Schema for main-gen response format.
  * 
+ * Minimal schema - only includes translation variants, no validation metadata.
+ * Phase 1 validation (anchors, anchor_realizations, self-report metadata) removed.
+ * 
  * This schema matches exactly what the code uses downstream:
- * - anchors: optional array (only if Phase 1 validation is enabled)
  * - variants: required array of exactly 3 variants
- * - Each variant has: label, text, and optional Phase 1 fields
+ * - Each variant has: label, text only
  * 
  * Note: `translation` field is NOT included (backward compat handled in parser, not schema)
  */
@@ -20,29 +22,6 @@ export const MAIN_GEN_JSON_SCHEMA = {
   type: "object",
   additionalProperties: false,
   properties: {
-    anchors: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["id", "concept_en", "source_tokens"],
-        properties: {
-          id: {
-            type: "string",
-            pattern: "^[A-Z][A-Z0-9_]*$", // UPPER_SNAKE format
-          },
-          concept_en: {
-            type: "string",
-          },
-          source_tokens: {
-            type: "array",
-            items: {
-              type: "string",
-            },
-          },
-        },
-      },
-    },
     variants: {
       type: "array",
       minItems: 3,
@@ -50,18 +29,7 @@ export const MAIN_GEN_JSON_SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        // GPT-5 strict mode requires ALL properties to be in required array
-        // Code-level validation handles variant-specific requirements (B needs b_image_shift_summary, C needs c_world_shift_summary, etc.)
-        required: [
-          "label",
-          "text",
-          // Include optional fields in required array for GPT-5 strict mode compatibility
-          // Code validation will handle variant-specific requirements
-          ...(process.env.OMIT_ANCHOR_REALIZATIONS_FROM_PROMPT === "1" ? [] : ["anchor_realizations"]),
-          "b_image_shift_summary",
-          "c_world_shift_summary",
-          ...(process.env.OMIT_SUBJECT_FORM_FROM_PROMPT === "1" ? [] : ["c_subject_form_used"]),
-        ],
+        required: ["label", "text"],
         properties: {
           label: {
             type: "string",
@@ -71,27 +39,6 @@ export const MAIN_GEN_JSON_SCHEMA = {
             type: "string",
             minLength: 1,
           },
-          // ISS-011: anchor_realizations is optional if computed locally
-          ...(process.env.OMIT_ANCHOR_REALIZATIONS_FROM_PROMPT === "1" ? {} : {
-            anchor_realizations: {
-              type: "object",
-              additionalProperties: {
-                type: "string",
-              },
-            },
-          }),
-          b_image_shift_summary: {
-            type: "string",
-          },
-          c_world_shift_summary: {
-            type: "string",
-          },
-          ...(process.env.OMIT_SUBJECT_FORM_FROM_PROMPT === "1" ? {} : {
-            c_subject_form_used: {
-              type: "string",
-              enum: ["we", "you", "third_person", "impersonal", "i"],
-            },
-          }),
         },
       },
     },

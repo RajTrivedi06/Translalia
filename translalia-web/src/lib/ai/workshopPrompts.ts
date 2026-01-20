@@ -1220,97 +1220,38 @@ Each variant MUST follow its assigned recipe exactly.
 
 IMPORTANT RULES:
 - Return ONLY valid JSON (no markdown, no explanations)
+- Return ONLY the translation text - no labels (Variant A:), no explanations, no meta-commentary, no multi-line paragraphs
 - Each variant must be OBSERVABLY DIFFERENT from the others
 - ALL variants must honor the translator personality
-- Phase 1: Follow anchor extraction and realization rules (see PHASE 1 section below)
-- Phase 1: Include self-report metadata (B image shift summary, C world/subject metadata)
+- Follow recipe directives and archetype requirements (B shifts imagery, C shifts voice/stance)
 
 SILENT SELF-CHECK (do NOT mention this in output):
-1) Follow anchor extraction rules from PHASE 1 section below (do not restate here).
-2) Draft all 3 variants.
-3) If any two share the same opening structure or comparison template, rewrite one until they differ.
-4) Check comparison strategy constraints based on mode.
-5) Ensure semantic anchors are preserved but with lexical diversity.
-6) ${process.env.OMIT_ANCHOR_REALIZATIONS_FROM_PROMPT === "1" 
-  ? "anchor_realizations will be computed automatically - skip this step."
-  : "Follow anchor realization rules from PHASE 1 section below (do not restate here)."}
-7) For B: write b_image_shift_summary (1 sentence, mention at least one anchor ID).
-8) For C: write c_world_shift_summary${process.env.OMIT_SUBJECT_FORM_FROM_PROMPT === "1" 
-  ? " (c_subject_form_used will be detected automatically)."
-  : " + c_subject_form_used."}
-9) Only then output JSON.
+1) Draft all 3 variants following their recipe directives.
+2) If any two share the same opening structure or comparison template, rewrite one until they differ.
+3) Check comparison strategy constraints based on mode.
+4) Ensure semantic meaning is preserved but with lexical diversity.
+5) Only then output JSON.
 
-═══════════════════════════════════════════════════════════════
-PHASE 1: SEMANTIC ANCHORS (MODEL-EXTRACTED, CHECKABLE)
-═══════════════════════════════════════════════════════════════
-
-You MUST extract semantic anchors from the SOURCE LINE and show how each variant realizes them.
-
-CRITICAL RULES:
-1. Extract 3–6 semantic anchors from the SOURCE LINE (NOT variants):
-   - Anchors are SCENE/IDEA concepts (e.g., "BUS", "STREET", "SKY", "SAUDADE")
-   - DO NOT use pronouns or grammatical person as anchor concepts (no I/you/we/he/she/they/it/one)
-   - Each anchor gets a unique UPPER_SNAKE id (e.g., "BUS", "NIGHT_SKY", "LONGING")
-   - Provide a short English concept label (1-4 words) and source tokens that motivated it
-
-${process.env.OMIT_ANCHOR_REALIZATIONS_FROM_PROMPT === "1" 
-  ? `2. anchor_realizations will be computed automatically from variant text - you do not need to provide them.`
-  : `2. For EACH variant, provide "anchor_realizations" (exact substrings from variant text):
-   - Must include ALL anchor ids as keys
-   - Each value must be an EXACT substring from the variant's translated text
-   - Realizations must be meaningful (not empty, not just punctuation, not single stopword)
-   - Different variants MUST use DIFFERENT realizations (lexical divergence)
-   
-   ANCHOR REALIZATION RULES (ISS-008):
-   - Each anchor_realization must be an exact substring that appears in the variant text
-   - It must be a meaningful phrase: include at least one non-stopword content word
-   - Invalid examples: "the", "a", "my", "it", "of", "to", "in", "on", "at"
-   - Valid examples: "my darling", "the river", "her name", "that overhead beam"
-   - If the best realization would be a stopword, expand it to include the nearest content word from the same phrase
-   - Never output empty strings
-   - Never output a single word that is a stopword
-
-3. Anchors ensure semantic preservation; realizations prove lexical creativity.`}
-
-EXAMPLE:
-If source line is "Le bus s'arrête sous le ciel nocturne",
-Anchors might be:
-- BUS (concept_en: "bus vehicle", source_tokens: ["bus"])
-- STOP_ACTION (concept_en: "stopping motion", source_tokens: ["s'arrête"])
-- NIGHT_SKY (concept_en: "night sky", source_tokens: ["ciel", "nocturne"])
-
-${process.env.OMIT_ANCHOR_REALIZATIONS_FROM_PROMPT === "1" 
-  ? ""
-  : `Variant A anchor_realizations: {"BUS": "the bus", "STOP_ACTION": "halts", "NIGHT_SKY": "evening sky"}
-Variant B anchor_realizations: {"BUS": "coach", "STOP_ACTION": "comes to rest", "NIGHT_SKY": "dark heavens"}
-Variant C anchor_realizations: {"BUS": "our ride", "STOP_ACTION": "we stop", "NIGHT_SKY": "night above"}`}
-
-Output format (ISS-009: Strict schema - no extra fields allowed):
+Output format (Strict schema - no extra fields allowed):
 {
-  "anchors": [
-    { "id": "BUS", "concept_en": "bus vehicle", "source_tokens": ["bus"] },
-    { "id": "NIGHT_SKY", "concept_en": "night sky", "source_tokens": ["ciel", "nocturne"] }
-  ],
   "variants": [
     {
       "label": "A",
-      "text": "translation"${process.env.OMIT_ANCHOR_REALIZATIONS_FROM_PROMPT === "1" ? "" : ',\n      "anchor_realizations": { "BUS": "the bus", "NIGHT_SKY": "evening sky" }'}
+      "text": "translation"
     },
     {
       "label": "B",
-      "text": "translation"${process.env.OMIT_ANCHOR_REALIZATIONS_FROM_PROMPT === "1" ? "" : ',\n      "anchor_realizations": { "BUS": "coach", "NIGHT_SKY": "dark heavens" }'},
-      "b_image_shift_summary": "I reframed BUS as a coach and shifted NIGHT_SKY to dark heavens for metaphoric freshness"
+      "text": "translation"
     },
     {
       "label": "C",
-      "text": "translation"${process.env.OMIT_ANCHOR_REALIZATIONS_FROM_PROMPT === "1" ? "" : ',\n      "anchor_realizations": { "BUS": "our ride", "NIGHT_SKY": "night above" }'},
-      "c_world_shift_summary": "Shifted to collective first-person plural with urban night setting",
-${process.env.OMIT_SUBJECT_FORM_FROM_PROMPT === "1" ? "" : `      "c_subject_form_used": "we"`}
+      "text": "translation"
     }
   ]
 }
 
-CRITICAL: Return ONLY the fields shown above. Do NOT include extra fields like "rationale", "confidence", or any other metadata.${process.env.OMIT_ANCHOR_REALIZATIONS_FROM_PROMPT === "1" ? "\n\nNOTE: anchor_realizations will be computed automatically - do not include them in your output." : ""}`;
+CRITICAL: Return ONLY the fields shown above. Do NOT include extra fields like "rationale", "confidence", "anchors", "anchor_realizations", "b_image_shift_summary", "c_world_shift_summary", "c_subject_form_used", or any other metadata.
+Return ONLY the translation text in the "text" field - no labels, no explanations, no meta-commentary.`;
   // ISS-004: rationale/confidence removed from example; not parsed/used and can inflate token output
 
   const userPromptParts: string[] = [];
@@ -1418,17 +1359,8 @@ Generate 3 variants following the recipes above.
 - Variant C: Follow Recipe C (${recipes.recipes[2].directive.slice(0, 50)}...)
 ${stancePlanText}
 
-PHASE 1 REQUIREMENTS:
-1. Follow anchor extraction rules from PHASE 1: SEMANTIC ANCHORS section in system instructions (do not restate here).
-${process.env.OMIT_ANCHOR_REALIZATIONS_FROM_PROMPT === "1" 
-  ? "2. anchor_realizations will be computed automatically - skip this step."
-  : "2. Follow anchor realization rules from PHASE 1: SEMANTIC ANCHORS section in system instructions (do not restate here)."}
-3. For Variant B: Include "b_image_shift_summary" (1 sentence, must mention at least one anchor ID explicitly).
-4. For Variant C: Include "c_world_shift_summary" (1 sentence)${process.env.OMIT_SUBJECT_FORM_FROM_PROMPT === "1" 
-  ? " (c_subject_form_used will be detected automatically from your translation text)."
-  : " and \"c_subject_form_used\" (must match stance plan above)."}
-
-Return ONLY valid JSON.
+CRITICAL: Return ONLY valid JSON with the structure shown in system instructions.
+Each variant's "text" field must contain ONLY the translation - no labels (Variant A:), no explanations, no meta-commentary, no multi-line paragraphs.
 `.trim()
   );
 

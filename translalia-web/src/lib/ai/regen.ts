@@ -94,7 +94,7 @@ const RegenCandidateSchema = z.object({
  */
 export function validateCandidate(
   candidate: RegenCandidate,
-  anchors: Anchor[],
+  anchors: Anchor[] | undefined,
   targetLanguage: string,
   variantLabel: "A" | "B" | "C",
   mode: TranslationRangeMode,
@@ -110,8 +110,8 @@ export function validateCandidate(
     return { pass: false, reasons };
   }
 
-  // Anchors validation
-  if (anchors.length > 0) {
+  // Anchors validation (skip if anchors are not provided)
+  if (anchors && anchors.length > 0) {
     const anchorIds = anchors.map((a) => a.id);
     const useLocalRealizations = process.env.ENABLE_LOCAL_ANCHOR_REALIZATIONS === "1";
     
@@ -165,17 +165,19 @@ export function validateCandidate(
     }
   }
 
-  // Self-report metadata validation
-  const metadataCheck = validateSelfReportMetadata(
-    { ...candidate, label: variantLabel },
-    variantLabel,
-    anchors.map((a) => a.id),
-    mode,
-    stancePlanSubjectForm
-  );
+  // Self-report metadata validation (skip if anchors are not provided)
+  if (anchors && anchors.length > 0) {
+    const metadataCheck = validateSelfReportMetadata(
+      { ...candidate, label: variantLabel },
+      variantLabel,
+      anchors.map((a) => a.id),
+      mode,
+      stancePlanSubjectForm
+    );
 
-  if (!metadataCheck.valid) {
-    reasons.push(`metadata: ${metadataCheck.reason}`);
+    if (!metadataCheck.valid) {
+      reasons.push(`metadata: ${metadataCheck.reason}`);
+    }
   }
 
   // Structural target validation (if specified)
@@ -368,7 +370,7 @@ export async function regenerateVariantWithSalvage(
   recipe: VariantRecipe,
   recipes: VariantRecipesBundle,
   context: RegenContext,
-  anchors: Anchor[],
+  anchors: Anchor[] | undefined,
   gateReason: string,
   model?: string,
   options?: {
@@ -1214,10 +1216,99 @@ interface RegenPromptParams {
   label: "A" | "B" | "C";
   recipe: VariantRecipe;
   recipes: VariantRecipesBundle;
-  anchors: Anchor[];
+  anchors: Anchor[] | undefined;
   fixedVariants: FixedVariant[];
   gateReason: string;
   desiredOpenerType?: OpenerType;
+}
+
+/**
+ * Parse gate failure reason into targeted regeneration constraints
+ */
+function parseGateReason(
+  gateReason: string,
+  sourceText: string
+): { constraints: string[]; mustAvoid: string[] } {
+  const constraints: string[] = [];
+  const mustAvoid: string[] = [];
+  
+  // Parse common failure patterns
+  if (gateReason.includes("opening_bigram_collision") || gateReason.includes("share the same opening content bigram")) {
+    constraints.push("Start with DIFFERENT content words (first 2 non-stopword tokens must differ from existing variants)");
+  }
+  
+  if (gateReason.includes("comparison_marker_collision") || gateReason.includes("comparison marker")) {
+    mustAvoid.push("Comparison markers (like/as/comme/como/como si/comme si/as if)");
+    constraints.push("Express relation using direct metaphor, plain statement, or fragment WITHOUT comparison markers");
+  }
+  
+  if (gateReason.includes("walk_verb_collision") || gateReason.includes("walk-verb")) {
+    mustAvoid.push("Walk-verb bucket (walk/stroll/wander/march/caminar/cammino/camminare)");
+    constraints.push("Use different motion framing (move/go/come, or reframe without explicit motion verb)");
+  }
+  
+  if (gateReason.includes("signature_match") || gateReason.includes("signature")) {
+    constraints.push("Use a DIFFERENT structural template (your signature must differ from existing variants)");
+  }
+  
+  if (gateReason.includes("opener_duplicate") || gateReason.includes("opener")) {
+    constraints.push("Use a DIFFERENT opener type (subject opener pattern must differ)");
+  }
+  
+  if (gateReason.includes("jaccard") || gateReason.includes("overlap")) {
+    // Extract overlap percentage if available
+    const overlapMatch = gateReason.match(/(\d+)%/);
+    const overlap = overlapMatch ? overlapMatch[1] : "high";
+    constraints.push(`Reduce token overlap with other variants (current: ${overlap}%, target: significantly lower)`);
+  }
+  
+  if (gateReason.includes("short_line_char_similarity")) {
+    constraints.push("Use MORE DIFFERENT wording (character-level similarity too high)");
+    constraints.push("Change sentence structure and word choice more dramatically");
+  }
+  
+  if (gateReason.includes("short_line_opening_match")) {
+    constraints.push("Start with COMPLETELY DIFFERENT words (first 10-15 characters must differ)");
+  }
+  
+  if (gateReason.includes("short_line_diversity_lever")) {
+    constraints.push("Add structural differences (use different punctuation patterns or contractions vs existing variants)");
+  }
+  
+  // Fidelity gate failures
+  if (gateReason.includes("number") && gateReason.includes("missing")) {
+    const numberMatch = gateReason.match(/Missing numbers?: ([^\n;]+)/);
+    if (numberMatch) {
+      constraints.push(`MUST include these numbers: ${numberMatch[1]}`);
+    } else {
+      // Extract numbers from source
+      const sourceNumbers = sourceText.match(/\b\d{1,4}\b|\d+%|[$€£¥]\d+/g);
+      if (sourceNumbers) {
+        constraints.push(`MUST include these numbers: ${sourceNumbers.join(", ")}`);
+      }
+    }
+  }
+  
+  if (gateReason.includes("negation") && gateReason.includes("missing")) {
+    constraints.push("MUST preserve negation (source has 'not'/'never'/etc., variant must also have negation)");
+  }
+  
+  if (gateReason.includes("proper noun") || gateReason.includes("proper nouns")) {
+    const nounMatch = gateReason.match(/Missing proper nouns?: ([^\n;]+)/);
+    if (nounMatch) {
+      constraints.push(`MUST include these proper nouns: ${nounMatch[1]}`);
+    }
+  }
+  
+  if (gateReason.includes("terminal intent") || (gateReason.includes("?") || gateReason.includes("!"))) {
+    if (sourceText.trim().endsWith("?")) {
+      constraints.push("MUST end with question mark (?) - source is a question");
+    } else if (sourceText.trim().endsWith("!")) {
+      constraints.push("MUST end with exclamation mark (!) - source is an exclamation");
+    }
+  }
+  
+  return { constraints, mustAvoid };
 }
 
 function buildRegenPrompt(params: RegenPromptParams): string {
@@ -1236,6 +1327,9 @@ function buildRegenPrompt(params: RegenPromptParams): string {
     gateReason,
     desiredOpenerType,
   } = params;
+  
+  // Parse gate reason into targeted constraints
+  const { constraints, mustAvoid } = parseGateReason(gateReason, lineText);
 
   // Extract banned tokens from fixed variants (anti-copy)
   const stopwords = pickStopwords(targetLanguage);
@@ -1253,15 +1347,12 @@ function buildRegenPrompt(params: RegenPromptParams): string {
 
   const bannedTokensList = Array.from(bannedFirstTokens);
 
-  // Stance plan for C
+  // Stance plan for C (keep quality instructions, no output requirements)
   const stancePlanText =
     label === "C" && recipe.stance_plan
       ? `
 CRITICAL STANCE PLAN (poem-level, MUST follow exactly):
-- Subject form: ${recipe.stance_plan.subject_form}
-${process.env.OMIT_SUBJECT_FORM_FROM_PROMPT === "1"
-  ? `- Use this subject form in your translation (it will be detected automatically)`
-  : `- You MUST set c_subject_form_used to exactly "${recipe.stance_plan.subject_form}"`}
+- Subject form: ${recipe.stance_plan.subject_form} (will be detected automatically from your translation)
 ${
   recipe.stance_plan.world_frame
     ? `- World frame: ${recipe.stance_plan.world_frame}`
@@ -1276,30 +1367,24 @@ ${recipe.stance_plan.notes ? `- Notes: ${recipe.stance_plan.notes}` : ""}
 
 ${
   mode === "balanced" || mode === "adventurous"
-    ? `FORBIDDEN: c_subject_form_used MUST NOT be "i" in ${mode} mode.`
+    ? `FORBIDDEN: Subject form MUST NOT be "i" in ${mode} mode.`
     : ""
 }`
       : "";
 
-  // Archetype-specific rules
+  // Archetype-specific rules (keep quality instructions, no output requirements)
   const archetypeRules =
     label === "B"
       ? `
 VARIANT B ARCHETYPE RULES (prismatic_reimagining):
 - MUST materially change one central image/metaphor element vs the original variants
 - NOT just synonyms - reframe the visual/sensory framing
-- MUST include b_image_shift_summary:
-  - 1 sentence, English, specific about what image/metaphor changed
-  - MUST mention at least one anchor ID explicitly (e.g., "I reframed SKY as...")
-  - NOT vague phrases like "more poetic" or "more creative"`
+- Shift imagery creatively while preserving meaning`
       : label === "C"
       ? `
 VARIANT C ARCHETYPE RULES (world_voice_transposition):
 - MUST shift narrator stance/world frame vs the original variants
-- MUST include c_world_shift_summary: 1 sentence, English, concrete about voice/world shift
-${process.env.OMIT_SUBJECT_FORM_FROM_PROMPT === "1"
-  ? `- Use the subject form specified in stance plan above (it will be detected automatically)`
-  : `- MUST include c_subject_form_used: exactly as specified in stance plan above`}`
+- Change voice/perspective creatively while preserving meaning`
       : "";
 
   // Structural targets
@@ -1329,9 +1414,43 @@ STRUCTURAL TARGET:
       }`
     : "";
 
-  return `You are regenerating variant ${label} for a poetry translation line.
+  // Build semantic anchors section only if anchors are provided
+  const semanticAnchorsSection = anchors && anchors.length > 0
+    ? `
+═══════════════════════════════════════════════════════════════
+SEMANTIC ANCHORS (MUST PRESERVE)
+═══════════════════════════════════════════════════════════════
+${anchors
+  .map(
+    (a) => `- ${a.id}: ${a.concept_en} (source: ${a.source_tokens.join(", ")})`
+  )
+  .join("\n")}
 
-ORIGINAL FAILURE REASON: ${gateReason}
+Preserve these semantic concepts in your translation.`
+    : "";
+
+  // Build targeted constraints section
+  const targetedConstraintsSection = constraints.length > 0 || mustAvoid.length > 0
+    ? `
+═══════════════════════════════════════════════════════════════
+TARGETED FIXES (based on failure reason)
+═══════════════════════════════════════════════════════════════
+${mustAvoid.length > 0
+    ? `DO NOT USE:\n${mustAvoid.map(item => `✗ ${item}`).join("\n")}\n`
+    : ""}
+${constraints.length > 0
+    ? `MUST DO:\n${constraints.map(item => `✓ ${item}`).join("\n")}`
+    : ""}
+`
+    : `
+═══════════════════════════════════════════════════════════════
+FAILURE CONTEXT
+═══════════════════════════════════════════════════════════════
+Original failure reason: ${gateReason}
+`;
+
+  return `You are regenerating variant ${label} for a poetry translation line.
+${targetedConstraintsSection}
 
 SOURCE LINE: "${lineText}"
 SOURCE LANGUAGE: ${sourceLanguage}
@@ -1366,56 +1485,16 @@ ANTI-COPY RULES (MANDATORY)
 - DO NOT start with the same first 2 tokens as any existing variant
 - MUST be STRUCTURALLY DIFFERENT (not just synonym swaps)
 ${structuralTargets}
-
-═══════════════════════════════════════════════════════════════
-SEMANTIC ANCHORS (MUST PRESERVE)
-═══════════════════════════════════════════════════════════════
-${anchors
-  .map(
-    (a) => `- ${a.id}: ${a.concept_en} (source: ${a.source_tokens.join(", ")})`
-  )
-  .join("\n")}
-
-${process.env.OMIT_ANCHOR_REALIZATIONS_FROM_PROMPT === "1" 
-  ? "NOTE: anchor_realizations will be computed automatically - do not include them in your output."
-  : `You MUST include "anchor_realizations" with ALL anchor IDs as keys.
-Each realization MUST be:
-- An EXACT substring that appears in your translated text (case-insensitive)
-- Meaningful (not empty, not just punctuation, not stopword-only)
-- Short phrases you will literally include
-
-ANCHOR REALIZATION RULES (ISS-008):
-- Each anchor_realization must include at least one non-stopword content word
-- Invalid examples: "the", "a", "my", "it", "of", "to", "in", "on", "at"
-- Valid examples: "my darling", "the river", "her name", "that overhead beam"
-- If the best realization would be a stopword, expand it to include the nearest content word from the same phrase
-- Never output empty strings or single stopwords`}
+${semanticAnchorsSection}
 
 ${archetypeRules}
 
 OUTPUT FORMAT (JSON only, no markdown):
 {
-  "text": "your translation here",
-  "anchor_realizations": {
-    ${anchors
-      .map((a) => `"${a.id}": "exact substring from text"`)
-      .join(",\n    ")}
-  }${
-    label === "B"
-      ? `,
-  "b_image_shift_summary": "1 sentence mentioning anchor ID"`
-      : ""
-  }${
-    label === "C"
-      ? `,
-  "c_world_shift_summary": "1 sentence about world/voice shift"${process.env.OMIT_SUBJECT_FORM_FROM_PROMPT === "1" ? "" : `,
-  "c_subject_form_used": "${
-    recipe.stance_plan?.subject_form || "third_person"
-  }"`}`
-      : ""
-  }
+  "text": "your translation here"
 }
 
+CRITICAL: Return ONLY the translation text in the "text" field. No labels (Variant A:), no explanations, no meta-commentary, no multi-line paragraphs.
 Return ONLY valid JSON. No markdown, no explanations.`;
 }
 

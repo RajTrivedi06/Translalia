@@ -52,6 +52,7 @@ import {
   validateSelfReportMetadata,
   type Anchor,
 } from "@/lib/ai/anchorsValidation";
+import { checkFidelity } from "@/lib/ai/fidelityGate";
 import {
   computeAnchorRealizations,
   compareRealizations,
@@ -452,6 +453,21 @@ export async function translateLineWithRecipesInternal({
 
   const text = completion.choices[0]?.message?.content ?? "{}";
 
+  // Structured logging: Main-gen stage
+  const mainGenLatencyMs = Date.now() - mainGenStart;
+  const completionTokensForLog = completion.usage?.completion_tokens ?? 0;
+  if (process.env.DEBUG_GATE === "1" || process.env.DEBUG_TRANSLATION_STAGES === "1") {
+    console.log("[TRANSLATION_STAGES][main_gen]", JSON.stringify({
+      stage: "main_gen",
+      lineIndex,
+      latencyMs: mainGenLatencyMs,
+      completionTokens: completionTokensForLog,
+      model,
+      promptTokens: completion.usage?.prompt_tokens ?? 0,
+      totalTokens: completion.usage?.total_tokens ?? 0,
+    }));
+  }
+
   // Audit initial generation (if audit fields provided)
   if (auditUserId !== undefined) {
     insertPromptAudit({
@@ -587,7 +603,72 @@ export async function translateLineWithRecipesInternal({
   });
 
   // ========================================================================
-  // PHASE 1 VALIDATION: Anchors + Self-Report Metadata
+  // TRANSLATION-ONLY GUARDRAILS (fastest checks first)
+  // ========================================================================
+  // Reject meta-commentary, labels, explanations, multi-line output
+  for (let i = 0; i < variants.length; i++) {
+    const variant = variants[i];
+    const text = variant.text.trim();
+    
+    // Reject if starts with variant label
+    if (/^(variant\s+[abc]:|variant\s+[abc]\s*[:\-])/i.test(text)) {
+      throw new Error(`Variant ${variant.label} contains label prefix: "${text.slice(0, 50)}"`);
+    }
+    
+    // Reject if contains AI meta-commentary
+    if (/as\s+an\s+ai|i'm\s+an\s+ai|i\s+am\s+an\s+ai/i.test(text)) {
+      throw new Error(`Variant ${variant.label} contains AI meta-commentary: "${text.slice(0, 50)}"`);
+    }
+    
+    // Reject if contains multiple newlines (except legitimate poetry line breaks)
+    const newlineCount = (text.match(/\n/g) || []).length;
+    if (newlineCount > 2) {
+      throw new Error(`Variant ${variant.label} contains too many newlines: ${newlineCount}`);
+    }
+    
+    // Reject if text is excessively long (>3× source length, reasonable cap)
+    const maxLength = Math.max(lineText.length * 3, 500);
+    if (text.length > maxLength) {
+      throw new Error(`Variant ${variant.label} exceeds maximum length: ${text.length} chars (max: ${maxLength})`);
+    }
+  }
+
+  // ========================================================================
+  // FIDELITY GATE: Meaning Preservation (cheap, per-variant checks)
+  // ========================================================================
+  const fidelityGateStartTime = Date.now();
+  const fidelityResult = checkFidelity(lineText, variants);
+  const fidelityGateLatencyMs = Date.now() - fidelityGateStartTime;
+  
+  // Structured logging: Fidelity Gate
+  if (process.env.DEBUG_GATE === "1" || process.env.DEBUG_TRANSLATION_STAGES === "1") {
+    console.log("[TRANSLATION_STAGES][fidelity_gate]", JSON.stringify({
+      stage: "fidelity_gate",
+      lineIndex,
+      latencyMs: fidelityGateLatencyMs,
+      pass: fidelityResult.pass,
+      reason: fidelityResult.reason || null,
+      worstIndex: fidelityResult.worstIndex ?? null,
+      checks: fidelityResult.checks,
+    }));
+  }
+  
+  if (!fidelityResult.pass) {
+    // Log fidelity failure
+    console.log(
+      `[translateLineWithRecipesInternal] Fidelity Gate failed: ${fidelityResult.reason}`
+    );
+    
+    // For now, log but don't block (can enable blocking later)
+    // In Phase 3, this will trigger regeneration
+    if (process.env.FIDELITY_GATE_BLOCKING === "1") {
+      // Return early with failure (will trigger regen downstream)
+      // This is placeholder for Phase 3 implementation
+    }
+  }
+
+  // ========================================================================
+  // PHASE 1 VALIDATION: Anchors + Self-Report Metadata (skipped if no anchors)
   // ========================================================================
   // This gate runs BEFORE the existing diversity gate to enforce mechanical
   // constraints on archetypes. If Phase 1 fails, we regenerate the target
@@ -746,8 +827,8 @@ export async function translateLineWithRecipesInternal({
       process.env.DEBUG_PHASE1 === "1"
     ) {
       console.log("[DEBUG_PHASE1][pass]", {
-        anchorsCount: anchors.length,
-        anchorIds: anchors.map((a) => a.id),
+        anchorsCount: anchors?.length ?? 0,
+        anchorIds: anchors?.map((a) => a.id) ?? [],
         mode,
       });
     }
@@ -811,7 +892,7 @@ export async function translateLineWithRecipesInternal({
     const recipeForLabel = recipes.recipes.find((r) => r.label === label);
     const originalText = variants[idx]?.text;
 
-    if (label && recipeForLabel && anchors) {
+    if (label && recipeForLabel) {
       try {
         // Build fixed variants array (other two variants that passed)
         const fixedVariants = variants
@@ -846,7 +927,7 @@ export async function translateLineWithRecipesInternal({
             nextLine,
             stancePlanSubjectForm,
           },
-          anchors,
+          anchors || [],
           initial.gateResult.reason || "distinctness_check_failed",
           model, // Pass user's selected model
           {
@@ -855,7 +936,23 @@ export async function translateLineWithRecipesInternal({
             maxRegenRounds,
           }
         );
+        const regenLatencyMs = Date.now() - regenStartTime;
         console.timeEnd(`[TIMING][line=${lineIndex}] regen`);
+        
+        // Structured logging: Regen
+        if (process.env.DEBUG_GATE === "1" || process.env.DEBUG_TRANSLATION_STAGES === "1" || process.env.DEBUG_REGEN === "1") {
+          console.log("[TRANSLATION_STAGES][regen]", JSON.stringify({
+            stage: "regen",
+            lineIndex,
+            attemptNumber: 1,
+            latencyMs: regenLatencyMs,
+            reason: initial.gateResult.reason || "distinctness_check_failed",
+            pass: true, // If we got here, regen succeeded
+            candidatesGenerated: regenResult.candidatesGenerated ?? null,
+            candidatesValid: regenResult.candidatesValid ?? null,
+            variantLabel: label,
+          }));
+        }
 
         // Capture regen metrics
         actualRegenPerformed = true;

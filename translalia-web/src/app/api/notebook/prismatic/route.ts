@@ -517,7 +517,7 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      if (label && recipeForLabel && anchors) {
+      if (label && recipeForLabel) {
         try {
           // Build fixed variants array (other two variants that passed)
           const fixedVariants = variants
@@ -544,7 +544,7 @@ export async function POST(req: NextRequest) {
               mode,
               stancePlanSubjectForm,
             },
-            anchors,
+            anchors || [],
             gateResult.reason || "distinctness_check_failed",
             modelToUse // Pass the model used for initial generation
           );
