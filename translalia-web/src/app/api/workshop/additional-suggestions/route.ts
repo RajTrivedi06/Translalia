@@ -1,43 +1,29 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
-
 import { requireUser } from "@/lib/auth/requireUser";
 import { supabaseServer } from "@/lib/supabaseServer";
-import { openai } from "@/lib/ai/openai";
-import { buildAdditionalWordSuggestionsPrompt } from "@/lib/ai/workshopPrompts";
+import { tokenize } from "@/lib/ai/textNormalize";
+import {
+  LineSuggestionsRequestSchema,
+  type LineSuggestionsRequest,
+} from "@/lib/ai/suggestions/suggestionsSchemas";
+import { generateLineSuggestions } from "@/lib/ai/suggestions/suggestionsService";
 
-const SUGGESTION_MODEL = "gpt-4o-mini";
+type GuideAnswersState = {
+  translationModel?: string | null;
+  translationMethod?: string | null;
+  translationIntent?: string | null;
+  translationZone?: string | null;
+  sourceLanguageVariety?: string | null;
+};
 
-const RequestSchema = z.object({
-  threadId: z.string().uuid(),
-  lineIndex: z.number().int().min(0),
-  currentLine: z.string().min(1),
-  previousLine: z.string().optional().nullable(),
-  nextLine: z.string().optional().nullable(),
-  fullPoem: z.string().min(1),
-  poemTheme: z.string().optional(),
-  userGuidance: z.string().optional().nullable(),
-});
-
-const SuggestionSchema = z.object({
-  word: z.string().min(1),
-  reasoning: z.string().min(1).optional().default(""),
-  register: z.string().min(1).optional().default("neutral"),
-  literalness: z.number().min(0).max(1).optional().default(0.5),
-});
-
-const ResponseSchema = z.object({
-  suggestions: z.array(SuggestionSchema).min(1),
-});
-
-function sanitizeSuggestedWord(raw: string): string {
-  let w = raw.trim();
-  // Remove wrapping quotes if the model included them inside the string
-  w = w.replace(/^"+/, "").replace(/"+$/, "");
-  // Remove common trailing punctuation artifacts (e.g. 'word,' or 'word",')
-  w = w.replace(/["'’”]+$/, "");
-  w = w.replace(/[,，]+$/, "");
-  return w.trim();
+function hasAnchorTokens(payload: LineSuggestionsRequest): boolean {
+  const anchors = [
+    payload.targetLineDraft ?? "",
+    payload.variantFullTexts?.A ?? "",
+    payload.variantFullTexts?.B ?? "",
+    payload.variantFullTexts?.C ?? "",
+  ].filter((t) => t.trim().length > 0);
+  return anchors.some((text) => tokenize(text).length > 0);
 }
 
 export async function POST(req: Request) {
@@ -46,21 +32,34 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
-    const validation = RequestSchema.safeParse(body);
+    const validation = LineSuggestionsRequestSchema.safeParse(body);
     if (!validation.success) {
       return NextResponse.json(
-        { error: "Invalid request", details: validation.error.issues },
+        { ok: false, reason: "invalid_request", details: validation.error.issues },
         { status: 400 }
       );
     }
 
     const parsed = validation.data;
+    if (!parsed.targetLanguage?.trim()) {
+      return NextResponse.json(
+        { ok: false, reason: "target_language_missing" },
+        { status: 400 }
+      );
+    }
+
+    if (!hasAnchorTokens(parsed)) {
+      return NextResponse.json({
+        ok: false,
+        reason: "anchors_missing",
+      });
+    }
 
     // Verify thread ownership and fetch guide answers
     const supabase = await supabaseServer();
     const { data: thread, error: threadError } = await supabase
       .from("chat_threads")
-      .select("id, state")
+      .select("id, state, translation_model, translation_method, translation_intent, translation_zone, source_language_variety")
       .eq("id", parsed.threadId)
       .eq("created_by", user.id)
       .single();
@@ -73,92 +72,56 @@ export async function POST(req: Request) {
     }
 
     const state = (thread.state as Record<string, unknown>) || {};
-    const guideAnswers = (state.guide_answers as Record<string, unknown>) || {};
+    const guideAnswersState =
+      (state as { guide_answers?: GuideAnswersState }).guide_answers ?? {};
+    const guideAnswers: Record<string, unknown> = {
+      translationModel:
+        thread.translation_model ?? guideAnswersState.translationModel ?? null,
+      translationMethod:
+        thread.translation_method ??
+        guideAnswersState.translationMethod ??
+        "method-2",
+      translationIntent:
+        thread.translation_intent ?? guideAnswersState.translationIntent ?? null,
+      translationZone:
+        thread.translation_zone ?? guideAnswersState.translationZone ?? null,
+      sourceLanguageVariety:
+        thread.source_language_variety ??
+        guideAnswersState.sourceLanguageVariety ??
+        null,
+      // Legacy fields from JSONB if needed
+      ...(guideAnswersState as Record<string, unknown>),
+    };
     const poemAnalysis = (state.poem_analysis as Record<string, unknown>) || {};
 
-    const targetLangObj = guideAnswers.targetLanguage as
-      | { lang?: unknown; name?: unknown }
-      | undefined;
-    const targetLanguageRaw = targetLangObj?.lang ?? targetLangObj?.name;
-    const targetLanguage =
-      typeof targetLanguageRaw === "string" &&
-      targetLanguageRaw.trim().length > 0
-        ? targetLanguageRaw.trim()
-        : "the target language";
     const sourceLanguage =
       (poemAnalysis.language as string) || "the source language";
 
-    const { system, user: userPrompt } = buildAdditionalWordSuggestionsPrompt({
-      currentLine: parsed.currentLine,
-      lineIndex: parsed.lineIndex,
-      previousLine: parsed.previousLine,
-      nextLine: parsed.nextLine,
-      fullPoem: parsed.fullPoem,
-      poemTheme: parsed.poemTheme,
+    const result = await generateLineSuggestions({
+      request: parsed,
       guideAnswers,
-      userGuidance: parsed.userGuidance,
-      targetLanguage,
+      targetLanguage: parsed.targetLanguage,
       sourceLanguage,
     });
 
-    const completion = await openai.chat.completions.create({
-      model: SUGGESTION_MODEL,
-      temperature: 0.8,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: userPrompt },
-      ],
-    });
-
-    const text = completion.choices[0]?.message?.content ?? "{}";
-    let parsedJson: unknown;
-    try {
-      parsedJson = JSON.parse(text);
-    } catch (e) {
-      console.error("[additional-suggestions] Parse error:", e);
-      return NextResponse.json(
-        { error: "Invalid AI response format" },
-        { status: 500 }
-      );
+    if (!result.ok || !result.suggestions) {
+      return NextResponse.json({
+        ok: false,
+        reason: result.reason || "generation_failed",
+      });
     }
-
-    const validated = ResponseSchema.safeParse(parsedJson);
-    if (!validated.success) {
-      console.error(
-        "[additional-suggestions] Invalid response:",
-        validated.error
-      );
-      return NextResponse.json(
-        { error: "Invalid AI response structure" },
-        { status: 500 }
-      );
-    }
-
-    // Clamp to 7-9 suggestions (prefer 9 max)
-    const normalized = validated.data.suggestions
-      .map((s) => ({
-        word: sanitizeSuggestedWord(s.word),
-        reasoning: (s.reasoning || "").trim(),
-        register: (s.register || "neutral").trim(),
-        literalness:
-          typeof s.literalness === "number" && Number.isFinite(s.literalness)
-            ? Math.max(0, Math.min(1, s.literalness))
-            : 0.5,
-      }))
-      .filter((s) => s.word.length > 0)
-      .slice(0, 9);
 
     return NextResponse.json({
       ok: true,
-      suggestions: normalized,
+      suggestions: result.suggestions,
+      repaired: result.repaired ?? false,
       lineIndex: parsed.lineIndex,
     });
   } catch (error: unknown) {
     const e = error as { message?: string };
     console.error("[additional-suggestions] Error:", error);
     return NextResponse.json(
-      { error: "Failed to generate suggestions", details: e?.message || "" },
+      { ok: false, reason: "internal_error", details: e?.message || "" },
       { status: 500 }
     );
   }

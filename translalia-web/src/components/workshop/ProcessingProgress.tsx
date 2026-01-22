@@ -71,7 +71,7 @@ export function ProcessingProgress({
     : "Pending";
 
   const statusSubtext = isProcessing
-    ? "Translating..."
+    ? "Translating... (this takes a bit of time)"
     : isComplete
     ? "Done"
     : hasFailed

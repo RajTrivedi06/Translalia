@@ -18,11 +18,13 @@ import {
 } from "lucide-react";
 import { DragData } from "@/types/drag";
 import { cn } from "@/lib/utils";
+import { Preloader } from "@/components/ui/preloader";
 import type { LineTranslationVariant } from "@/types/lineTranslation";
 import {
   AdditionalSuggestions,
   type WordSuggestion,
 } from "@/components/workshop/AdditionalSuggestions";
+import { TokenSuggestionsPopover } from "@/components/workshop/TokenSuggestionsPopover";
 import { FullTranslationEditor } from "@/components/notebook/FullTranslationEditor";
 import { CongratulationsModal } from "@/components/workshop/CongratulationsModal";
 import { Sparkles } from "lucide-react";
@@ -81,16 +83,25 @@ function DraggableSourceWord({
   word,
   index,
   lineNumber,
+  onSuggest,
 }: {
   word: string;
   index: number;
   lineNumber: number;
+  onSuggest?: (payload: {
+    word: string;
+    originalWord: string;
+    partOfSpeech: string;
+    position: number;
+    sourceType: "source";
+  }) => void;
 }) {
   const currentLineIndex = useWorkshopStore((s) => s.currentLineIndex);
   const setCurrentLineIndex = useWorkshopStore((s) => s.setCurrentLineIndex);
   const appendToDraft = useWorkshopStore((s) => s.appendToDraft);
   const [clicked, setClicked] = React.useState(false);
   const justDraggedRef = React.useRef(false);
+  const longPressRef = React.useRef<number | null>(null);
 
   const dragData: DragData = {
     id: `source-${lineNumber}-${index}`,
@@ -139,6 +150,35 @@ function DraggableSourceWord({
       onPointerDown={() => {
         // Reset so a normal click isn't blocked by a prior drag.
         justDraggedRef.current = false;
+        if (longPressRef.current) clearTimeout(longPressRef.current);
+        longPressRef.current = window.setTimeout(() => {
+          if (onSuggest) {
+            onSuggest({
+              word,
+              originalWord: word,
+              partOfSpeech: "neutral",
+              position: index,
+              sourceType: "source",
+            });
+          }
+        }, 450);
+      }}
+      onPointerUp={() => {
+        if (longPressRef.current) clearTimeout(longPressRef.current);
+      }}
+      onPointerLeave={() => {
+        if (longPressRef.current) clearTimeout(longPressRef.current);
+      }}
+      onContextMenu={(e) => {
+        if (!onSuggest) return;
+        e.preventDefault();
+        onSuggest({
+          word,
+          originalWord: word,
+          partOfSpeech: "neutral",
+          position: index,
+          sourceType: "source",
+        });
       }}
       onClick={(e) => {
         e.stopPropagation();
@@ -192,16 +232,44 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
   const translationIntent = useGuideStore(
     (s) => s.translationIntent.text ?? null
   );
+  const targetLanguage = useGuideStore((s) => s.answers.targetLanguage);
+  const targetLanguageName = targetLanguage?.lang?.trim() || "";
+  const targetLanguageVariety = targetLanguage?.variety?.trim() || "";
+  const resolvedTargetLanguage = targetLanguageName
+    ? `${targetLanguageName}${targetLanguageVariety ? ` (${targetLanguageVariety})` : ""}`
+    : "the target language";
   const userSelectedModel = useGuideStore((s) => s.translationModel);
 
   const [additionalSuggestions, setAdditionalSuggestions] = React.useState<
     WordSuggestion[]
   >([]);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = React.useState(false);
+  const [additionalSuggestionsError, setAdditionalSuggestionsError] =
+    React.useState<string | null>(null);
   const [isRegenerating, setIsRegenerating] = React.useState(false);
+  const [tokenSuggestions, setTokenSuggestions] = React.useState<
+    WordSuggestion[]
+  >([]);
+  const [isLoadingTokenSuggestions, setIsLoadingTokenSuggestions] =
+    React.useState(false);
+  const [tokenSuggestionsError, setTokenSuggestionsError] = React.useState<
+    string | null
+  >(null);
+  const [tokenSuggestionsOpen, setTokenSuggestionsOpen] =
+    React.useState(false);
+  const [tokenFocus, setTokenFocus] = React.useState<{
+    word: string;
+    originalWord: string;
+    partOfSpeech: string;
+    position: number;
+    sourceType: "variant" | "source";
+    variantId?: number;
+  } | null>(null);
 
   // Track in-flight requests to prevent duplicates (React Strict Mode fires effects twice)
   const inFlightRequestRef = React.useRef<string | null>(null);
+  const suggestionsAbortRef = React.useRef<AbortController | null>(null);
+  const tokenSuggestionsAbortRef = React.useRef<AbortController | null>(null);
 
   const {
     mutate: translateLine,
@@ -211,6 +279,7 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
 
   const lineTranslations = useWorkshopStore((s) => s.lineTranslations);
   const selectedVariant = useWorkshopStore((s) => s.selectedVariant);
+  const draftLines = useWorkshopStore((s) => s.draftLines);
   const setLineTranslation = useWorkshopStore((s) => s.setLineTranslation);
   const selectVariant = useWorkshopStore((s) => s.selectVariant);
   const clearLineTranslation = useWorkshopStore((s) => s.clearLineTranslation);
@@ -377,21 +446,44 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
   React.useEffect(() => {
     setAdditionalSuggestions([]);
     setIsLoadingSuggestions(false);
+    setAdditionalSuggestionsError(null);
+    suggestionsAbortRef.current?.abort();
+    tokenSuggestionsAbortRef.current?.abort();
+    setTokenSuggestions([]);
+    setIsLoadingTokenSuggestions(false);
+    setTokenSuggestionsOpen(false);
   }, [currentLineIndex]);
 
   const generateAdditionalSuggestions = React.useCallback(
     async (userGuidance?: string) => {
       if (!thread || currentLineIndex === null) return;
 
+      const currentDraft = draftLines[currentLineIndex] || "";
+      const variantFullTexts = currentLineTranslation
+        ? currentLineTranslation.translations.reduce(
+            (acc, variant) => {
+              if (variant.variant === 1) acc.A = variant.fullText;
+              if (variant.variant === 2) acc.B = variant.fullText;
+              if (variant.variant === 3) acc.C = variant.fullText;
+              return acc;
+            },
+            { A: "", B: "", C: "" }
+          )
+        : { A: "", B: "", C: "" };
+      suggestionsAbortRef.current?.abort();
+      const controller = new AbortController();
+      suggestionsAbortRef.current = controller;
       setIsLoadingSuggestions(true);
+      setAdditionalSuggestionsError(null);
       try {
-        const response = await fetch("/api/workshop/additional-suggestions", {
+        const response = await fetch("/api/workshop/line-suggestions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             threadId: thread,
             lineIndex: currentLineIndex,
             currentLine: poemLines[currentLineIndex],
+            sourceLine: poemLines[currentLineIndex],
             previousLine:
               currentLineIndex > 0 ? poemLines[currentLineIndex - 1] : null,
             nextLine:
@@ -401,26 +493,229 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
             fullPoem: poemLines.join("\n"),
             poemTheme: translationIntent || undefined,
             userGuidance: userGuidance || null,
+            targetLanguage: resolvedTargetLanguage,
+            targetLineDraft: currentDraft || null,
+            variantFullTexts,
+            selectedVariant: currentSelectedVariant ?? null,
           }),
+          signal: controller.signal,
         });
 
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
-
-        const data = (await response.json()) as {
+        const data = (await response.json().catch(() => ({}))) as {
+          ok?: boolean;
           suggestions?: WordSuggestion[];
+          reason?: string;
+          limit?: number;
+          remaining?: number;
+          resetAt?: string;
         };
+        if (!response.ok) {
+          const message =
+            data.reason === "rate_limited"
+              ? "You’ve hit the daily suggestions limit. Try again tomorrow."
+              : data.reason === "anchors_missing"
+              ? "Add a draft or choose a variant first."
+              : data.reason === "thread_not_found"
+              ? "We couldn’t find this thread. Try refreshing the page."
+              : data.reason === "target_language_missing" ||
+                data.reason === "invalid_request"
+              ? "Set a target language in Let’s Get Started."
+              : "Couldn’t load suggestions. Please try again.";
+          setAdditionalSuggestionsError(message);
+          setAdditionalSuggestions([]);
+          return;
+        }
+        if (controller.signal.aborted) return;
+        if (!data.ok) {
+          console.warn("[WordGrid] Suggestions rejected:", data.reason);
+          setAdditionalSuggestionsError(
+            data.reason === "rate_limited"
+              ? "You’ve hit the daily suggestions limit. Try again tomorrow."
+              : data.reason === "anchors_missing"
+              ? "Add a draft or choose a variant first."
+              : data.reason === "target_language_missing" ||
+                data.reason === "invalid_request"
+              ? "Set a target language in Let’s Get Started."
+              : "Couldn’t load suggestions. Please try again."
+          );
+          setAdditionalSuggestions([]);
+          return;
+        }
         setAdditionalSuggestions(
           Array.isArray(data.suggestions) ? data.suggestions : []
         );
       } catch (error) {
+        if ((error as { name?: string })?.name === "AbortError") {
+          return;
+        }
         console.error("[WordGrid] Error generating suggestions:", error);
+        setAdditionalSuggestionsError(
+          "Couldn’t load suggestions. Check your connection and try again."
+        );
       } finally {
-        setIsLoadingSuggestions(false);
+        if (!controller.signal.aborted) {
+          setIsLoadingSuggestions(false);
+        }
       }
     },
-    [thread, currentLineIndex, poemLines, translationIntent]
+    [
+      thread,
+      currentLineIndex,
+      poemLines,
+      translationIntent,
+      resolvedTargetLanguage,
+      currentLineTranslation,
+      currentSelectedVariant,
+      draftLines,
+    ]
+  );
+
+  const generateTokenSuggestions = React.useCallback(
+    async (options?: {
+      userGuidance?: string;
+      extraHints?: string[];
+      suggestionRangeMode?: "focused" | "balanced" | "adventurous";
+    }) => {
+      if (!thread || currentLineIndex === null || !tokenFocus) return;
+
+      const currentDraft = draftLines[currentLineIndex] || "";
+      const variantFullTexts = currentLineTranslation
+        ? currentLineTranslation.translations.reduce(
+            (acc, variant) => {
+              if (variant.variant === 1) acc.A = variant.fullText;
+              if (variant.variant === 2) acc.B = variant.fullText;
+              if (variant.variant === 3) acc.C = variant.fullText;
+              return acc;
+            },
+            { A: "", B: "", C: "" }
+          )
+        : { A: "", B: "", C: "" };
+      tokenSuggestionsAbortRef.current?.abort();
+      const controller = new AbortController();
+      tokenSuggestionsAbortRef.current = controller;
+      setIsLoadingTokenSuggestions(true);
+      setTokenSuggestionsError(null);
+      try {
+        const response = await fetch("/api/workshop/token-suggestions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            threadId: thread,
+            lineIndex: currentLineIndex,
+            currentLine: poemLines[currentLineIndex],
+            sourceLine: poemLines[currentLineIndex],
+            previousLine:
+              currentLineIndex > 0 ? poemLines[currentLineIndex - 1] : null,
+            nextLine:
+              currentLineIndex < poemLines.length - 1
+                ? poemLines[currentLineIndex + 1]
+                : null,
+            fullPoem: poemLines.join("\n"),
+            poemTheme: translationIntent || undefined,
+            userGuidance: options?.userGuidance || null,
+            extraHints: options?.extraHints ?? null,
+            suggestionRangeMode: options?.suggestionRangeMode ?? "balanced",
+            targetLanguage: resolvedTargetLanguage,
+            targetLineDraft: currentDraft || null,
+            variantFullTexts,
+            selectedVariant: currentSelectedVariant ?? null,
+            focus: {
+              word: tokenFocus.word,
+              originalWord: tokenFocus.originalWord,
+              partOfSpeech: tokenFocus.partOfSpeech,
+              position: tokenFocus.position,
+              sourceType: tokenFocus.sourceType,
+              variantId: tokenFocus.variantId ?? null,
+            },
+          }),
+          signal: controller.signal,
+        });
+
+        const data = (await response.json().catch(() => ({}))) as {
+          ok?: boolean;
+          suggestions?: WordSuggestion[];
+          reason?: string;
+          limit?: number;
+          remaining?: number;
+          resetAt?: string;
+        };
+        if (!response.ok) {
+          const message =
+            data.reason === "rate_limited"
+              ? "You’ve hit the daily suggestions limit. Try again tomorrow."
+              : data.reason === "anchors_missing"
+              ? "Add a draft or choose a variant first."
+              : data.reason === "thread_not_found"
+              ? "We couldn’t find this thread. Try refreshing the page."
+              : data.reason === "target_language_missing" ||
+                data.reason === "invalid_request"
+              ? "Set a target language in Let’s Get Started."
+              : "Couldn’t load suggestions. Please try again.";
+          setTokenSuggestionsError(message);
+          setTokenSuggestions([]);
+          return;
+        }
+        if (controller.signal.aborted) return;
+        if (!data.ok) {
+          console.warn("[WordGrid] Token suggestions rejected:", data.reason);
+          setTokenSuggestionsError(
+            data.reason === "rate_limited"
+              ? "You’ve hit the daily suggestions limit. Try again tomorrow."
+              : data.reason === "anchors_missing"
+              ? "Add a draft or choose a variant first."
+              : data.reason === "target_language_missing" ||
+                data.reason === "invalid_request"
+              ? "Set a target language in Let’s Get Started."
+              : "Couldn’t load suggestions. Please try again."
+          );
+          setTokenSuggestions([]);
+          return;
+        }
+        setTokenSuggestions(
+          Array.isArray(data.suggestions) ? data.suggestions : []
+        );
+      } catch (error) {
+        if ((error as { name?: string })?.name === "AbortError") {
+          return;
+        }
+        console.error("[WordGrid] Error generating token suggestions:", error);
+        setTokenSuggestionsError(
+          "Couldn’t load suggestions. Check your connection and try again."
+        );
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsLoadingTokenSuggestions(false);
+        }
+      }
+    },
+    [
+      thread,
+      currentLineIndex,
+      poemLines,
+      translationIntent,
+      resolvedTargetLanguage,
+      currentLineTranslation,
+      currentSelectedVariant,
+      draftLines,
+      tokenFocus,
+    ]
+  );
+
+  const handleOpenTokenSuggestions = React.useCallback(
+    (payload: {
+      word: string;
+      originalWord: string;
+      partOfSpeech: string;
+      position: number;
+      sourceType: "variant" | "source";
+      variantId?: number;
+    }) => {
+      setTokenFocus(payload);
+      setTokenSuggestions([]);
+      setTokenSuggestionsError(null);
+      setTokenSuggestionsOpen(true);
+    },
+    []
   );
 
   const handleAdditionalWordClick = React.useCallback(
@@ -436,7 +731,7 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
         position: 0,
         dragType: "variantWord",
         metadata: {
-          source: "additional-suggestions",
+          source: "line-suggestions",
         },
       };
       appendToDraft(
@@ -586,6 +881,7 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
         <SourceWordsPalette
           sourceWords={sourceWords}
           lineNumber={currentLineIndex}
+          onSuggest={handleOpenTokenSuggestions}
         />
 
         <div className="space-y-4">
@@ -605,6 +901,7 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
               }}
               lineNumber={currentLineIndex ?? 0}
               stanzaIndex={lineContext?.stanzaIndex}
+              onSuggest={handleOpenTokenSuggestions}
             />
           ))}
         </div>
@@ -612,8 +909,23 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
         <AdditionalSuggestions
           suggestions={additionalSuggestions}
           isLoading={isLoadingSuggestions}
+          errorMessage={additionalSuggestionsError}
           onGenerate={() => generateAdditionalSuggestions()}
           onRegenerate={(guidance) => generateAdditionalSuggestions(guidance)}
+          onWordClick={handleAdditionalWordClick}
+        />
+
+        <TokenSuggestionsPopover
+          open={tokenSuggestionsOpen}
+          onOpenChange={setTokenSuggestionsOpen}
+          focusLabel={tokenFocus?.word || ""}
+          suggestions={tokenSuggestions}
+          isLoading={isLoadingTokenSuggestions}
+          errorMessage={tokenSuggestionsError}
+          onGenerate={(options) => generateTokenSuggestions(options)}
+          onRegenerate={(guidance, options) =>
+            generateTokenSuggestions({ ...options, userGuidance: guidance })
+          }
           onWordClick={handleAdditionalWordClick}
         />
 
@@ -663,7 +975,7 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
   return (
     <div className="p-6 flex items-center justify-center h-full">
       <div className="text-center space-y-4">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-500 mx-auto" />
+        <Preloader size="6em" className="mx-auto block" />
         <p className="text-sm text-muted-foreground">
           {isPending
             ? "Generating translation variants..."
@@ -677,9 +989,17 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
 function SourceWordsPalette({
   sourceWords,
   lineNumber,
+  onSuggest,
 }: {
   sourceWords: string[];
   lineNumber: number | null;
+  onSuggest?: (payload: {
+    word: string;
+    originalWord: string;
+    partOfSpeech: string;
+    position: number;
+    sourceType: "source";
+  }) => void;
 }) {
   if (sourceWords.length === 0) {
     return null;
@@ -708,6 +1028,7 @@ function SourceWordsPalette({
             word={word}
             index={idx}
             lineNumber={lineNumber ?? 0}
+            onSuggest={onSuggest}
           />
         ))}
       </div>
@@ -721,6 +1042,14 @@ interface TranslationVariantCardProps {
   onSelect: () => void;
   lineNumber: number;
   stanzaIndex?: number;
+  onSuggest?: (payload: {
+    word: string;
+    originalWord: string;
+    partOfSpeech: string;
+    position: number;
+    sourceType: "variant";
+    variantId: number;
+  }) => void;
 }
 
 function TranslationVariantCard({
@@ -729,6 +1058,7 @@ function TranslationVariantCard({
   onSelect,
   lineNumber,
   stanzaIndex,
+  onSuggest,
 }: TranslationVariantCardProps) {
   const currentLineIndex = useWorkshopStore((s) => s.currentLineIndex);
   const setCurrentLineIndex = useWorkshopStore((s) => s.setCurrentLineIndex);
@@ -823,6 +1153,7 @@ function TranslationVariantCard({
               lineNumber={lineNumber}
               stanzaIndex={stanzaIndex}
               disabled={!token.translation}
+              onSuggest={onSuggest}
             />
           ))}
         </div>
@@ -853,6 +1184,14 @@ interface DraggableVariantTokenProps {
   lineNumber: number;
   stanzaIndex?: number;
   disabled?: boolean;
+  onSuggest?: (payload: {
+    word: string;
+    originalWord: string;
+    partOfSpeech: string;
+    position: number;
+    sourceType: "variant";
+    variantId: number;
+  }) => void;
 }
 
 function DraggableVariantToken({
@@ -861,12 +1200,14 @@ function DraggableVariantToken({
   lineNumber,
   stanzaIndex,
   disabled,
+  onSuggest,
 }: DraggableVariantTokenProps) {
   const currentLineIndex = useWorkshopStore((s) => s.currentLineIndex);
   const setCurrentLineIndex = useWorkshopStore((s) => s.setCurrentLineIndex);
   const appendToDraft = useWorkshopStore((s) => s.appendToDraft);
   const [clicked, setClicked] = React.useState(false);
   const justDraggedRef = React.useRef(false);
+  const longPressRef = React.useRef<number | null>(null);
 
   const pos = normalizePartOfSpeechTag(token.partOfSpeech);
   const dragData: DragData = {
@@ -928,6 +1269,36 @@ function DraggableVariantToken({
       onPointerDown={() => {
         // Reset so a normal click isn't blocked by a prior drag.
         justDraggedRef.current = false;
+        if (longPressRef.current) clearTimeout(longPressRef.current);
+        longPressRef.current = window.setTimeout(() => {
+          if (disabled || !token.translation) return;
+          onSuggest?.({
+            word: token.translation,
+            originalWord: token.original || token.translation,
+            partOfSpeech: pos,
+            position: token.position ?? 0,
+            sourceType: "variant",
+            variantId,
+          });
+        }, 450);
+      }}
+      onPointerUp={() => {
+        if (longPressRef.current) clearTimeout(longPressRef.current);
+      }}
+      onPointerLeave={() => {
+        if (longPressRef.current) clearTimeout(longPressRef.current);
+      }}
+      onContextMenu={(e) => {
+        if (disabled || !token.translation) return;
+        e.preventDefault();
+        onSuggest?.({
+          word: token.translation,
+          originalWord: token.original || token.translation,
+          partOfSpeech: pos,
+          position: token.position ?? 0,
+          sourceType: "variant",
+          variantId,
+        });
       }}
       onClick={(e) => {
         e.stopPropagation();
@@ -964,11 +1335,6 @@ function DraggableVariantToken({
       <span className="text-gray-900 pointer-events-none">
         {token.translation || "…"}
       </span>
-      {token.original && (
-        <span className="text-[11px] text-gray-600 pointer-events-none">
-          {token.original}
-        </span>
-      )}
     </div>
   );
 }

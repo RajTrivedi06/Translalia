@@ -266,45 +266,53 @@ export async function pushAuditToThreadState(
     const { supabaseServer } = await import("@/lib/supabaseServer");
     const supabase = await supabaseServer();
 
-    // ✅ LOG: Atomic audit append (no state read required)
+    // ✅ LOG: Direct table insert (migrated from RPC)
     console.log(
-      `[STATE_WRITE] writer=pushAuditToThreadState threadId=${threadId} ` +
-      `updating=method2_audit versionCheck=N/A (atomic append) maxN=${maxN}`
+      `[AUDIT] writer=pushAuditToThreadState threadId=${threadId} ` +
+      `inserting=translation_audits table`
     );
 
-    // ✅ ATOMIC FIX: Use append_method2_audit RPC for atomic array append
-    // This appends to the method2_audit array without reading/writing the entire state
-    // CRITICAL: NO FALLBACK - if RPC is missing, fail fast to prevent state clobber
-    const { error: rpcError } = await supabase.rpc("append_method2_audit", {
-      p_thread_id: threadId,
-      p_audit: audit,
-      p_max_n: maxN,
-    });
+    // ✅ MIGRATION: Insert directly to translation_audits table instead of RPC
+    // Parse timestamp from audit.ts (ISO string) or use current time
+    const createdAt = audit.ts ? new Date(audit.ts).toISOString() : new Date().toISOString();
 
-    if (rpcError) {
-      // ✅ FAIL FAST: If RPC is missing or fails, throw an error
-      // DO NOT fallback to read-modify-write which can clobber translation_job state
-      if (rpcError.code === "42883" || rpcError.message?.includes("function")) {
-        const errorMsg =
-          `[pushAuditToThreadState] CRITICAL: append_method2_audit RPC not found. ` +
-          `This RPC is required for atomic audit writes. ` +
-          `Add migration in supabase/migrations/*.sql to create the function. ` +
-          `Falling back to read-modify-write would clobber translation state. ` +
-          `Error: ${rpcError.message} (code: ${rpcError.code})`;
-        console.error(errorMsg);
-        throw new Error(errorMsg);
-      }
+    const { error: insertError } = await supabase
+      .from("translation_audits")
+      .insert({
+        thread_id: threadId,
+        line_index: audit.lineIndex ?? null,
+        stanza_index: audit.stanzaIndex ?? null,
+        mode: audit.mode,
+        model: audit.model,
+        recipe_cache_hit: audit.recipe.cacheHit ?? null,
+        recipe_schema_version: audit.recipe.schemaVersion ?? null,
+        recipe_bundle_key: audit.recipe.bundleKey ?? null,
+        phase1_pass: audit.phase1?.pass ?? null,
+        phase1_failed: audit.phase1?.failed ?? null,
+        gate_pass: audit.gate.pass,
+        gate_reason: audit.gate.reason ?? null,
+        gate_failed_constraints: audit.gate.failedConstraints ?? null,
+        gate_similarity: audit.gate.similarity ?? null,
+        regen_performed: audit.regen?.performed ?? false,
+        regen_worst_index: audit.regen?.worstIndex ?? null,
+        regen_variant_label: audit.regen?.variantLabel ?? null,
+        regen_reason: audit.regen?.reason ?? null,
+        regen_strategy: audit.regen?.strategy ?? null,
+        regen_sample_count: audit.regen?.sampleCount ?? null,
+        regen_hard_pass_count: audit.regen?.hardPassCount ?? null,
+        created_at: createdAt,
+      });
 
-      // For other errors (permission, connection, etc.), log and throw
+    if (insertError) {
       const errorMsg =
-        `[pushAuditToThreadState] RPC failed for thread ${threadId}: ` +
-        `${rpcError.message} (code: ${rpcError.code || "unknown"})`;
-      console.error(errorMsg, rpcError);
+        `[pushAuditToThreadState] Failed to insert audit for thread ${threadId}: ` +
+        `${insertError.message} (code: ${insertError.code || "unknown"})`;
+      console.error(errorMsg, insertError);
       throw new Error(errorMsg);
     }
 
     console.log(
-      `[pushAuditToThreadState] ✅ Successfully appended audit for thread ${threadId}`
+      `[pushAuditToThreadState] ✅ Successfully inserted audit for thread ${threadId}`
     );
   } catch (error) {
     console.warn("[pushAuditToThreadState] Error:", error);

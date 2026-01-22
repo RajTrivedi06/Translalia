@@ -6,6 +6,7 @@ import { AuthNav } from "@/components/auth/AuthNav";
 import { routing } from "@/i18n/routing";
 import { Geist, Geist_Mono } from "next/font/google";
 import type { ReactNode } from "react";
+import { Link } from "@/i18n/routing";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -58,9 +59,14 @@ export default async function LocaleLayout({
             >
               <header className="sticky top-0 z-40 h-[var(--header-h)] border-b bg-white/80 backdrop-blur">
                 <div className="mx-auto flex h-full max-w-screen-2xl items-center justify-between px-4 py-2">
-                  <div className="text-base font-semibold tracking-tight text-slate-800">
-                    Translalia
-                  </div>
+                  <Link
+                    href="/"
+                    className="font-serif text-xl font-light leading-[0.85] tracking-[-0.03em] text-slate-900 hover:text-slate-900 transition-colors cursor-pointer"
+                  >
+                    <span>
+                      Trans<span className="italic text-sky-600">lalia</span>
+                    </span>
+                  </Link>
                   <div className="flex items-center gap-3">
                     <AuthNav />
                   </div>

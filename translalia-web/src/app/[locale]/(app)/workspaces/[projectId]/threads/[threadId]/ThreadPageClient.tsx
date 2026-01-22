@@ -12,7 +12,7 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronLeft, ArrowLeft } from "lucide-react";
+import { ArrowLeft, ChevronLeft } from "lucide-react";
 import { GuideRail } from "@/components/guide";
 import { WorkshopRail } from "@/components/workshop-rail/WorkshopRail";
 import { NotebookViewContainer } from "@/components/notebook/NotebookViewContainer";
@@ -91,6 +91,7 @@ export default function ThreadPageClient({
 
   // Always start expanded; we only collapse once workshop data is confirmed.
   const [isGettingStartedCollapsed, setIsGettingStartedCollapsed] = useState(false);
+  const [isGuideFocusMode, setIsGuideFocusMode] = useState(false);
 
   // Track collapsed state for Workshop, Notebook, and Editing
   // When workshop starts: Workshop and Notebook are open (not collapsed)
@@ -110,7 +111,7 @@ export default function ThreadPageClient({
   const isWorkshopStarted = isStoreReady && (isWorkshopUnlocked || hasWorkshopData);
 
   // New threads: always show the guide expanded in the startup layout.
-  const showStartupLayout = !isStoreReady || !isWorkshopStarted;
+  const showStartupLayout = !isStoreReady || !isWorkshopStarted || isGuideFocusMode;
 
   // Once the workshop has started, allow the guide to collapse.
   const isGuideCollapsed = isWorkshopStarted ? isGettingStartedCollapsed : false;
@@ -119,6 +120,7 @@ export default function ThreadPageClient({
   useEffect(() => {
     // When threadId changes, reset to expanded state
     setIsGettingStartedCollapsed(false);
+    setIsGuideFocusMode(false);
     setIsWorkshopCollapsed(true);
     setIsNotebookCollapsed(true);
     setIsReflectionCollapsed(true);
@@ -137,6 +139,7 @@ export default function ThreadPageClient({
 
     if (isWorkshopStarted) {
       setIsGettingStartedCollapsed(true);
+      setIsGuideFocusMode(false);
 
       // When workshop starts: Workshop and Notebook should be open
       setIsWorkshopCollapsed(false);
@@ -226,6 +229,7 @@ export default function ThreadPageClient({
 
     if (isWorkshopCollapsed) {
       // Opening Workshop: close Editing if it's open, ensure Notebook is open
+      setIsGuideFocusMode(false);
       setIsWorkshopCollapsed(false);
       setIsReflectionCollapsed(true);
       setIsNotebookCollapsed(false);
@@ -242,6 +246,9 @@ export default function ThreadPageClient({
     if (isNotebookCollapsed && !isWorkshopStarted) {
       return;
     }
+    if (isNotebookCollapsed) {
+      setIsGuideFocusMode(false);
+    }
     setIsNotebookCollapsed(!isNotebookCollapsed);
   };
 
@@ -253,6 +260,7 @@ export default function ThreadPageClient({
 
     if (isReflectionCollapsed) {
       // Opening Editing: close Workshop if it's open, ensure Notebook is open
+      setIsGuideFocusMode(false);
       setIsReflectionCollapsed(false);
       setIsWorkshopCollapsed(true);
       setIsNotebookCollapsed(false);
@@ -290,11 +298,23 @@ export default function ThreadPageClient({
 
     // If trying to collapse "Let's get started" and all other sections are already collapsed, prevent it
     if (allOtherSectionsCollapsed && !isGuideCollapsed) {
-      // Can't collapse if all other sections are already collapsed
+      // Open Workshop + Notebook before collapsing to avoid all-collapsed state
+      setIsWorkshopCollapsed(false);
+      setIsNotebookCollapsed(false);
+      setIsReflectionCollapsed(true);
+    }
+
+    if (!isGuideCollapsed) {
+      setIsGuideFocusMode(false);
+      setIsGettingStartedCollapsed(true);
       return;
     }
 
-    setIsGettingStartedCollapsed((prev) => !prev);
+    setIsGettingStartedCollapsed(false);
+    setIsGuideFocusMode(true);
+    setIsWorkshopCollapsed(true);
+    setIsNotebookCollapsed(true);
+    setIsReflectionCollapsed(true);
   };
 
   // Animation variants for panel transitions
@@ -370,7 +390,7 @@ export default function ThreadPageClient({
                     className="gap-2 text-slate-600 hover:text-slate-900"
                   >
                     <ArrowLeft className="w-4 h-4" />
-                    <span className="hidden sm:inline">Back to Threads</span>
+                    <span className="hidden sm:inline">Back to chats</span>
                     <span className="sm:hidden">Back</span>
                   </Button>
                 </Link>
@@ -428,20 +448,24 @@ export default function ThreadPageClient({
                     exit="exit"
                     className="flex h-full flex-col"
                   >
-                    <div className="relative px-4 py-3">
-                      <div>
+                    <div className="px-4 py-3">
+                      <div className="flex items-center justify-between gap-3">
                         <h2 className="text-xl font-semibold tracking-tight text-slate-900">
                           {t("gettingStarted")}
                         </h2>
+                        {isWorkshopStarted && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleToggleGettingStarted}
+                            className="h-8 w-8 p-0 text-slate-600 hover:text-slate-900"
+                            title={t("collapseGuidePanel")}
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
-                      <button
-                        type="button"
-                        onClick={handleToggleGettingStarted}
-                        className="absolute right-4 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-slate-300 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
-                        aria-label={t("collapseGuidePanel")}
-                      >
-                        <ChevronLeft className="h-4 w-4" />
-                      </button>
                     </div>
                     <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4">
                       <GuideRail
@@ -472,10 +496,7 @@ export default function ThreadPageClient({
                   >
                     <CollapsedPanelTab
                       label={t("gettingStarted")}
-                      onClick={() => {
-                        if (!isStoreReady) return;
-                        setIsGettingStartedCollapsed(false);
-                      }}
+                      onClick={handleToggleGettingStarted}
                     />
                   </motion.div>
                 )}

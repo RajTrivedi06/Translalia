@@ -91,11 +91,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(cached);
     }
 
-    // Fetch thread with state
+    // Fetch thread with columns
     const supabase = await supabaseServer();
     const { data: thread, error: threadError } = await supabase
       .from("chat_threads")
-      .select("id, state, project_id, created_by")
+      .select("id, state, project_id, created_by, translation_model, translation_method, translation_intent, translation_zone, source_language_variety, raw_poem")
       .eq("id", threadId)
       .eq("created_by", user.id)
       .single();
@@ -108,10 +108,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Extract data from thread state
+    // Extract data from columns (with JSONB fallback for legacy data)
     const state = (thread.state as any) || {};
-    const guideAnswers: GuideAnswers = state.guide_answers || {};
-    const poemLines: string[] = (state.raw_poem || "").split("\n");
+    const guideAnswers: GuideAnswers = {
+      translationModel: thread.translation_model ?? state.guide_answers?.translationModel ?? null,
+      translationMethod: thread.translation_method ?? state.guide_answers?.translationMethod ?? "method-2",
+      translationIntent: thread.translation_intent ?? state.guide_answers?.translationIntent ?? null,
+      translationZone: thread.translation_zone ?? state.guide_answers?.translationZone ?? null,
+      sourceLanguageVariety: thread.source_language_variety ?? state.guide_answers?.sourceLanguageVariety ?? null,
+      // Legacy fields from JSONB if needed
+      ...(state.guide_answers || {}),
+    };
+    const poemLines: string[] = (thread.raw_poem ?? state.raw_poem ?? "").split("\n");
     const completedLines: Record<number, string> = state.workshop_lines || {};
     const notebookNotes = state.notebook_notes || {
       thread_note: null,

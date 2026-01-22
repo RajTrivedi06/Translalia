@@ -19,6 +19,14 @@ import {
 } from "@/lib/verification/errorHandler";
 import { recordMetric, createTimer } from "@/lib/verification/monitoring";
 
+type GuideAnswersState = {
+  translationModel?: string | null;
+  translationMethod?: string | null;
+  translationIntent?: string | null;
+  translationZone?: string | null;
+  sourceLanguageVariety?: string | null;
+};
+
 const contextRequestSchema = z.object({
   threadId: z.string().uuid(),
   lineIndex: z.number().int().min(0),
@@ -140,7 +148,7 @@ export async function POST(request: NextRequest) {
 
     const { data: thread, error: threadError } = await supabase
       .from("chat_threads")
-      .select("id, state, created_by, project_id")
+      .select("id, state, created_by, project_id, translation_model, translation_method, translation_intent, translation_zone, source_language_variety")
       .eq("id", threadId)
       .single();
 
@@ -170,10 +178,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 6. Extract state data
+    // 6. Extract state data from columns (with JSONB fallback for legacy)
     const state = (thread.state as Record<string, unknown>) || {};
-    const guide_answers = (state as { guide_answers?: Record<string, unknown> })
-      .guide_answers;
+    const guideAnswersState =
+      (state as { guide_answers?: GuideAnswersState }).guide_answers ?? {};
+    const guide_answers: Record<string, unknown> = {
+      translationModel:
+        thread.translation_model ?? guideAnswersState.translationModel ?? null,
+      translationMethod:
+        thread.translation_method ??
+        guideAnswersState.translationMethod ??
+        "method-2",
+      translationIntent:
+        thread.translation_intent ?? guideAnswersState.translationIntent ?? null,
+      translationZone:
+        thread.translation_zone ?? guideAnswersState.translationZone ?? null,
+      sourceLanguageVariety:
+        thread.source_language_variety ??
+        guideAnswersState.sourceLanguageVariety ??
+        null,
+      // Legacy fields from JSONB if needed
+      ...(guideAnswersState as Record<string, unknown>),
+    };
     const poem_analysis = (
       state as {
         poem_analysis?: { source_lines?: string[]; detected_language?: string };

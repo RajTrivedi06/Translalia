@@ -453,27 +453,51 @@ export async function processStanza({
   }
 
   const stanzaDuration = Date.now() - stanzaStartTime;
-  
-  // ISS-005: Handle interruption
-  if (interrupted) {
-    console.log(
-      `[processStanza] ⏱️  Stanza ${stanzaIndex} INTERRUPTED: ` +
-      `${linesCompletedThisTick} lines completed this tick, ` +
-      `${pendingLineCount - linesCompletedThisTick} remaining, ` +
-      `duration=${stanzaDuration}ms, ` +
-      `budget=${budget ? `${budget.remainingMs()}ms remaining` : "N/A"}`
-    );
-    
-    // Update stanza status to "processing" (not completed)
-    await updateStanzaStatus(threadId, stanzaIndex, {
-      status: "processing",
-    });
 
-    return {
-      interrupted: true,
-      linesCompleted: linesCompletedThisTick,
-      linesTotal: totalLines,
-    };
+  // ✅ FIX: Check if ALL lines are actually translated before declaring interrupted
+  // Even if the `interrupted` flag was set (budget check triggered), lines that were
+  // already in-flight may have completed. If all lines are done, don't treat as interrupted.
+  if (interrupted) {
+    // Load current state from DB to check actual line completion
+    const jobCheckInterrupt = await getTranslationJob(threadId);
+    const chunkCheckInterrupt = (jobCheckInterrupt?.chunks || jobCheckInterrupt?.stanzas || {})[stanzaIndex];
+    const actualLines = chunkCheckInterrupt?.lines || [];
+    const actualAllTranslated = actualLines.length > 0 && actualLines.every(
+      (l) => l.translationStatus === "translated"
+    );
+    const actualAllPresent = actualLines.length === (chunkCheckInterrupt?.totalLines || totalLines);
+
+    if (actualAllTranslated && actualAllPresent) {
+      // All lines completed despite interrupt flag - don't return as interrupted
+      console.log(
+        `[processStanza] ⚠️  Stanza ${stanzaIndex} had interrupt flag but ALL lines completed: ` +
+        `${actualLines.length}/${chunkCheckInterrupt?.totalLines || totalLines} lines translated. ` +
+        `Proceeding to completion check instead of returning interrupted.`
+      );
+      // Clear the interrupted flag so we proceed to normal completion logic
+      interrupted = false;
+    } else {
+      // Truly interrupted - some lines still pending
+      console.log(
+        `[processStanza] ⏱️  Stanza ${stanzaIndex} INTERRUPTED: ` +
+        `${linesCompletedThisTick} lines completed this tick, ` +
+        `${pendingLineCount - linesCompletedThisTick} remaining, ` +
+        `actual DB state: ${actualLines.length}/${chunkCheckInterrupt?.totalLines || totalLines} lines, ` +
+        `duration=${stanzaDuration}ms, ` +
+        `budget=${budget ? `${budget.remainingMs()}ms remaining` : "N/A"}`
+      );
+
+      // Update stanza status to "processing" (not completed)
+      await updateStanzaStatus(threadId, stanzaIndex, {
+        status: "processing",
+      });
+
+      return {
+        interrupted: true,
+        linesCompleted: linesCompletedThisTick,
+        linesTotal: totalLines,
+      };
+    }
   }
 
   console.log(
@@ -539,9 +563,53 @@ export async function processStanza({
   }
 
   // Update stanza status with final state
+  // Note: We set "processing" here; the caller (runTranslationTick) will mark as "completed"
+  // if all lines are translated. The watchdog (fixStuckChunks) provides a safety net.
   await updateStanzaStatus(threadId, stanzaIndex, {
     status: permanentFailures.length > 0 ? "failed" : "processing",
   });
+
+  // ✅ SAFETY: If all lines are translated, mark chunk as completed here
+  // This is a defense-in-depth fix: normally runTranslationTick handles this,
+  // but if that update fails, we still want the chunk to be marked completed.
+  if (permanentFailures.length === 0 && !interrupted) {
+    const jobAfterUpdate = await getTranslationJob(threadId);
+    const chunkAfterUpdate = (jobAfterUpdate?.chunks || jobAfterUpdate?.stanzas || {})[stanzaIndex];
+
+    if (chunkAfterUpdate) {
+      const chunkLines = chunkAfterUpdate.lines || [];
+      const allLinesTranslated = chunkLines.length > 0 && chunkLines.every(
+        (l) => l.translationStatus === "translated"
+      );
+      const allLinesPresent = chunkLines.length === chunkAfterUpdate.totalLines;
+
+      // ✅ DEBUG: Log safety completion check details
+      console.log(
+        `[processStanza] Safety completion check for chunk ${stanzaIndex}: ` +
+        `lines=${chunkLines.length}/${chunkAfterUpdate.totalLines}, ` +
+        `allTranslated=${allLinesTranslated}, allPresent=${allLinesPresent}, ` +
+        `currentStatus=${chunkAfterUpdate.status}`
+      );
+
+      if (allLinesTranslated && allLinesPresent && chunkAfterUpdate.status !== "completed") {
+        console.log(
+          `[processStanza] Safety completion: marking chunk ${stanzaIndex} as completed ` +
+          `(lines: ${chunkLines.length}/${chunkAfterUpdate.totalLines})`
+        );
+        await updateStanzaStatus(threadId, stanzaIndex, {
+          status: "completed",
+          completedAt: Date.now(),
+          error: undefined,
+        });
+      }
+    }
+  } else {
+    // ✅ DEBUG: Log why safety completion was skipped
+    console.log(
+      `[processStanza] Safety completion SKIPPED for chunk ${stanzaIndex}: ` +
+      `permanentFailures=${permanentFailures.length}, interrupted=${interrupted}`
+    );
+  }
 
   // Legacy: Build translatedLines array for final validation (backwards compatibility)
   // Lines are already stored in DB via updateSingleLine, but we need the array for validation

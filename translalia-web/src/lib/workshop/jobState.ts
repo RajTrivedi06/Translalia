@@ -743,12 +743,13 @@ export function markJobCompletedIfDone(
   );
 
   // ✅ FIX: Make hasActiveWork robust - don't rely only on arrays
-  // Also check for chunks with status="processing" and incomplete (handles array drift)
+  // Check for ANY chunk that hasn't reached a terminal status (completed/failed)
+  // This catches chunks stuck in "processing", "queued", or "pending" with incomplete lines
   const hasActiveWorkFromArrays = job.active.length > 0 || job.queue.length > 0;
   const hasActiveWorkFromChunks = Object.values(chunkOrStanzaStates).some(
     (stanza) =>
-      stanza.status === "processing" &&
-      stanza.linesProcessed < stanza.totalLines
+      // Any chunk not in terminal status is active work
+      stanza.status !== "completed" && stanza.status !== "failed"
   );
   const hasActiveWork = hasActiveWorkFromArrays || hasActiveWorkFromChunks;
 

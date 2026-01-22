@@ -134,9 +134,6 @@ export default function WorkspaceChatsPage() {
         <section className="flex-1 rounded-3xl bg-white/90 p-6 shadow-sm ring-1 ring-slate-200 sm:p-8">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
-                {t("threads")}
-              </p>
               <h2 className="text-2xl font-semibold text-slate-900">
                 {isFetching ? tCommon("loading") : t("heading")}
               </h2>

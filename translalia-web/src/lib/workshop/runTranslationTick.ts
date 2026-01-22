@@ -86,7 +86,7 @@ export async function loadThreadContext(
   const supabase = await supabaseServer();
   const { data, error } = await supabase
     .from("chat_threads")
-    .select("state, created_by, project_id")
+    .select("state, created_by, project_id, translation_model, translation_method, translation_intent, translation_zone, source_language_variety, raw_poem")
     .eq("id", threadId)
     .single();
 
@@ -97,9 +97,28 @@ export async function loadThreadContext(
   }
 
   const state = (data.state as Record<string, unknown>) || {};
-  const guideAnswers = (state.guide_answers as GuideAnswers) || {};
+  const guideAnswersState =
+    (state as { guide_answers?: GuideAnswers }).guide_answers ?? {};
+  const guideAnswers: GuideAnswers = {
+    translationModel:
+      data.translation_model ?? guideAnswersState.translationModel ?? null,
+    translationMethod:
+      data.translation_method ??
+      guideAnswersState.translationMethod ??
+      "method-2",
+    translationIntent:
+      data.translation_intent ?? guideAnswersState.translationIntent ?? null,
+    translationZone:
+      data.translation_zone ?? guideAnswersState.translationZone ?? null,
+    sourceLanguageVariety:
+      data.source_language_variety ??
+      guideAnswersState.sourceLanguageVariety ??
+      null,
+    // Legacy fields from JSONB if needed
+    ...(guideAnswersState || {}),
+  };
   const stanzaResult = state.poem_stanzas as StanzaDetectionResult | undefined;
-  const rawPoem = (state.raw_poem as string) || "";
+  const rawPoem = (data.raw_poem ?? state.raw_poem ?? "") as string;
   const poemAnalysis = (state.poem_analysis as { language?: string }) || {};
 
   if (!stanzaResult?.stanzas || stanzaResult.stanzas.length === 0) {
@@ -155,7 +174,7 @@ function cloneGuidePreferences(
  * This prevents jobs from getting stuck in "processing" with no scheduled work.
  * 
  * Rules enforced:
- * - If chunk is incomplete and status === "processing" => must be in active
+ * - If chunk is incomplete and status === "processing" => re-queue (stale processing)
  * - If chunk is incomplete and status !== "processing" => must be in queue
  * - lines must always exist; linesProcessed = lines.length
  * - If queue=[] and active=[] but incomplete chunks exist => seed queue with incomplete chunks
@@ -190,10 +209,12 @@ function reconcileJobState(draft: TranslationJobState): void {
     chunk.linesProcessed = chunk.lines.length;
 
     // Track incomplete chunks
+    // ✅ FIX: A chunk is incomplete if it hasn't reached terminal status (completed/failed)
+    // Even if linesProcessed === totalLines, if status is still "processing" or "queued",
+    // the chunk needs to be reprocessed to trigger the completion transition
     const isIncomplete =
       chunk.status !== "completed" &&
-      chunk.status !== "failed" &&
-      chunk.linesProcessed < chunk.totalLines;
+      chunk.status !== "failed";
 
     if (isIncomplete) {
       incompleteChunkIndices.push(idx);
@@ -208,16 +229,20 @@ function reconcileJobState(draft: TranslationJobState): void {
     const chunk = chunkOrStanzaStates[idx];
     if (!chunk) continue;
 
+    // ✅ NEW: Re-queue stale "processing" chunks.
+    // With per-thread tick locks, no chunk should remain "processing" between ticks.
+    // If we see processing here, it means the previous tick ended (or crashed) and
+    // the chunk needs to be resumed.
     if (chunk.status === "processing") {
-      // Incomplete + processing => must be in active
-      if (!newActive.includes(idx)) {
-        newActive.push(idx);
-      }
-    } else {
-      // Incomplete + not processing => must be in queue
-      if (!newQueue.includes(idx)) {
-        newQueue.push(idx);
-      }
+      console.warn(
+        `[reconcileJobState] Re-queuing stale processing chunk ${idx} (was processing without active work)`
+      );
+      chunk.status = "queued";
+    }
+
+    // Incomplete => must be in queue
+    if (!newQueue.includes(idx)) {
+      newQueue.push(idx);
     }
   }
 
@@ -243,6 +268,59 @@ function reconcileJobState(draft: TranslationJobState): void {
       `[reconcileJobState] RECONCILED: ${incompleteChunkIndices.length} incomplete chunks. Queue: [${draft.queue.join(", ")}], Active: [${draft.active.join(", ")}]`
     );
   }
+}
+
+/**
+ * ✅ WATCHDOG: Fix chunks stuck in non-terminal state with all lines translated.
+ * This handles the edge case where processStanza completes but the completion
+ * update in runTranslationTick fails or is skipped.
+ *
+ * Returns the number of chunks fixed.
+ */
+function fixStuckChunks(draft: TranslationJobState): number {
+  const chunkOrStanzaStates = draft.chunks || draft.stanzas || {};
+  const now = Date.now();
+  let fixedCount = 0;
+
+  Object.entries(chunkOrStanzaStates).forEach(([idxStr, chunk]) => {
+    const idx = parseInt(idxStr, 10);
+    const lines = chunk.lines || [];
+
+    // Check if all lines are translated
+    const allLinesTranslated = lines.length > 0 && lines.every(
+      (l) => l.translationStatus === "translated"
+    );
+    const allLinesPresent = lines.length === chunk.totalLines;
+
+    // Chunk is stuck if: non-terminal status but all lines are done
+    const isStuckProcessing =
+      chunk.status !== "completed" &&
+      chunk.status !== "failed" &&
+      allLinesTranslated &&
+      allLinesPresent;
+
+    if (isStuckProcessing) {
+      const startedAt = chunk.startedAt || 0;
+      const ageSeconds = Math.round((now - startedAt) / 1000);
+
+      console.warn(
+        `[fixStuckChunks] 🔧 FIXING stuck chunk ${idx}: status="${chunk.status}" but all ${lines.length}/${chunk.totalLines} lines translated. ` +
+        `Marking as completed (age: ${ageSeconds}s)`
+      );
+
+      // Fix: Mark as completed
+      chunk.status = "completed";
+      chunk.completedAt = now;
+      chunk.error = undefined;
+
+      // Remove from active array if present
+      draft.active = draft.active.filter((i) => i !== idx);
+
+      fixedCount++;
+    }
+  });
+
+  return fixedCount;
 }
 
 /**
@@ -277,10 +355,10 @@ function assertJobInvariants(job: TranslationJobState, context: string): void {
     }
 
     // Check incomplete chunks are in queue/active
+    // ✅ FIX: Align with reconcileJobState - incomplete means non-terminal status
     const isIncomplete =
       chunk.status !== "completed" &&
-      chunk.status !== "failed" &&
-      chunk.linesProcessed < chunk.totalLines;
+      chunk.status !== "failed";
 
     if (isIncomplete) {
       if (chunk.status === "processing") {
@@ -299,7 +377,7 @@ function assertJobInvariants(job: TranslationJobState, context: string): void {
     }
 
     // Check complete chunks are NOT in queue/active
-    const isComplete = chunk.linesProcessed >= chunk.totalLines;
+    const isComplete = chunk.status === "completed" || chunk.status === "failed";
     if (isComplete || chunk.status === "completed" || chunk.status === "failed") {
       if (job.queue.includes(idx)) {
         warnings.push(`Chunk ${idx}: complete but still in queue`);
@@ -425,14 +503,21 @@ export async function runTranslationTick(
 
   updatedJob = await updateTranslationJob(threadId, (draft) => {
     applyMetadata(draft);
-    
+
     // ✅ RECONCILIATION: Rebuild queue/active from chunk states FIRST (atomic with selection)
     // This ensures getNextStanzasToProcess() can't see pre-reconciled empty queue
     reconcileJobState(draft);
-    
-    // ✅ INVARIANT CHECK #1: After reconciliation
+
+    // ✅ WATCHDOG: Fix chunks stuck in "processing" with all lines done
+    // This handles the edge case where completion update failed in a previous tick
+    const stuckFixed = fixStuckChunks(draft);
+    if (stuckFixed > 0) {
+      console.log(`[runTranslationTick] Fixed ${stuckFixed} stuck chunk(s)`);
+    }
+
+    // ✅ INVARIANT CHECK #1: After reconciliation and watchdog
     assertJobInvariants(draft, "after reconciliation");
-    
+
     const picks = getNextStanzasToProcess(draft);
     
     // ISS-006: Configurable max stanzas per tick (with kill switch)
@@ -715,7 +800,7 @@ export async function runTranslationTick(
             `${result.linesCompleted}/${result.linesTotal} lines completed`
           );
           // Return interrupted status - stanza will be resumed on next tick
-          // Don't mark as completed - keep status as "processing"
+          // Status is re-queued in the interrupted handler below
           return { stanzaIndex, status: "interrupted" as const, result };
         }
 
@@ -868,26 +953,57 @@ export async function runTranslationTick(
     `${failed.length} failed, ${skipped.length} skipped, ${interrupted.length} interrupted`
   );
   
-  // ISS-005: Handle interrupted stanzas - keep as "processing" for next tick
-  // Reconciliation logic will re-queue them if incomplete
+  // ISS-005: Handle interrupted stanzas - re-queue for next tick
+  // ✅ FIX: But first check if any "interrupted" chunks actually have all lines completed
   if (interrupted.length > 0) {
     await updateTranslationJob(threadId, (draft) => {
       applyMetadata(draft);
+      const actuallyInterrupted: number[] = [];
+      const actuallyCompleted: number[] = [];
+
       interrupted.forEach((index) => {
         const chunkOrStanzaStates = draft.chunks || draft.stanzas || {};
         const stanzaState = chunkOrStanzaStates[index];
         if (stanzaState) {
-          // Keep as "processing" so reconciliation picks it up
-          stanzaState.status = "processing";
+          const lines = stanzaState.lines || [];
+          const allLinesTranslated = lines.length > 0 && lines.every(
+            (l) => l.translationStatus === "translated"
+          );
+          const allLinesPresent = lines.length === stanzaState.totalLines;
+
+          if (allLinesTranslated && allLinesPresent) {
+            // Actually completed despite interrupt flag
+            stanzaState.status = "completed";
+            stanzaState.completedAt = Date.now();
+            stanzaState.error = undefined;
+            actuallyCompleted.push(index);
+            console.log(
+              `[runTranslationTick] Chunk ${index} marked as interrupted but all ${lines.length}/${stanzaState.totalLines} lines are done - marking as completed`
+            );
+          } else {
+            // Re-queue for next tick (interrupted work is not in-flight anymore)
+            stanzaState.status = "queued";
+            if (!draft.queue.includes(index)) {
+              draft.queue.unshift(index);
+            }
+            actuallyInterrupted.push(index);
+          }
         }
         // Remove from active - reconciliation will re-add if incomplete
         draft.active = draft.active.filter((id) => id !== index);
       });
-      return draft;
+
+      if (actuallyCompleted.length > 0) {
+        console.log(
+          `[runTranslationTick] ${actuallyCompleted.length} "interrupted" chunk(s) were actually completed: [${actuallyCompleted.join(", ")}]`
+        );
+      }
+
+      return markJobCompletedIfDone(draft);
     });
-    
+
     console.log(
-      `[runTranslationTick] Marked ${interrupted.length} interrupted stanza(s) for resumption on next tick`
+      `[runTranslationTick] Processed ${interrupted.length} interrupted stanza(s)`
     );
   }
 
@@ -1056,6 +1172,19 @@ export async function runTranslationTick(
       );
     }
 
+    // ✅ NEW GUARD: Detect stuck-in-processing (all lines done but status != completed)
+    const allLinesTranslated = lines.length > 0 && lines.every(
+      (l) => l.translationStatus === "translated"
+    );
+    const allLinesPresent = lines.length === chunk.totalLines;
+    if (allLinesTranslated && allLinesPresent && chunk.status !== "completed") {
+      console.error(
+        `[runTranslationTick] ⚠️  STUCK DETECTED: Chunk ${idx} has all ${lines.length} lines translated ` +
+        `but status="${chunk.status}" (should be "completed"). ` +
+        `This indicates a completion update failure. Watchdog should fix this on next tick.`
+      );
+    }
+
     chunkSummary.push(
       `chunk[${idx}]: status=${chunk.status} ` +
       `linesProcessed=${chunk.linesProcessed}/${chunk.totalLines} ` +
@@ -1063,6 +1192,20 @@ export async function runTranslationTick(
       `lastLine=${lastLineTranslated ?? "none"}`
     );
   });
+
+  // ✅ NEW: Log potential stuck job state
+  const hasNonTerminalChunks = Object.values(chunkOrStanzaStates).some(
+    (c) => c.status !== "completed" && c.status !== "failed"
+  );
+  const queueAndActiveEmpty = finalJob.queue.length === 0 && finalJob.active.length === 0;
+
+  if (queueAndActiveEmpty && hasNonTerminalChunks && finalJob.status !== "completed") {
+    console.warn(
+      `[runTranslationTick] ⚠️  POTENTIAL STUCK STATE: queue=[] active=[] but ` +
+      `job has non-terminal chunks and status="${finalJob.status}". ` +
+      `Reconciliation should fix this on next tick.`
+    );
+  }
 
   console.log(
     `[runTranslationTick] 📊 TICK SUMMARY: duration=${tickDuration}ms ` +

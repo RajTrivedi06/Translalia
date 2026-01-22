@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
     // 3) Fetch thread and context
     const { data: thread, error: threadErr } = await supabase
       .from("chat_threads")
-      .select("id,created_by,state")
+      .select("id,created_by,state,translation_model,translation_method,translation_intent,translation_zone,source_language_variety,raw_poem")
       .eq("id", body.threadId)
       .single();
 
@@ -114,9 +114,28 @@ export async function POST(req: NextRequest) {
       return err(403, "FORBIDDEN", "You do not have access to this thread.");
     }
 
-    // 4) Extract state and guide answers
+    // 4) Extract state and guide answers from columns (with JSONB fallback for legacy data)
     const state = (thread.state as Record<string, unknown>) || {};
-    const guideAnswers = (state.guide_answers || {}) as GuideAnswers;
+    const guideAnswersState =
+      (state as { guide_answers?: GuideAnswers }).guide_answers ?? {};
+    const guideAnswers: GuideAnswers = {
+      translationModel:
+        thread.translation_model ?? guideAnswersState.translationModel ?? null,
+      translationMethod:
+        thread.translation_method ??
+        guideAnswersState.translationMethod ??
+        "method-2",
+      translationIntent:
+        thread.translation_intent ?? guideAnswersState.translationIntent ?? null,
+      translationZone:
+        thread.translation_zone ?? guideAnswersState.translationZone ?? null,
+      sourceLanguageVariety:
+        thread.source_language_variety ??
+        guideAnswersState.sourceLanguageVariety ??
+        null,
+      // Legacy fields from JSONB if needed
+      ...(guideAnswersState || {}),
+    };
     const notebookCells = (state.notebook_cells || {}) as Record<
       number,
       { translation?: { text?: string } }
@@ -124,11 +143,9 @@ export async function POST(req: NextRequest) {
     const currentCell = notebookCells[body.lineIndex] || {};
     const currentTranslation = currentCell.translation?.text || "";
 
-    // Extract raw poem from state for recipe generation
+    // Extract raw poem from column (with JSONB fallback)
     const rawPoem =
-      (state.raw_poem as string) ||
-      body.poemContext?.fullPoem ||
-      body.sourceText;
+      (thread.raw_poem ?? state.raw_poem ?? body.poemContext?.fullPoem ?? body.sourceText) as string;
 
     // Determine source and target languages
     const sourceLanguage =

@@ -143,10 +143,10 @@ export async function updateGuideState(
       return { success: false, error: "Unauthenticated" };
     }
 
-    // Fetch current thread state
+    // Fetch current thread state and columns
     const { data: thread, error: fetchError } = await supabase
       .from("chat_threads")
-      .select("id, state")
+      .select("id, state, translation_model, translation_method, translation_intent, translation_zone, source_language_variety")
       .eq("id", threadId)
       .eq("created_by", user.id)
       .single();
@@ -155,9 +155,17 @@ export async function updateGuideState(
       return { success: false, error: "Thread not found or unauthorized" };
     }
 
-    // Merge updates with existing guide_answers
+    // Merge updates with existing guide_answers (from columns, with JSONB fallback for legacy)
     const currentState = (thread.state as any) || {};
-    const currentAnswers = (currentState.guide_answers as GuideAnswers) || {};
+    const currentAnswers: GuideAnswers = {
+      translationModel: thread.translation_model ?? currentState.guide_answers?.translationModel ?? null,
+      translationMethod: thread.translation_method ?? currentState.guide_answers?.translationMethod ?? "method-2",
+      translationIntent: thread.translation_intent ?? currentState.guide_answers?.translationIntent ?? null,
+      translationZone: thread.translation_zone ?? currentState.guide_answers?.translationZone ?? null,
+      sourceLanguageVariety: thread.source_language_variety ?? currentState.guide_answers?.sourceLanguageVariety ?? null,
+      // Legacy fields from JSONB if needed
+      ...(currentState.guide_answers || {}),
+    };
     const mergedAnswers: GuideAnswers = {
       ...currentAnswers,
       ...updates,
@@ -184,19 +192,27 @@ export async function updateGuideState(
     console.log(
       `[STATE_WRITE] writer=updateGuideState threadId=${threadId} jobVersion=${jobVersion} ` +
       `chunks[0].lines=${chunk0Lines} chunks[1].lines=${chunk1Lines} ` +
-      `queue.length=${queueLength} active=${activeDisplay} updating=guide_answers ` +
+      `queue.length=${queueLength} active=${activeDisplay} updating=guide_answers_columns ` +
       `versionCheck=no prevSeenVersion=${prevSeenVersion} writingVersion=${writingVersion}`
     );
 
-    // Update the state
+    // Build update payload: write to columns, NOT to JSONB
+    // Remove guide_answers from state to prevent re-introduction
+    const { guide_answers: _, ...stateWithoutGuideAnswers } = currentState;
+    const updatePayload: Record<string, unknown> = {
+      translation_model: mergedAnswers.translationModel ?? null,
+      translation_method: mergedAnswers.translationMethod ?? null,
+      translation_intent: mergedAnswers.translationIntent ?? null,
+      translation_zone: mergedAnswers.translationZone ?? null,
+      source_language_variety: mergedAnswers.sourceLanguageVariety ?? null,
+      // Keep other state fields (translation_job, notebook_notes, etc.) but exclude guide_answers
+      state: stateWithoutGuideAnswers,
+    };
+
+    // Update columns (not JSONB)
     const { error: updateError } = await supabase
       .from("chat_threads")
-      .update({
-        state: {
-          ...currentState,
-          guide_answers: mergedAnswers,
-        },
-      })
+      .update(updatePayload)
       .eq("id", threadId);
 
     if (updateError) {
@@ -236,7 +252,7 @@ export async function getGuideState(
 
     const { data: thread, error: fetchError } = await supabase
       .from("chat_threads")
-      .select("state")
+      .select("state, translation_model, translation_method, translation_intent, translation_zone, source_language_variety")
       .eq("id", threadId)
       .eq("created_by", user.id)
       .single();
@@ -245,8 +261,17 @@ export async function getGuideState(
       return { success: false, error: "Thread not found or unauthorized" };
     }
 
+    // Read from columns (with JSONB fallback for legacy data)
     const currentState = (thread.state as any) || {};
-    const answers = (currentState.guide_answers as GuideAnswers) || {};
+    const answers: GuideAnswers = {
+      translationModel: thread.translation_model ?? currentState.guide_answers?.translationModel ?? null,
+      translationMethod: thread.translation_method ?? currentState.guide_answers?.translationMethod ?? "method-2",
+      translationIntent: thread.translation_intent ?? currentState.guide_answers?.translationIntent ?? null,
+      translationZone: thread.translation_zone ?? currentState.guide_answers?.translationZone ?? null,
+      sourceLanguageVariety: thread.source_language_variety ?? currentState.guide_answers?.sourceLanguageVariety ?? null,
+      // Legacy fields from JSONB if needed
+      ...(currentState.guide_answers || {}),
+    };
 
     return { success: true, answers };
   } catch (error) {
@@ -291,7 +316,7 @@ export async function savePoemState({
     // Fetch current thread state
     const { data: thread, error: fetchError } = await supabase
       .from("chat_threads")
-      .select("id, state")
+      .select("id, state, raw_poem")
       .eq("id", threadId)
       .eq("created_by", user.id)
       .single();
@@ -303,11 +328,11 @@ export async function savePoemState({
     // Convert SimplePoemStanzas to StanzaDetectionResult format
     const stanzaDetectionResult = convertToStanzaDetectionResult(stanzas);
 
-    // Merge poem state with existing state
+    // Merge poem state with existing state (keep poem_stanzas in JSONB, but raw_poem goes to column)
     const currentState = (thread.state as any) || {};
     const updatedState = {
       ...currentState,
-      raw_poem: rawPoem,
+      // Remove raw_poem from JSONB (it's now in column)
       poem_stanzas: stanzaDetectionResult,
     };
 
@@ -331,11 +356,12 @@ export async function savePoemState({
       `versionCheck=no prevSeenVersion=${prevSeenVersion} writingVersion=${writingVersion}`
     );
 
-    // Update the state
+    // Update both column and state (raw_poem in column, poem_stanzas in JSONB)
     const { error: updateError } = await supabase
       .from("chat_threads")
       .update({
-        state: updatedState,
+        raw_poem: rawPoem, // Write to column
+        state: updatedState, // Keep poem_stanzas in JSONB, but raw_poem removed
       })
       .eq("id", threadId);
 

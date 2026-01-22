@@ -844,7 +844,7 @@ export function GuideRail({
           ui.card,
           "lg:row-span-3 flex flex-col h-full min-h-0",
           !isPoemSubmitted
-            ? "border-blue-500 ring-4 ring-blue-100"
+            ? "border-blue-500 bg-blue-50/50 ring-4 ring-blue-100"
             : "border-slate-200"
         )}
         aria-labelledby="poem-section-title"
@@ -876,7 +876,7 @@ export function GuideRail({
             "flex-1 min-h-0 flex flex-col overflow-hidden"
           )}
         >
-          <div className="flex-1 min-h-0 flex flex-col gap-5 overflow-y-auto">
+          <div className="flex flex-1 min-h-0 flex-col gap-5 overflow-y-auto py-2">
             <textarea
               id="poem-input"
               ref={poemTextareaRef}
@@ -889,7 +889,11 @@ export function GuideRail({
               aria-describedby="poem-helper poem-error"
               lang={locale}
               dir={dir}
-              className={cn(ui.textarea, "flex-1 min-h-[200px] resize-none")}
+              className={cn(
+                ui.textarea,
+                "flex-1 min-h-[200px] resize-none",
+                !isPoemSubmitted && "focus:bg-blue-50/30"
+              )}
             />
 
             {/* Keep element for aria-describedby, but avoid duplicating the helper visually */}
@@ -1004,6 +1008,9 @@ export function GuideRail({
             <div className="space-y-2">
               <p className={ui.subtle}>{t("sourceLanguageVarietyHelper")}</p>
               <p className={ui.subtleItalic}>
+                {t("sourceLanguageVarietyHelperNote")}
+              </p>
+              <p className={ui.subtleItalic}>
                 {t("sourceLanguageVarietyExamples")}
               </p>
             </div>
@@ -1056,6 +1063,7 @@ export function GuideRail({
           <div key="step-2" className="space-y-4">
             <div className="space-y-2">
               <p className={ui.subtle}>{t("translationZoneHelper")}</p>
+              <p className={ui.subtleItalic}>{t("translationZoneHelperNote")}</p>
               <p className={ui.subtleItalic}>{t("translationZoneExamples")}</p>
             </div>
 
@@ -1242,26 +1250,26 @@ export function GuideRail({
 
                     {model === "gpt-4o" && (
                       <span className="text-xs opacity-80">
-                        (Default - Balanced)
+                        (default)
                       </span>
                     )}
                     {model === "gpt-4o-mini" && (
                       <span className="text-xs opacity-80">
-                        (Fast, Cost-effective)
+                        (quicker)
                       </span>
                     )}
                     {model === "gpt-4-turbo" && (
                       <span className="text-xs opacity-80">
-                        (Higher quality)
+                        (may give better results)
                       </span>
                     )}
                     {model === "gpt-5" && (
                       <span className="text-xs opacity-80">
-                        (Latest, Best quality)
+                        (thinks for longer - may be very slow)
                       </span>
                     )}
                     {model === "gpt-5-mini" && (
-                      <span className="text-xs opacity-80">(Fast GPT-5)</span>
+                      <span className="text-xs opacity-80">(quicker GPT-5)</span>
                     )}
                   </div>
                 </button>

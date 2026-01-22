@@ -60,6 +60,11 @@ export function SegmentEditor({
     null
   );
 
+  // User-added empty segments (survive auto-remove until they have lines or are removed)
+  const [emptySegmentNumbers, setEmptySegmentNumbers] = React.useState<
+    Set<number>
+  >(() => new Set());
+
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -68,11 +73,12 @@ export function SegmentEditor({
     })
   );
 
-  // Calculate total segments
+  // Calculate total segments (from lines + user-added empty segments)
   const totalSegments = React.useMemo(() => {
-    const segments = new Set(lineToSegment.values());
-    return segments.size;
-  }, [lineToSegment]);
+    const fromLines = new Set(lineToSegment.values());
+    const combined = new Set([...fromLines, ...emptySegmentNumbers]);
+    return combined.size;
+  }, [lineToSegment, emptySegmentNumbers]);
 
   // Move a line to a different segment
   const moveLineToSegment = React.useCallback(
@@ -80,6 +86,12 @@ export function SegmentEditor({
       setLineToSegment((prev) => {
         const next = new Map(prev);
         next.set(lineIndex, targetSegment);
+        return next;
+      });
+      setEmptySegmentNumbers((prev) => {
+        if (!prev.has(targetSegment)) return prev;
+        const next = new Set(prev);
+        next.delete(targetSegment);
         return next;
       });
     },
@@ -112,75 +124,81 @@ export function SegmentEditor({
     }
   };
 
-  // Add a new segment
+  // Add a new segment (empty drop zone; user assigns lines via drag)
   const addSegment = React.useCallback(() => {
-    // Don't assign any lines automatically - user will assign them
-    // The new segment will be created when a line is moved to it
-    setLineToSegment((prev) => {
-      // Just ensure the new segment exists (it will when user assigns a line)
-      return new Map(prev);
-    });
-  }, []);
+    const fromLines = new Set(lineToSegment.values());
+    const all = new Set<number>([...fromLines, ...emptySegmentNumbers]);
+    const nextNum = all.size > 0 ? Math.max(...all) + 1 : 1;
+    setEmptySegmentNumbers((e) => new Set([...e, nextNum]));
+  }, [lineToSegment, emptySegmentNumbers]);
 
-  // Remove a segment (reassign its lines to segment 1)
+  // Remove a segment (reassign its lines to segment 1, drop if empty)
   const removeSegment = React.useCallback(
     (segmentNumber: number) => {
-      if (totalSegments <= 1) {
-        // Can't remove the last segment
-        return;
-      }
+      if (totalSegments <= 1) return;
 
       setLineToSegment((prev) => {
         const next = new Map(prev);
-        // Reassign all lines from this segment to segment 1
         next.forEach((seg, lineIdx) => {
-          if (seg === segmentNumber) {
-            next.set(lineIdx, 1);
-          } else if (seg > segmentNumber) {
-            // Renumber segments after the removed one
-            next.set(lineIdx, seg - 1);
-          }
+          if (seg === segmentNumber) next.set(lineIdx, 1);
+          else if (seg > segmentNumber) next.set(lineIdx, seg - 1);
         });
         return next;
+      });
+      setEmptySegmentNumbers((prev) => {
+        if (!prev.has(segmentNumber)) {
+          // Renumber empty segments after the removed one
+          return new Set(
+            [...prev].map((n) => (n > segmentNumber ? n - 1 : n)).filter((n) => n !== segmentNumber)
+          );
+        }
+        const next = new Set(prev);
+        next.delete(segmentNumber);
+        return new Set([...next].map((n) => (n > segmentNumber ? n - 1 : n)));
       });
     },
     [totalSegments]
   );
 
-  // Auto-remove empty segments
+  // Auto-remove empty segments (skip user-added empty segments)
   React.useEffect(() => {
     const segmentCounts = new Map<number, number>();
     lineToSegment.forEach((seg) => {
       segmentCounts.set(seg, (segmentCounts.get(seg) || 0) + 1);
     });
-
-    // Find empty segments
+    const allSegs = [
+      ...lineToSegment.values(),
+      ...emptySegmentNumbers,
+    ];
+    const maxSeg = allSegs.length > 0 ? Math.max(...allSegs) : 0;
     const emptySegments: number[] = [];
-    for (let i = 1; i <= totalSegments; i++) {
+    for (let i = 1; i <= maxSeg; i++) {
+      if (emptySegmentNumbers.has(i)) continue;
       if (!segmentCounts.has(i) || segmentCounts.get(i) === 0) {
         emptySegments.push(i);
       }
     }
+    if (emptySegments.length === 0) return;
 
-    // Remove empty segments and renumber
-    if (emptySegments.length > 0) {
-      setLineToSegment((prev) => {
-        const next = new Map(prev);
-        const sortedEmpty = [...emptySegments].sort((a, b) => b - a); // Remove from highest first
-
-        sortedEmpty.forEach((emptySeg) => {
-          // Renumber all segments after the empty one
-          next.forEach((seg, lineIdx) => {
-            if (seg > emptySeg) {
-              next.set(lineIdx, seg - 1);
-            }
-          });
+    setLineToSegment((prev) => {
+      const next = new Map(prev);
+      const sortedEmpty = [...emptySegments].sort((a, b) => b - a);
+      sortedEmpty.forEach((emptySeg) => {
+        next.forEach((seg, lineIdx) => {
+          if (seg > emptySeg) next.set(lineIdx, seg - 1);
         });
-
-        return next;
       });
-    }
-  }, [lineToSegment, totalSegments]);
+      return next;
+    });
+    setEmptySegmentNumbers((prev) => {
+      let next = new Set(prev);
+      const sortedEmpty = [...emptySegments].sort((a, b) => b - a);
+      sortedEmpty.forEach((emptySeg) => {
+        next = new Set([...next].map((n) => (n > emptySeg ? n - 1 : n)).filter((n) => n !== emptySeg));
+      });
+      return next;
+    });
+  }, [lineToSegment, emptySegmentNumbers]);
 
   // Re-run smart detection
   const rerunSmartDetection = React.useCallback(() => {
@@ -189,9 +207,10 @@ export function SegmentEditor({
       return;
     }
     try {
-    const breakpoints = detectSmartBreakpoints(poemText);
-    const newSegmentation = breakpointsToSegments(poemText, breakpoints);
-    setLineToSegment(newSegmentation);
+      const breakpoints = detectSmartBreakpoints(poemText);
+      const newSegmentation = breakpointsToSegments(poemText, breakpoints);
+      setLineToSegment(newSegmentation);
+      setEmptySegmentNumbers(new Set());
     } catch (error) {
       console.error("[SegmentEditor] Error running smart detection:", error);
     }
@@ -205,7 +224,7 @@ export function SegmentEditor({
     });
   }, [lineToSegment, totalSegments, onConfirm]);
 
-  // Group lines by segment for display
+  // Group lines by segment for display (include user-added empty segments)
   const segmentsData = React.useMemo(() => {
     const segments = new Map<
       number,
@@ -220,14 +239,17 @@ export function SegmentEditor({
       segments.get(segmentNum)!.push({ lineIndex: idx, lineText: line });
     });
 
-    // Sort segments by number
+    emptySegmentNumbers.forEach((num) => {
+      if (!segments.has(num)) segments.set(num, []);
+    });
+
     return Array.from(segments.entries())
       .sort(([a], [b]) => a - b)
       .map(([segmentNum, lines]) => ({
         segmentNumber: segmentNum,
-        lines: lines.sort((a, b) => a.lineIndex - b.lineIndex),
+        lines: [...lines].sort((a, b) => a.lineIndex - b.lineIndex),
       }));
-  }, [poemLines, lineToSegment]);
+  }, [poemLines, lineToSegment, emptySegmentNumbers]);
 
   return (
     <DndContext
@@ -264,13 +286,10 @@ export function SegmentEditor({
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
                 <Button
+                  type="button"
                   variant="outline"
                   size="sm"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    rerunSmartDetection();
-                  }}
+                  onClick={() => rerunSmartDetection()}
                   disabled={!poemText || poemText.trim().length === 0}
                   className="gap-2"
                 >
@@ -278,9 +297,10 @@ export function SegmentEditor({
                   Re-run Smart Detection
                 </Button>
                 <Button
+                  type="button"
                   variant="outline"
                   size="sm"
-                  onClick={addSegment}
+                  onClick={() => addSegment()}
                   className="gap-2"
                 >
                   <Plus className="h-4 w-4" />

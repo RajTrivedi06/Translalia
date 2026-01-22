@@ -78,13 +78,13 @@ export default function WorkspacesPage() {
               <h1 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
                 {user?.email ? `Welcome back, ${userEmail}!` : t("heading")}
               </h1>
-              <p className="text-base text-slate-600">{t("description")}</p>
+              {t("description") && <p className="text-base text-slate-600">{t("description")}</p>}
             </div>
             <form
               onSubmit={onCreate}
-              className="w-full rounded-2xl bg-slate-50/90 p-4 ring-1 ring-slate-200 sm:flex sm:items-center sm:gap-3 lg:w-auto"
+              className="w-full shrink-0 self-start rounded-2xl bg-slate-50/90 p-4 ring-1 ring-slate-200 sm:flex sm:items-center sm:gap-3 lg:w-auto"
             >
-              <div className="flex flex-1 flex-col gap-2 sm:flex-row">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <input
                   className="w-full min-w-[220px] rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-base text-slate-900 placeholder:text-slate-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-100 sm:min-w-[320px]"
                   placeholder={t("workspaceTitle")}

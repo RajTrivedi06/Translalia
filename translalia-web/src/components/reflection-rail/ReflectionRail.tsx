@@ -7,10 +7,11 @@ import { ReflectionHeader } from "@/components/reflection-rail/ReflectionHeader"
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, Loader2, BookOpen, Lightbulb } from "lucide-react";
+import { Sparkles, Loader2, BookOpen, Lightbulb, CheckCircle2 } from "lucide-react";
 import { useWorkshopStore } from "@/store/workshopSlice";
 import { useGuideStore } from "@/store/guideSlice";
 import { useNotebookStore } from "@/store/notebookSlice";
+import { CongratulationsModal } from "@/components/workshop/CongratulationsModal";
 
 interface ReflectionRailProps {
   showHeaderTitle?: boolean;
@@ -33,6 +34,7 @@ interface JourneyReflection {
   strengths: string[];
   challenges: string[];
   recommendations: string[];
+  reflection?: string; // Optional narrative text
 }
 
 export function ReflectionRail({
@@ -58,7 +60,9 @@ export function ReflectionRail({
     null
   );
   const [errorJourney, setErrorJourney] = React.useState<string | null>(null);
+  const [showCongratulations, setShowCongratulations] = React.useState(false);
   const completedCount = Object.keys(completedLines).length;
+  const allLinesCompleted = completedCount === poemLines.length && poemLines.length > 0;
   const hasNotes =
     !!threadNote ||
     Object.keys(lineNotes).filter((k) => lineNotes[parseInt(k)]).length > 0;
@@ -126,6 +130,8 @@ export function ReflectionRail({
       }
 
       const data = await response.json();
+      console.log("[Journey] API response:", data);
+      console.log("[Journey] reflection data:", data.reflection);
       setJourneyReflection(data.reflection);
     } catch (error) {
       console.error("[ReflectionRail] Journey reflection error:", error);
@@ -289,62 +295,158 @@ export function ReflectionRail({
 
               {journeyReflection && (
                 <div className="mt-4 space-y-4">
-                  {journeyReflection.insights &&
-                    journeyReflection.insights.length > 0 && (
-                      <div className="p-3 bg-white rounded-lg border border-purple-200">
-                        <h4 className="text-sm font-medium text-slate-700 mb-2">
-                          Key Insights:
-                        </h4>
-                        <ul className="space-y-1 text-sm text-slate-600">
-                          {journeyReflection.insights.map((insight, idx) => (
-                            <li key={idx} className="flex items-start gap-2">
-                              <span className="text-purple-500 mt-1">•</span>
-                              <span>{insight}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
+                  {(() => {
+                    const hasBullets =
+                      (journeyReflection?.insights?.length ?? 0) +
+                      (journeyReflection?.strengths?.length ?? 0) +
+                      (journeyReflection?.challenges?.length ?? 0) +
+                      (journeyReflection?.recommendations?.length ?? 0) >
+                      0;
 
-                  {journeyReflection.strengths &&
-                    journeyReflection.strengths.length > 0 && (
-                      <div className="p-3 bg-white rounded-lg border border-green-200">
-                        <h4 className="text-sm font-medium text-slate-700 mb-2">
-                          Strengths:
-                        </h4>
-                        <ul className="space-y-1 text-sm text-slate-600">
-                          {journeyReflection.strengths.map((strength, idx) => (
-                            <li key={idx} className="flex items-start gap-2">
-                              <span className="text-green-500 mt-1">✓</span>
-                              <span>{strength}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
+                    if (hasBullets) {
+                      return (
+                        <>
+                          {journeyReflection.insights &&
+                            journeyReflection.insights.length > 0 && (
+                              <div className="p-3 bg-white rounded-lg border border-purple-200">
+                                <h4 className="text-sm font-medium text-slate-700 mb-2">
+                                  Key Insights:
+                                </h4>
+                                <ul className="space-y-1 text-sm text-slate-600">
+                                  {journeyReflection.insights.map(
+                                    (insight, idx) => (
+                                      <li
+                                        key={idx}
+                                        className="flex items-start gap-2"
+                                      >
+                                        <span className="text-purple-500 mt-1">
+                                          •
+                                        </span>
+                                        <span>{insight}</span>
+                                      </li>
+                                    )
+                                  )}
+                                </ul>
+                              </div>
+                            )}
 
-                  {journeyReflection.recommendations &&
-                    journeyReflection.recommendations.length > 0 && (
-                      <div className="p-3 bg-white rounded-lg border border-amber-200">
-                        <h4 className="text-sm font-medium text-slate-700 mb-2">
-                          To Explore Further:
-                        </h4>
-                        <ul className="space-y-1 text-sm text-slate-600">
-                          {journeyReflection.recommendations.map(
-                            (rec, idx) => (
-                              <li key={idx} className="flex items-start gap-2">
-                                <span className="text-amber-500 mt-1">→</span>
-                                <span>{rec}</span>
-                              </li>
-                            )
-                          )}
-                        </ul>
-                      </div>
-                    )}
+                          {journeyReflection.strengths &&
+                            journeyReflection.strengths.length > 0 && (
+                              <div className="p-3 bg-white rounded-lg border border-green-200">
+                                <h4 className="text-sm font-medium text-slate-700 mb-2">
+                                  Strengths:
+                                </h4>
+                                <ul className="space-y-1 text-sm text-slate-600">
+                                  {journeyReflection.strengths.map(
+                                    (strength, idx) => (
+                                      <li
+                                        key={idx}
+                                        className="flex items-start gap-2"
+                                      >
+                                        <span className="text-green-500 mt-1">
+                                          ✓
+                                        </span>
+                                        <span>{strength}</span>
+                                      </li>
+                                    )
+                                  )}
+                                </ul>
+                              </div>
+                            )}
+
+                          {journeyReflection.challenges &&
+                            journeyReflection.challenges.length > 0 && (
+                              <div className="p-3 bg-white rounded-lg border border-orange-200">
+                                <h4 className="text-sm font-medium text-slate-700 mb-2">
+                                  Challenges:
+                                </h4>
+                                <ul className="space-y-1 text-sm text-slate-600">
+                                  {journeyReflection.challenges.map(
+                                    (challenge, idx) => (
+                                      <li
+                                        key={idx}
+                                        className="flex items-start gap-2"
+                                      >
+                                        <span className="text-orange-500 mt-1">
+                                          !
+                                        </span>
+                                        <span>{challenge}</span>
+                                      </li>
+                                    )
+                                  )}
+                                </ul>
+                              </div>
+                            )}
+
+                          {journeyReflection.recommendations &&
+                            journeyReflection.recommendations.length > 0 && (
+                              <div className="p-3 bg-white rounded-lg border border-amber-200">
+                                <h4 className="text-sm font-medium text-slate-700 mb-2">
+                                  To Explore Further:
+                                </h4>
+                                <ul className="space-y-1 text-sm text-slate-600">
+                                  {journeyReflection.recommendations.map(
+                                    (rec, idx) => (
+                                      <li
+                                        key={idx}
+                                        className="flex items-start gap-2"
+                                      >
+                                        <span className="text-amber-500 mt-1">
+                                          →
+                                        </span>
+                                        <span>{rec}</span>
+                                      </li>
+                                    )
+                                  )}
+                                </ul>
+                              </div>
+                            )}
+                        </>
+                      );
+                    } else {
+                      // Fallback: show narrative text if arrays are empty
+                      return (
+                        <div className="p-3 bg-white rounded-lg border border-purple-200">
+                          <div className="whitespace-pre-wrap text-sm text-slate-600 leading-relaxed">
+                            {journeyReflection.reflection ||
+                              "No reflection text returned."}
+                          </div>
+                        </div>
+                      );
+                    }
+                  })()}
                 </div>
               )}
             </div>
           </Card>
+
+          {/* Finish Button - Show when all lines are completed */}
+          {allLinesCompleted && (
+            <Card className="p-4 border-green-200 bg-green-50/30">
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-green-600" />
+                  <h3 className="font-semibold text-slate-900">
+                    {t("translationComplete")}
+                  </h3>
+                </div>
+                <p className="text-sm text-slate-600">
+                  {t("translationCompleteDescription", {
+                    count: poemLines.length,
+                  })}
+                </p>
+                <Button
+                  onClick={() => setShowCongratulations(true)}
+                  className="w-full"
+                  variant="default"
+                  size="lg"
+                >
+                  <CheckCircle2 className="mr-2 h-5 w-5" />
+                  {t("finish")}
+                </Button>
+              </div>
+            </Card>
+          )}
 
           {/* Help text */}
           <div className="text-xs text-slate-500 space-y-1">
@@ -358,6 +460,13 @@ export function ReflectionRail({
           </div>
         </div>
       </div>
+
+      {/* Congratulations Modal */}
+      <CongratulationsModal
+        open={showCongratulations}
+        onClose={() => setShowCongratulations(false)}
+        totalLines={poemLines.length}
+      />
     </div>
   );
 }
