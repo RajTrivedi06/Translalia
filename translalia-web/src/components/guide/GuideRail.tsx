@@ -77,8 +77,8 @@ export function GuideRail({
     translationIntent,
     setTranslationIntent,
     submitTranslationIntent,
-    viewpointRangeMode,
-    setViewpointRangeMode,
+    translationRangeMode,
+    setTranslationRangeMode,
     translationModel,
     setTranslationModel,
     reset,
@@ -131,7 +131,7 @@ export function GuideRail({
   const [isSavingZone, setIsSavingZone] = useState(false);
   const [isSavingIntent, setIsSavingIntent] = useState(false);
   const [isSavingVariety, setIsSavingVariety] = useState(false);
-  const [isSavingViewpointMode, setIsSavingViewpointMode] = useState(false);
+  const [isSavingTranslationRangeMode, setIsSavingTranslationRangeMode] = useState(false);
   const [isSavingTranslationModel, setIsSavingTranslationModel] =
     useState(false);
 
@@ -351,7 +351,7 @@ export function GuideRail({
           setEditingIntent(true);
           setAccordionValue("step-3");
           break;
-        case 3: // Viewpoint Range
+        case 3: // Translation Range
           setAccordionValue("step-4");
           break;
         case 4: // Translation Model
@@ -429,7 +429,7 @@ export function GuideRail({
     isSourceVarietySubmitted &&
     isTranslationZoneSubmitted &&
     isTranslationIntentSubmitted &&
-    !!viewpointRangeMode &&
+    !!translationRangeMode &&
     !!translationModel;
 
   const ui = {
@@ -677,25 +677,25 @@ export function GuideRail({
     }
   };
 
-  const handleSaveViewpointMode = async (
+  const handleSaveTranslationRangeMode = async (
     nextMode: "focused" | "balanced" | "adventurous"
   ) => {
     if (!threadId) return;
 
-    setIsSavingViewpointMode(true);
+    setIsSavingTranslationRangeMode(true);
 
     try {
       await saveTranslationIntent.mutateAsync({
         threadId,
-        questionKey: "viewpointRangeMode",
+        questionKey: "translationRangeMode",
         value: nextMode,
       });
       // Auto-open next step (Step 5: Translation Model)
       setAccordionValue("step-5");
     } catch (error) {
-      console.error("[handleSaveViewpointMode] Error:", error);
+      console.error("[handleSaveTranslationRangeMode] Error:", error);
     } finally {
-      setIsSavingViewpointMode(false);
+      setIsSavingTranslationRangeMode(false);
     }
   };
 
@@ -790,7 +790,7 @@ export function GuideRail({
           return;
         }
 
-        // Persist the latest guide answers (including model + method + viewpoint mode)
+        // Persist the latest guide answers (including model + method + translation range mode)
         // before background translations start, so the backend doesn't fall back to
         // env defaults (e.g. TRANSLATOR_MODEL=gpt-4o).
         await saveMultipleAnswers.mutateAsync({
@@ -844,7 +844,7 @@ export function GuideRail({
           ui.card,
           "lg:row-span-3 flex flex-col h-full min-h-0",
           !isPoemSubmitted
-            ? "border-blue-500 ring-4 ring-blue-100"
+            ? "border-blue-500 bg-blue-50/50 ring-4 ring-blue-100"
             : "border-slate-200"
         )}
         aria-labelledby="poem-section-title"
@@ -876,7 +876,7 @@ export function GuideRail({
             "flex-1 min-h-0 flex flex-col overflow-hidden"
           )}
         >
-          <div className="flex-1 min-h-0 flex flex-col gap-5 overflow-y-auto">
+          <div className="flex flex-1 min-h-0 flex-col gap-5 overflow-y-auto py-2">
             <textarea
               id="poem-input"
               ref={poemTextareaRef}
@@ -889,7 +889,11 @@ export function GuideRail({
               aria-describedby="poem-helper poem-error"
               lang={locale}
               dir={dir}
-              className={cn(ui.textarea, "flex-1 min-h-[200px] resize-none")}
+              className={cn(
+                ui.textarea,
+                "flex-1 min-h-[200px] resize-none",
+                !isPoemSubmitted && "focus:bg-blue-50/30"
+              )}
             />
 
             {/* Keep element for aria-describedby, but avoid duplicating the helper visually */}
@@ -921,7 +925,7 @@ export function GuideRail({
                   <div className={cn(ui.infoBox, "space-y-3")}>
                     {poem.stanzas && poem.stanzas.totalStanzas > 0 && (
                       <p className="text-sm">
-                        {t("chunksDetected", {
+                        {t("segmentsDetected", {
                           count: poem.stanzas.totalStanzas,
                         })}
                       </p>
@@ -983,14 +987,14 @@ export function GuideRail({
           t("sourceLanguageVarietyTitle"),
           t("translationZone"),
           t("translationIntent"),
-          t("viewpointRange"),
+          t("translationRange"),
           t("translationModel"),
         ]}
         stepCompletions={[
           isSourceVarietySubmitted,
           isTranslationZoneSubmitted,
           isTranslationIntentSubmitted,
-          !!viewpointRangeMode,
+          !!translationRangeMode,
           !!translationModel,
         ]}
         value={accordionValue}
@@ -1003,6 +1007,9 @@ export function GuideRail({
           <div key="step-1" className="space-y-4">
             <div className="space-y-2">
               <p className={ui.subtle}>{t("sourceLanguageVarietyHelper")}</p>
+              <p className={ui.subtleItalic}>
+                {t("sourceLanguageVarietyHelperNote")}
+              </p>
               <p className={ui.subtleItalic}>
                 {t("sourceLanguageVarietyExamples")}
               </p>
@@ -1056,6 +1063,7 @@ export function GuideRail({
           <div key="step-2" className="space-y-4">
             <div className="space-y-2">
               <p className={ui.subtle}>{t("translationZoneHelper")}</p>
+              <p className={ui.subtleItalic}>{t("translationZoneHelperNote")}</p>
               <p className={ui.subtleItalic}>{t("translationZoneExamples")}</p>
             </div>
 
@@ -1161,9 +1169,9 @@ export function GuideRail({
             </div>
           </div>,
 
-          // Step 4: Viewpoint Range
+          // Step 4: Translation Range
           <div key="step-4" className="space-y-4">
-            <p className={ui.subtle}>{t("viewpointRangeHelper")}</p>
+            <p className={ui.subtle}>{t("translationRangeHelper")}</p>
 
             <div className="flex flex-col gap-2 sm:flex-row">
               {(["focused", "balanced", "adventurous"] as const).map((mode) => (
@@ -1171,35 +1179,35 @@ export function GuideRail({
                   key={mode}
                   type="button"
                   onClick={() => {
-                    setViewpointRangeMode(mode);
-                    void handleSaveViewpointMode(mode);
+                    setTranslationRangeMode(mode);
+                    void handleSaveTranslationRangeMode(mode);
                   }}
-                  disabled={isSavingViewpointMode}
+                  disabled={isSavingTranslationRangeMode}
                   className={cn(
                     "flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold",
                     "transition",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200",
-                    viewpointRangeMode === mode
+                    translationRangeMode === mode
                       ? "bg-slate-900 text-white"
                       : "bg-slate-100 text-slate-700 hover:bg-slate-200",
-                    isSavingViewpointMode && "opacity-70"
+                    isSavingTranslationRangeMode && "opacity-70"
                   )}
-                  aria-pressed={viewpointRangeMode === mode}
+                  aria-pressed={translationRangeMode === mode}
                 >
-                  {t(`viewpointMode.${mode}`)}
+                  {t(`translationMode.${mode}`)}
                 </button>
               ))}
             </div>
 
-            {!viewpointRangeMode && (
+            {!translationRangeMode && (
               <p className="text-sm text-red-700">
-                {t("viewpointRangeRequired", {
-                  defaultValue: "Please select a viewpoint range to continue",
+                {t("translationRangeRequired", {
+                  defaultValue: "Please select a translation range to continue",
                 })}
               </p>
             )}
 
-            {isSavingViewpointMode && <p className={ui.subtle}>Saving…</p>}
+            {isSavingTranslationRangeMode && <p className={ui.subtle}>Saving…</p>}
           </div>,
 
           // Step 5: Translation Model
@@ -1242,26 +1250,26 @@ export function GuideRail({
 
                     {model === "gpt-4o" && (
                       <span className="text-xs opacity-80">
-                        (Default - Balanced)
+                        (default)
                       </span>
                     )}
                     {model === "gpt-4o-mini" && (
                       <span className="text-xs opacity-80">
-                        (Fast, Cost-effective)
+                        (quicker)
                       </span>
                     )}
                     {model === "gpt-4-turbo" && (
                       <span className="text-xs opacity-80">
-                        (Higher quality)
+                        (may give better results)
                       </span>
                     )}
                     {model === "gpt-5" && (
                       <span className="text-xs opacity-80">
-                        (Latest, Best quality)
+                        (thinks for longer - may be very slow)
                       </span>
                     )}
                     {model === "gpt-5-mini" && (
-                      <span className="text-xs opacity-80">(Fast GPT-5)</span>
+                      <span className="text-xs opacity-80">(quicker GPT-5)</span>
                     )}
                   </div>
                 </button>

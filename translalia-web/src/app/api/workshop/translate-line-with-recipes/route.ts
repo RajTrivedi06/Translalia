@@ -71,7 +71,7 @@ export async function POST(req: Request) {
     const supabase = await supabaseServer();
     const { data: thread, error: threadError } = await supabase
       .from("chat_threads")
-      .select("id, state, project_id")
+      .select("id, state, project_id, translation_model, translation_method, translation_intent, translation_zone, source_language_variety, raw_poem")
       .eq("id", threadId)
       .eq("created_by", user.id)
       .single();
@@ -84,10 +84,28 @@ export async function POST(req: Request) {
     }
 
     const state = (thread.state as Record<string, unknown>) || {};
-    const guideAnswers: GuideAnswers =
-      (state.guide_answers as GuideAnswers) || {};
+    const guideAnswersState =
+      (state as { guide_answers?: GuideAnswers }).guide_answers ?? {};
+    const guideAnswers: GuideAnswers = {
+      translationModel:
+        thread.translation_model ?? guideAnswersState.translationModel ?? null,
+      translationMethod:
+        thread.translation_method ??
+        guideAnswersState.translationMethod ??
+        "method-2",
+      translationIntent:
+        thread.translation_intent ?? guideAnswersState.translationIntent ?? null,
+      translationZone:
+        thread.translation_zone ?? guideAnswersState.translationZone ?? null,
+      sourceLanguageVariety:
+        thread.source_language_variety ??
+        guideAnswersState.sourceLanguageVariety ??
+        null,
+      // Legacy fields from JSONB if needed
+      ...(guideAnswersState || {}),
+    };
     const poemAnalysis = (state.poem_analysis as { language?: string }) || {};
-    const rawPoem = (state.raw_poem as string) || fullPoem || "";
+    const rawPoem = (thread.raw_poem ?? state.raw_poem ?? fullPoem ?? "") as string;
 
     // Determine source and target languages
     const sourceLanguage = poemAnalysis.language || "the source language";

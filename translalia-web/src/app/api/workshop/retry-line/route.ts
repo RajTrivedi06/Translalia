@@ -69,7 +69,7 @@ export async function POST(req: Request) {
     const supabase = await supabaseServer();
     const { data: thread, error: threadError } = await supabase
       .from("chat_threads")
-      .select("id, state, created_by, project_id")
+      .select("id, state, created_by, project_id, translation_model, translation_method, translation_intent, translation_zone, source_language_variety, raw_poem")
       .eq("id", threadId)
       .eq("created_by", user.id)
       .single();
@@ -81,13 +81,32 @@ export async function POST(req: Request) {
       );
     }
 
-    // Get thread context
+    // Get thread context from columns (with JSONB fallback for legacy data)
     const state = (thread.state as Record<string, unknown>) || {};
-    const guideAnswers = (state.guide_answers as GuideAnswers) || {};
+    const guideAnswersState =
+      (state as { guide_answers?: GuideAnswers }).guide_answers ?? {};
+    const guideAnswers: GuideAnswers = {
+      translationModel:
+        thread.translation_model ?? guideAnswersState.translationModel ?? null,
+      translationMethod:
+        thread.translation_method ??
+        guideAnswersState.translationMethod ??
+        "method-2",
+      translationIntent:
+        thread.translation_intent ?? guideAnswersState.translationIntent ?? null,
+      translationZone:
+        thread.translation_zone ?? guideAnswersState.translationZone ?? null,
+      sourceLanguageVariety:
+        thread.source_language_variety ??
+        guideAnswersState.sourceLanguageVariety ??
+        null,
+      // Legacy fields from JSONB if needed
+      ...(guideAnswersState || {}),
+    };
     const stanzaResult = state.poem_stanzas as
       | StanzaDetectionResult
       | undefined;
-    const rawPoem = (state.raw_poem as string) || "";
+    const rawPoem = (thread.raw_poem ?? state.raw_poem ?? "") as string;
     const poemAnalysis = (state.poem_analysis as { language?: string }) || {};
     const sourceLanguage = poemAnalysis.language || "the source language";
 
@@ -133,27 +152,42 @@ export async function POST(req: Request) {
 
     // Find the line in the chunk
     const lines = chunk.lines || [];
-    const lineIndex = lines.findIndex((l) => l.line_number === lineNumber);
+    let lineIndex = -1;
 
-    if (lineIndex === -1) {
-      return NextResponse.json(
-        { error: `Line ${lineNumber} not found in stanza ${stanzaIndex}` } as ErrorResponse,
-        { status: 404 }
+    // ✅ CRITICAL FIX: If chunk.lines is missing (known bug), allow retry anyway
+    // The line clearly exists if user can see it in UI and click retry
+    // Backend will regenerate the line and rebuild the lines array
+    if (lines.length === 0) {
+      console.warn(
+        `[retry-line] Chunk ${stanzaIndex} missing lines array - allowing retry anyway (lines array persistence bug)`
       );
-    }
+      // lineIndex stays -1, will rebuild lines array below
+    } else {
+      lineIndex = lines.findIndex((l) => l.line_number === lineNumber);
 
-    const line = lines[lineIndex];
+      if (lineIndex === -1) {
+        // Line not found in array - could be the same persistence bug
+        // Log the issue and allow retry to proceed
+        console.warn(
+          `[retry-line] Line ${lineNumber} not found in chunk ${stanzaIndex} lines array (length: ${lines.length}). Allowing retry to rebuild.`
+        );
+        // Don't return error - proceed with retry to fix the state
+      } else {
+        const line = lines[lineIndex];
 
-    // Check if line needs retry
-    if (
-      line.translationStatus === "translated" &&
-      line.translations &&
-      line.translations.length === 3
-    ) {
-      return NextResponse.json(
-        { error: "Line is already successfully translated" } as ErrorResponse,
-        { status: 400 }
-      );
+        // Check if line needs retry (only block if it's actually successfully translated)
+        if (
+          line.translationStatus === "translated" &&
+          line.translations &&
+          line.translations.length === 3 &&
+          !line.translations.some((t) => !t.fullText || t.fullText.trim() === "")
+        ) {
+          return NextResponse.json(
+            { error: "Line is already successfully translated" } as ErrorResponse,
+            { status: 400 }
+          );
+        }
+      }
     }
 
     // Get stanza and line context
@@ -252,7 +286,6 @@ export async function POST(req: Request) {
     }
 
     // Update the line in the chunk
-    const updatedLines = [...lines];
     const updatedLine = {
       line_number: lineNumber,
       original_text: lineText,
@@ -265,9 +298,57 @@ export async function POST(req: Request) {
         translationMethod === "method-2" && "qualityMetadata" in lineTranslation
           ? (lineTranslation as { qualityMetadata?: LineQualityMetadata }).qualityMetadata
           : undefined,
+      retry_count: lineIndex >= 0 ? ((lines[lineIndex]?.retry_count ?? 0) + 1) : 1, // Track retries
     };
 
-    updatedLines[lineIndex] = updatedLine;
+    // ✅ FIX: Handle all cases - updating existing line, rebuilding array, or merging
+    let updatedLines: typeof chunk.lines;
+    if (lineIndex >= 0 && lines.length > 0) {
+      // Normal case: update existing line in array
+      updatedLines = [...lines];
+      updatedLines[lineIndex] = updatedLine;
+      console.log(
+        `[retry-line] Updated line ${lineNumber} at index ${lineIndex} in chunk ${stanzaIndex}`
+      );
+    } else if (lines.length === 0) {
+      // Fallback case: lines array was empty, need to reconstruct it
+      // Try to find other lines for this stanza from the stanza structure
+      console.warn(
+        `[retry-line] Rebuilding lines array for chunk ${stanzaIndex} - lines array was empty`
+      );
+
+      // Calculate where this line should be in the array based on stanza structure
+      let reconstructedLines: typeof chunk.lines = [];
+      const stanzaLineCount = stanza.lines.length;
+
+      // Build array with placeholders for all lines in the stanza
+      for (let i = 0; i < stanzaLineCount; i++) {
+        const globalLineNum = lineOffset + i;
+        if (globalLineNum === lineNumber) {
+          reconstructedLines.push(updatedLine);
+        } else {
+          // Placeholder for other lines - they may be processed later
+          reconstructedLines.push({
+            line_number: globalLineNum,
+            original_text: stanza.lines[i],
+            translations: [],
+            translationStatus: "pending" as const,
+            alignmentStatus: "skipped" as const,
+            updated_at: Date.now(),
+          });
+        }
+      }
+      updatedLines = reconstructedLines;
+      console.log(
+        `[retry-line] Reconstructed lines array with ${updatedLines.length} lines for chunk ${stanzaIndex}`
+      );
+    } else {
+      // Edge case: lines array exists but line not found - append it
+      console.warn(
+        `[retry-line] Line ${lineNumber} not found in existing array, appending to chunk ${stanzaIndex}`
+      );
+      updatedLines = [...lines, updatedLine];
+    }
 
     // Check if all lines in stanza are now translated
     const allLinesTranslated = updatedLines.every(

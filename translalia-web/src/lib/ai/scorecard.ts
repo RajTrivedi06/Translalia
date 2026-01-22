@@ -12,7 +12,7 @@
 import { openerType, type OpenerType } from "./structureSignature";
 import { tokenize, jaccardSimilarity } from "./diversityGate";
 import { pickStopwords } from "./stopwords";
-import type { ViewpointRangeMode, VariantRecipesBundle } from "./variantRecipes";
+import type { TranslationRangeMode, VariantRecipesBundle } from "./variantRecipes";
 import type { LineAudit } from "./audit";
 
 // =============================================================================
@@ -176,7 +176,7 @@ export function computePoemScorecard(params: {
     cText: string;
     regen?: { performed: boolean; worstIndex?: number; strategy?: string };
   }>;
-  mode: ViewpointRangeMode;
+  mode: TranslationRangeMode;
   targetLanguageHint?: string;
   recipesBundle?: VariantRecipesBundle;
   audits?: LineAudit[];

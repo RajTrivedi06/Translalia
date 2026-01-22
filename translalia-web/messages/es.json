@@ -189,10 +189,10 @@
     "confirmDialogDescription": "Tu poema, zona de traducción e intención de traducción están configurados. Puedes hacer cambios en cualquier momento. Haz clic en 'Iniciar Taller' para comenzar a traducir.",
     "confirmDialogConfirm": "Iniciar Taller",
     "confirmDialogCancel": "Cancelar",
-    "viewpointRange": "Rango de perspectiva",
-    "viewpointRangeHelper": "Controla qué tan diferentes serán tus variantes de traducción",
-    "viewpointRangeRequired": "Por favor selecciona un rango de perspectiva para continuar",
-    "viewpointMode": {
+    "translationRange": "Rango de traducción",
+    "translationRangeHelper": "Controla qué tan diferentes serán tus variantes de traducción",
+    "translationRangeRequired": "Por favor selecciona un rango de traducción para continuar",
+    "translationMode": {
       "focused": "Enfocado",
       "balanced": "Equilibrado",
       "adventurous": "Aventurero"

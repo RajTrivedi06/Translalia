@@ -6,7 +6,7 @@ import OpenAI from "openai";
 import { TRANSLATOR_MODEL } from "@/lib/models";
 import {
   getOrCreateVariantRecipes,
-  type ViewpointRangeMode,
+  type TranslationRangeMode,
   type VariantRecipesBundle,
 } from "@/lib/ai/variantRecipes";
 import { buildRecipeAwarePrismaticPrompt } from "@/lib/ai/workshopPrompts";
@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
     // 3) Fetch thread and context
     const { data: thread, error: threadErr } = await supabase
       .from("chat_threads")
-      .select("id,created_by,state")
+      .select("id,created_by,state,translation_model,translation_method,translation_intent,translation_zone,source_language_variety,raw_poem")
       .eq("id", body.threadId)
       .single();
 
@@ -114,9 +114,28 @@ export async function POST(req: NextRequest) {
       return err(403, "FORBIDDEN", "You do not have access to this thread.");
     }
 
-    // 4) Extract state and guide answers
+    // 4) Extract state and guide answers from columns (with JSONB fallback for legacy data)
     const state = (thread.state as Record<string, unknown>) || {};
-    const guideAnswers = (state.guide_answers || {}) as GuideAnswers;
+    const guideAnswersState =
+      (state as { guide_answers?: GuideAnswers }).guide_answers ?? {};
+    const guideAnswers: GuideAnswers = {
+      translationModel:
+        thread.translation_model ?? guideAnswersState.translationModel ?? null,
+      translationMethod:
+        thread.translation_method ??
+        guideAnswersState.translationMethod ??
+        "method-2",
+      translationIntent:
+        thread.translation_intent ?? guideAnswersState.translationIntent ?? null,
+      translationZone:
+        thread.translation_zone ?? guideAnswersState.translationZone ?? null,
+      sourceLanguageVariety:
+        thread.source_language_variety ??
+        guideAnswersState.sourceLanguageVariety ??
+        null,
+      // Legacy fields from JSONB if needed
+      ...(guideAnswersState || {}),
+    };
     const notebookCells = (state.notebook_cells || {}) as Record<
       number,
       { translation?: { text?: string } }
@@ -124,11 +143,9 @@ export async function POST(req: NextRequest) {
     const currentCell = notebookCells[body.lineIndex] || {};
     const currentTranslation = currentCell.translation?.text || "";
 
-    // Extract raw poem from state for recipe generation
+    // Extract raw poem from column (with JSONB fallback)
     const rawPoem =
-      (state.raw_poem as string) ||
-      body.poemContext?.fullPoem ||
-      body.sourceText;
+      (thread.raw_poem ?? state.raw_poem ?? body.poemContext?.fullPoem ?? body.sourceText) as string;
 
     // Determine source and target languages
     const sourceLanguage =
@@ -140,9 +157,9 @@ export async function POST(req: NextRequest) {
       guideAnswers.targetLanguage?.lang ||
       "English";
 
-    // 5) Determine viewpoint range mode
-    const mode: ViewpointRangeMode =
-      guideAnswers.viewpointRangeMode ?? "balanced";
+    // 5) Determine translation range mode
+    const mode: TranslationRangeMode =
+      guideAnswers.translationRangeMode ?? "balanced";
     log("mode", { mode });
 
     // 6) Get or create variant recipes (cached per thread + context)
@@ -517,7 +534,7 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      if (label && recipeForLabel && anchors) {
+      if (label && recipeForLabel) {
         try {
           // Build fixed variants array (other two variants that passed)
           const fixedVariants = variants
@@ -544,11 +561,28 @@ export async function POST(req: NextRequest) {
               mode,
               stancePlanSubjectForm,
             },
-            anchors,
+            anchors || [],
             gateResult.reason || "distinctness_check_failed",
             modelToUse // Pass the model used for initial generation
           );
 
+          // ISS-014: Compute c_subject_form_used locally from Variant C text
+          let cSubjectFormUsed: string | undefined = regenResult.c_subject_form_used;
+          if (label === "C") {
+            const { detectSubjectForm, normalizeSubjectForm } = await import(
+              "@/lib/translation/method2/detectSubjectForm"
+            );
+            const detected = detectSubjectForm(regenResult.text);
+            const normalized = normalizeSubjectForm(detected);
+            
+            if (normalized) {
+              cSubjectFormUsed = normalized;
+            } else if (regenResult.c_subject_form_used) {
+              // Fallback: use model-provided if local detection failed
+              cSubjectFormUsed = regenResult.c_subject_form_used;
+            }
+          }
+          
           // Update variant with regenerated result
           variants[idx] = {
             label,
@@ -556,7 +590,7 @@ export async function POST(req: NextRequest) {
             anchor_realizations: regenResult.anchor_realizations,
             b_image_shift_summary: regenResult.b_image_shift_summary,
             c_world_shift_summary: regenResult.c_world_shift_summary,
-            c_subject_form_used: regenResult.c_subject_form_used,
+            c_subject_form_used: cSubjectFormUsed,
           };
 
           // Debug: check if regen returned the same text

@@ -23,12 +23,12 @@ export interface GuideAnswers {
   sourceLanguageVariety?: string | null;
 
   /**
-   * Viewpoint range mode for prismatic variants.
+   * Translation range mode for prismatic variants.
    * - focused: tight, high relevance
    * - balanced: default, best overall
    * - adventurous: wide range, still guarded
    */
-  viewpointRangeMode?: "focused" | "balanced" | "adventurous";
+  translationRangeMode?: "focused" | "balanced" | "adventurous";
 
   /**
    * Translation model selection for processing.
@@ -111,8 +111,8 @@ export interface GuideState {
   width: number;
   isWorkshopUnlocked: boolean;
 
-  // Viewpoint range mode for prismatic variants
-  viewpointRangeMode: "focused" | "balanced" | "adventurous";
+  // Translation range mode for prismatic variants
+  translationRangeMode: "focused" | "balanced" | "adventurous";
   // Translation model selection
   translationModel:
     | "gpt-4o"
@@ -141,7 +141,7 @@ export interface GuideState {
   submitTranslationZone: () => void;
   setTranslationIntent: (intent: string) => void;
   submitTranslationIntent: () => void;
-  setViewpointRangeMode: (mode: "focused" | "balanced" | "adventurous") => void;
+  setTranslationRangeMode: (mode: "focused" | "balanced" | "adventurous") => void;
   setTranslationModel: (
     model: "gpt-4o" | "gpt-4o-mini" | "gpt-4-turbo" | "gpt-5" | "gpt-5-mini"
   ) => void;
@@ -167,7 +167,7 @@ const initialState: Pick<
   | "isCollapsed"
   | "width"
   | "isWorkshopUnlocked"
-  | "viewpointRangeMode"
+  | "translationRangeMode"
   | "translationModel"
   | "translationMethod"
 > = {
@@ -195,7 +195,7 @@ const initialState: Pick<
   isCollapsed: false,
   width: 320,
   isWorkshopUnlocked: false,
-  viewpointRangeMode: "balanced",
+  translationRangeMode: "balanced",
   translationModel: "gpt-4o",
   translationMethod: "method-2",
 };
@@ -376,12 +376,12 @@ export const useGuideStore = create<GuideState>()(
           },
         })),
 
-      setViewpointRangeMode: (mode: "focused" | "balanced" | "adventurous") =>
+      setTranslationRangeMode: (mode: "focused" | "balanced" | "adventurous") =>
         set((state) => ({
-          viewpointRangeMode: mode,
+          translationRangeMode: mode,
           answers: {
             ...state.answers,
-            viewpointRangeMode: mode,
+            translationRangeMode: mode,
           },
         })),
 
@@ -454,15 +454,15 @@ export const useGuideStore = create<GuideState>()(
         const hasTranslationIntent =
           (state.translationIntent.text?.trim().length ?? 0) > 0;
 
-        // If method-2 is selected, viewpointRangeMode is mandatory
-        const hasViewpointRange =
-          state.translationMethod !== "method-2" || !!state.viewpointRangeMode;
+        // If method-2 is selected, translationRangeMode is mandatory
+        const hasTranslationRange =
+          state.translationMethod !== "method-2" || !!state.translationRangeMode;
 
         return (
           hasPoem &&
           hasTranslationZone &&
           hasTranslationIntent &&
-          hasViewpointRange
+          hasTranslationRange
         );
       },
 

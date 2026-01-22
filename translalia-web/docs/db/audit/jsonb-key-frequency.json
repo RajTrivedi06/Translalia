@@ -1,0 +1,42 @@
+[
+  {
+    "key": "guide_answers",
+    "threads_with_key": 136
+  },
+  {
+    "key": "poem_stanzas",
+    "threads_with_key": 131
+  },
+  {
+    "key": "raw_poem",
+    "threads_with_key": 131
+  },
+  {
+    "key": "translation_job",
+    "threads_with_key": 131
+  },
+  {
+    "key": "variant_recipes_v3",
+    "threads_with_key": 45
+  },
+  {
+    "key": "workshop_lines",
+    "threads_with_key": 37
+  },
+  {
+    "key": "method2_audit",
+    "threads_with_key": 28
+  },
+  {
+    "key": "variant_recipes_v1",
+    "threads_with_key": 6
+  },
+  {
+    "key": "poem_analysis",
+    "threads_with_key": 2
+  },
+  {
+    "key": "notebook_notes",
+    "threads_with_key": 1
+  }
+]

@@ -82,7 +82,7 @@ export interface LineContext {
  * Uses CONTENT TOKEN count (stopword-removed) to scale thresholds.
  * Short lines get more lenient thresholds to avoid Jaccard noise.
  *
- * @param mode - Viewpoint range mode
+ * @param mode - Translation range mode
  * @param contentTokenCount - Number of content tokens (after stopword removal)
  * @returns Overlap threshold for this mode/length combination
  */
@@ -604,6 +604,138 @@ export function checkDistinctness(
             pairWithMaxOverlap: maxPair,
           },
         };
+      }
+    }
+  }
+
+  // ========================================================================
+  // SHORT-LINE DIVERSITY PATCH (for contentTokens <= 6)
+  // ========================================================================
+  // When Jaccard threshold is too lenient (especially adventurous mode with threshold=1.0),
+  // use character-level checks to prevent near-duplicates
+  if (avgContentTokenCount <= 6) {
+    // Check 1: Character-level similarity (trigram Jaccard)
+    for (let i = 0; i < 3; i++) {
+      for (let j = i + 1; j < 3; j++) {
+        const text1 = variants[i].text.toLowerCase().replace(/[^\w\s]/g, "");
+        const text2 = variants[j].text.toLowerCase().replace(/[^\w\s]/g, "");
+        
+        // Create trigram sets
+        const getTrigrams = (text: string): Set<string> => {
+          const trigrams = new Set<string>();
+          for (let k = 0; k <= text.length - 3; k++) {
+            trigrams.add(text.slice(k, k + 3));
+          }
+          return trigrams;
+        };
+        
+        const trigrams1 = getTrigrams(text1);
+        const trigrams2 = getTrigrams(text2);
+        
+        // Calculate trigram Jaccard similarity
+        const intersection = new Set([...trigrams1].filter(t => trigrams2.has(t)));
+        const union = new Set([...trigrams1, ...trigrams2]);
+        const charSimilarity = union.size > 0 ? intersection.size / union.size : 0;
+        
+        // Fail if character similarity > 80%
+        if (charSimilarity > 0.80) {
+          return {
+            pass: false,
+            worstIndex: j, // Prefer regenerating higher index variant
+            reason: `short_line_char_similarity: Variants ${i} and ${j} have ${(charSimilarity * 100).toFixed(0)}% character similarity (threshold: 80%)`,
+            details: {
+              jaccardScores,
+              maxOverlap,
+              pairWithMaxOverlap: [i, j],
+              openerTypes,
+              signatures: signatureKeys,
+              contentTokenCounts,
+              lengthAdjustedThreshold: lengthAwareThreshold,
+            },
+          };
+        }
+        
+        // Check 2: Opening substring check (first 10-15 chars must differ)
+        const opening1 = text1.slice(0, 15).trim();
+        const opening2 = text2.slice(0, 15).trim();
+        
+        if (opening1.length >= 10 && opening2.length >= 10 && opening1 === opening2) {
+          return {
+            pass: false,
+            worstIndex: j,
+            reason: `short_line_opening_match: Variants ${i} and ${j} share identical opening substring: "${opening1.slice(0, 10)}..."`,
+            details: {
+              jaccardScores,
+              maxOverlap,
+              pairWithMaxOverlap: [i, j],
+              openerTypes,
+              signatures: signatureKeys,
+              contentTokenCounts,
+              lengthAdjustedThreshold: lengthAwareThreshold,
+            },
+          };
+        }
+      }
+    }
+    
+    // Check 3: Diversity lever requirement (at least one structural difference)
+    // For short lines, check if variants differ in:
+    // - Punctuation pattern (one has comma/dash, other doesn't)
+    // - Contraction usage (one uses contractions, other doesn't)
+    // - Capitalization pattern
+    const hasStructuralDifference = (text1: string, text2: string): boolean => {
+      // Check punctuation differences
+      const punct1 = text1.match(/[,;:\-—]/g)?.length || 0;
+      const punct2 = text2.match(/[,;:\-—]/g)?.length || 0;
+      if (Math.abs(punct1 - punct2) > 0) return true;
+      
+      // Check contraction differences
+      const hasContraction1 = /\w+[''](t|s|d|ll|ve|re|m)\b/i.test(text1);
+      const hasContraction2 = /\w+[''](t|s|d|ll|ve|re|m)\b/i.test(text2);
+      if (hasContraction1 !== hasContraction2) return true;
+      
+      // If both checks pass and they're still very similar, require more diversity
+      return false;
+    };
+    
+    // Check if any pair lacks structural differences
+    for (let i = 0; i < 3; i++) {
+      for (let j = i + 1; j < 3; j++) {
+        if (!hasStructuralDifference(variants[i].text, variants[j].text)) {
+          // If they also have high character similarity, fail
+          const text1 = variants[i].text.toLowerCase().replace(/[^\w\s]/g, "");
+          const text2 = variants[j].text.toLowerCase().replace(/[^\w\s]/g, "");
+          const getTrigrams = (text: string): Set<string> => {
+            const trigrams = new Set<string>();
+            for (let k = 0; k <= text.length - 3; k++) {
+              trigrams.add(text.slice(k, k + 3));
+            }
+            return trigrams;
+          };
+          const trigrams1 = getTrigrams(text1);
+          const trigrams2 = getTrigrams(text2);
+          const intersection = new Set([...trigrams1].filter(t => trigrams2.has(t)));
+          const union = new Set([...trigrams1, ...trigrams2]);
+          const charSimilarity = union.size > 0 ? intersection.size / union.size : 0;
+          
+          if (charSimilarity > 0.70) {
+            // High similarity + no structural difference = fail
+            return {
+              pass: false,
+              worstIndex: j,
+              reason: `short_line_diversity_lever: Variants ${i} and ${j} lack structural differences (punctuation/contractions) and have ${(charSimilarity * 100).toFixed(0)}% character similarity`,
+              details: {
+                jaccardScores,
+                maxOverlap,
+                pairWithMaxOverlap: [i, j],
+                openerTypes,
+                signatures: signatureKeys,
+                contentTokenCounts,
+                lengthAdjustedThreshold: lengthAwareThreshold,
+              },
+            };
+          }
+        }
       }
     }
   }

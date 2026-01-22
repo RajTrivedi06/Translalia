@@ -97,16 +97,18 @@ export function isStopwordOnly(text: string, stopwords: Set<string>): boolean {
  * Rules:
  * - Must be at least 2 chars (relaxed for acronyms or digits)
  * - Must contain at least one alphanumeric character
- * - Must not be stopword-only
+ * - Must not be stopword-only (unless allowlisted - ISS-008)
  *
  * @param realization - The anchor realization string
  * @param stopwords - Set of stopwords for the target language
- * @returns { valid: boolean, reason?: string }
+ * @param anchorId - Optional anchor ID for allowlist checking (ISS-008)
+ * @returns { valid: boolean, reason?: string, warnings?: string[] }
  */
 export function validateRealizationMeaningfulness(
   realization: string,
-  stopwords: Set<string>
-): { valid: boolean; reason?: string } {
+  stopwords: Set<string>,
+  anchorId?: string
+): { valid: boolean; reason?: string; warnings?: string[] } {
   const trimmed = realization.trim();
 
   // Check length (at least 2 chars, or 1 if it's an acronym or has a digit)
@@ -121,6 +123,27 @@ export function validateRealizationMeaningfulness(
 
   // Check if stopword-only
   if (isStopwordOnly(trimmed, stopwords)) {
+    // ISS-008: Optional allowlist for stopword-only realizations
+    const allowStopwordOnly = process.env.ALLOW_STOPWORD_ONLY_ANCHORS === "1";
+    const allowedAnchors = process.env.STOPWORD_ALLOWED_ANCHORS
+      ? process.env.STOPWORD_ALLOWED_ANCHORS.split(",").map((s) => s.trim())
+      : [];
+    
+    if (allowStopwordOnly && anchorId && allowedAnchors.includes(anchorId)) {
+      // Soft-pass: allow stopword-only for allowlisted anchor IDs
+      if (process.env.DEBUG_ANCHOR_VALIDATION === "1") {
+        console.log(`[ANCHOR_VALIDATION][stopword-allowed]`, JSON.stringify({
+          anchorId,
+          realization,
+          reason: "stopword-only allowed via allowlist",
+        }));
+      }
+      return { 
+        valid: true, 
+        warnings: ["stopword_only_allowed"] 
+      };
+    }
+    
     return { valid: false, reason: "stopword-only" };
   }
 

@@ -182,3 +182,49 @@ export function useSaveManualLine() {
     },
   });
 }
+
+/**
+ * Hook to save a manually created translation WITHOUT auto-invalidating queries.
+ * Use this for batch operations where you want to control when queries refresh.
+ * This prevents race conditions when saving multiple lines at once.
+ */
+export function useSaveManualLineWithoutInvalidation() {
+  return useMutation({
+    mutationFn: async ({
+      threadId,
+      lineIndex,
+      originalLine,
+      translatedLine,
+    }: {
+      threadId: string;
+      lineIndex: number;
+      originalLine: string;
+      translatedLine: string;
+    }) => {
+      const res = await fetch("/api/workshop/save-manual-line", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          threadId,
+          lineIndex,
+          originalLine,
+          translatedLine,
+        }),
+      });
+
+      if (!res.ok) {
+        const error = await res
+          .json()
+          .catch(() => ({ error: "Unknown error" }));
+        throw new Error(error.error || `HTTP ${res.status}`);
+      }
+
+      return res.json() as Promise<{
+        ok: boolean;
+        translatedLine: string;
+        lineIndex: number;
+      }>;
+    },
+    // NO onSuccess callback - caller controls when to invalidate
+  });
+}

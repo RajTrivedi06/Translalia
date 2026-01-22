@@ -38,7 +38,7 @@ export async function GET(req: Request) {
         })
       : await supabaseServer();
     const { data, error } = await supabase
-      .from("journey_items")
+      .from("journey_items_archive")
       .select("id, kind, summary, meta, created_at")
       .eq("project_id", projectId)
       .order("created_at", { ascending: false })

@@ -1,0 +1,82 @@
+[
+  {
+    "ts_type": "string",
+    "ts_sample": "2026-01-13T06:00:18.443Z"
+  },
+  {
+    "ts_type": "string",
+    "ts_sample": "2026-01-13T06:00:27.043Z"
+  },
+  {
+    "ts_type": "string",
+    "ts_sample": "2026-01-13T06:00:29.413Z"
+  },
+  {
+    "ts_type": "string",
+    "ts_sample": "2026-01-13T06:00:36.475Z"
+  },
+  {
+    "ts_type": "string",
+    "ts_sample": "2026-01-13T06:00:46.209Z"
+  },
+  {
+    "ts_type": "string",
+    "ts_sample": "2026-01-13T06:00:48.743Z"
+  },
+  {
+    "ts_type": "string",
+    "ts_sample": "2026-01-13T06:00:55.343Z"
+  },
+  {
+    "ts_type": "string",
+    "ts_sample": "2026-01-13T06:01:15.659Z"
+  },
+  {
+    "ts_type": "string",
+    "ts_sample": "2026-01-13T06:01:37.717Z"
+  },
+  {
+    "ts_type": "string",
+    "ts_sample": "2026-01-13T06:01:48.578Z"
+  },
+  {
+    "ts_type": "string",
+    "ts_sample": "2026-01-13T06:02:50.708Z"
+  },
+  {
+    "ts_type": "string",
+    "ts_sample": "2026-01-15T03:03:28.762Z"
+  },
+  {
+    "ts_type": "string",
+    "ts_sample": "2026-01-15T03:22:17.825Z"
+  },
+  {
+    "ts_type": "string",
+    "ts_sample": "2026-01-13T03:22:34.948Z"
+  },
+  {
+    "ts_type": "string",
+    "ts_sample": "2026-01-13T03:22:37.882Z"
+  },
+  {
+    "ts_type": "string",
+    "ts_sample": "2026-01-13T03:22:41.805Z"
+  },
+  {
+    "ts_type": "string",
+    "ts_sample": "2026-01-13T03:22:56.519Z"
+  },
+  {
+    "ts_type": "string",
+    "ts_sample": "2026-01-13T03:28:40.416Z"
+  },
+  {
+    "ts_type": "string",
+    "ts_sample": "2026-01-13T03:42:40.198Z"
+  },
+  {
+    "ts_type": "string",
+    "ts_sample": "2026-01-13T03:57:40.428Z"
+  }
+]

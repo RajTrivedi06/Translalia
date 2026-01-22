@@ -1025,6 +1025,7 @@ function getArchetypeDisplayName(archetype: Archetype): string {
  * Build a prompt block that describes the variant recipes.
  * Includes archetype headers, MUST rules, and mode-aware guidance.
  * v2: Enhanced with fixed artistic archetypes for each variant.
+ * ISS-010: Supports compressed recipe format to reduce verbosity.
  */
 export function buildRecipePromptBlock(
   recipes: VariantRecipe[],
@@ -1032,8 +1033,70 @@ export function buildRecipePromptBlock(
   mode?: "focused" | "balanced" | "adventurous"
 ): string {
   const effectiveMode = mode ?? "balanced";
+  const useCompressed = process.env.ENABLE_COMPRESSED_RECIPES === "1";
 
-  // Build recipe blocks with archetype headers
+  // Detect if source contains comparison marker (simile trap detection)
+  const hasComparisonMarker =
+    /\b(comme|like|as if|as though|as|como|come)\b/i.test(sourceText);
+
+  // Build comparison strategy rule (mode-scaled)
+  let comparisonRule = "";
+  if (hasComparisonMarker) {
+    if (effectiveMode === "balanced" || effectiveMode === "adventurous") {
+      comparisonRule = `
+⚠️ COMPARISON STRATEGY CONSTRAINT (source contains simile/comparison marker):
+- At most ONE variant may use an explicit comparison marker (like/as/comme/como/as if).
+- Remaining variants MUST express the relation differently (direct metaphor, plain statement, or fragment).`;
+    } else {
+      comparisonRule = `
+ℹ️ COMPARISON STRATEGY (source contains simile/comparison marker):
+- Focused mode allows simile reuse, but prefer at least one variant without comparison marker.`;
+    }
+  }
+
+  // ISS-010: Compressed recipe format (if enabled)
+  if (useCompressed) {
+    // Compressed recipe descriptions (high-signal shorthand)
+    const compressedRecipes = recipes
+      .map((r) => {
+        const archetypeName = getArchetypeDisplayName(r.archetype);
+        let shorthand = "";
+        
+        switch (r.archetype) {
+          case "essence_cut":
+            shorthand = "Compress to emotional core; tight, punchy voice; keep meaning; minimal fluff.";
+            break;
+          case "prismatic_reimagining":
+            shorthand = "Preserve plot, alter imagery; vivid sensory substitutions; no extra commentary.";
+            break;
+          case "world_voice_transposition":
+            shorthand = "Preserve events, change worldview/values/setting; consistent tone; no meta-explanation.";
+            break;
+        }
+        
+        return `${r.label}: ${archetypeName} — ${shorthand}`;
+      })
+      .join("\n");
+    
+    return `
+═══════════════════════════════════════════════════════════════
+VARIANT RECIPES — THREE ARTISTIC APPROACHES
+═══════════════════════════════════════════════════════════════
+
+MODE: ${effectiveMode.toUpperCase()}
+
+${compressedRecipes}
+
+Lens configs:
+${recipes.map((r) => `${r.label}: imagery=${r.lens.imagery}, voice=${r.lens.voice}, syntax=${r.lens.syntax}`).join("\n")}
+
+DIVERGENCE: Ensure A/B/C are meaningfully different in tone/style (not just wording).${comparisonRule}
+
+ANCHORS: Follow ANCHOR RULES from system instructions above. Do not restate anchor instructions here.
+`.trim();
+  }
+
+  // Full recipe format (original) - build full blocks
   const recipeBlocks = recipes
     .map((r) => {
       const archetypeName = getArchetypeDisplayName(r.archetype);
@@ -1096,25 +1159,7 @@ ${archetypeRules.map((rule) => `  • ${rule}`).join("\n")}`;
     .filter(Boolean)
     .join("\n");
 
-  // Detect if source contains comparison marker (simile trap detection)
-  const hasComparisonMarker =
-    /\b(comme|like|as if|as though|as|como|come)\b/i.test(sourceText);
-
-  // Build comparison strategy rule (mode-scaled)
-  let comparisonRule = "";
-  if (hasComparisonMarker) {
-    if (effectiveMode === "balanced" || effectiveMode === "adventurous") {
-      comparisonRule = `
-⚠️ COMPARISON STRATEGY CONSTRAINT (source contains simile/comparison marker):
-- At most ONE variant may use an explicit comparison marker (like/as/comme/como/as if).
-- Remaining variants MUST express the relation differently (direct metaphor, plain statement, or fragment).`;
-    } else {
-      comparisonRule = `
-ℹ️ COMPARISON STRATEGY (source contains simile/comparison marker):
-- Focused mode allows simile reuse, but prefer at least one variant without comparison marker.`;
-    }
-  }
-
+  // Full recipe format (original)
   return `
 ═══════════════════════════════════════════════════════════════
 VARIANT RECIPES — THREE ARTISTIC APPROACHES
@@ -1148,39 +1193,7 @@ GLOBAL DIVERGENCE RULES:
 - If any two drafts share the same sentence template, rewrite one BEFORE responding.
 - Do NOT reuse the same key wording across variants unless it's in must_keep constraints.${comparisonRule}
 
-═══════════════════════════════════════════════════════════════
-PHASE 1: SEMANTIC ANCHORS (MODEL-EXTRACTED, CHECKABLE)
-═══════════════════════════════════════════════════════════════
-
-You MUST extract semantic anchors from the SOURCE LINE and show how each variant realizes them.
-
-CRITICAL RULES:
-1. Extract 3–6 semantic anchors from the SOURCE LINE (NOT variants):
-   - Anchors are SCENE/IDEA concepts (e.g., "BUS", "STREET", "SKY", "SAUDADE")
-   - DO NOT use pronouns or grammatical person as anchor concepts (no I/you/we/he/she/they/it/one)
-   - Each anchor gets a unique UPPER_SNAKE id (e.g., "BUS", "NIGHT_SKY", "LONGING")
-   - Provide a short English concept label (1-4 words) and source tokens that motivated it
-
-2. For EACH variant, provide "anchor_realizations" (exact substrings from variant text):
-   - Must include ALL anchor ids as keys
-   - Each value must be an EXACT substring from the variant's translated text
-   - Realizations must be meaningful (not empty, not just punctuation, not single stopword)
-   - Different variants MUST use DIFFERENT realizations (lexical divergence)
-
-3. Anchors ensure semantic preservation; realizations prove lexical creativity.
-
-EXAMPLE:
-If source line is "Le bus s'arrête sous le ciel nocturne",
-Anchors might be:
-- BUS (concept_en: "bus vehicle", source_tokens: ["bus"])
-- STOP_ACTION (concept_en: "stopping motion", source_tokens: ["s'arrête"])
-- NIGHT_SKY (concept_en: "night sky", source_tokens: ["ciel", "nocturne"])
-
-Variant A anchor_realizations: {"BUS": "the bus", "STOP_ACTION": "halts", "NIGHT_SKY": "evening sky"}
-Variant B anchor_realizations: {"BUS": "coach", "STOP_ACTION": "comes to rest", "NIGHT_SKY": "dark heavens"}
-Variant C anchor_realizations: {"BUS": "our ride", "STOP_ACTION": "we stop", "NIGHT_SKY": "night above"}
-
-CRITICAL: Each variant must be OBSERVABLY DIFFERENT in surface form (word choice, syntax, voice) while preserving the semantic meaning anchors. They should feel like three different translation artists approached the same line.
+ANCHORS: Follow ANCHOR RULES from system instructions above. Do not restate anchor instructions here.
 `.trim();
 }
 
@@ -1207,55 +1220,39 @@ Each variant MUST follow its assigned recipe exactly.
 
 IMPORTANT RULES:
 - Return ONLY valid JSON (no markdown, no explanations)
+- Return ONLY the translation text - no labels (Variant A:), no explanations, no meta-commentary, no multi-line paragraphs
 - Each variant must be OBSERVABLY DIFFERENT from the others
 - ALL variants must honor the translator personality
-- Phase 1: Extract semantic anchors from source and provide realizations for each variant
-- Phase 1: Include self-report metadata (B image shift summary, C world/subject metadata)
+- Follow recipe directives and archetype requirements (B shifts imagery, C shifts voice/stance)
 
 SILENT SELF-CHECK (do NOT mention this in output):
-1) Extract 3–6 semantic anchors from source line (UPPER_SNAKE ids, no pronouns).
-2) Draft all 3 variants.
-3) If any two share the same opening structure or comparison template, rewrite one until they differ.
-4) Check comparison strategy constraints based on mode.
-5) Ensure semantic anchors are preserved but with lexical diversity.
-6) For each variant, write anchor_realizations with EXACT substrings from variant text.
-7) For B: write b_image_shift_summary (1 sentence, mention at least one anchor ID).
-8) For C: write c_world_shift_summary + c_subject_form_used.
-9) Only then output JSON.
+1) Draft all 3 variants following their recipe directives.
+2) If any two share the same opening structure or comparison template, rewrite one until they differ.
+3) Check comparison strategy constraints based on mode.
+4) Ensure semantic meaning is preserved but with lexical diversity.
+5) Only then output JSON.
 
-Output format:
+Output format (Strict schema - no extra fields allowed):
 {
-  "anchors": [
-    { "id": "BUS", "concept_en": "bus vehicle", "source_tokens": ["bus"] },
-    { "id": "NIGHT_SKY", "concept_en": "night sky", "source_tokens": ["ciel", "nocturne"] }
-  ],
   "variants": [
     {
       "label": "A",
-      "text": "translation",
-      "anchor_realizations": { "BUS": "the bus", "NIGHT_SKY": "evening sky" },
-      "rationale": "brief explanation",
-      "confidence": 0.0-1.0
+      "text": "translation"
     },
     {
       "label": "B",
-      "text": "translation",
-      "anchor_realizations": { "BUS": "coach", "NIGHT_SKY": "dark heavens" },
-      "b_image_shift_summary": "I reframed BUS as a coach and shifted NIGHT_SKY to dark heavens for metaphoric freshness",
-      "rationale": "brief explanation",
-      "confidence": 0.0-1.0
+      "text": "translation"
     },
     {
       "label": "C",
-      "text": "translation",
-      "anchor_realizations": { "BUS": "our ride", "NIGHT_SKY": "night above" },
-      "c_world_shift_summary": "Shifted to collective first-person plural with urban night setting",
-      "c_subject_form_used": "we",
-      "rationale": "brief explanation",
-      "confidence": 0.0-1.0
+      "text": "translation"
     }
   ]
-}`;
+}
+
+CRITICAL: Return ONLY the fields shown above. Do NOT include extra fields like "rationale", "confidence", "anchors", "anchor_realizations", "b_image_shift_summary", "c_world_shift_summary", "c_subject_form_used", or any other metadata.
+Return ONLY the translation text in the "text" field - no labels, no explanations, no meta-commentary.`;
+  // ISS-004: rationale/confidence removed from example; not parsed/used and can inflate token output
 
   const userPromptParts: string[] = [];
 
@@ -1328,23 +1325,28 @@ ${
 
   // Task reminder with Phase 1 stance plan for C
   const recipeC = recipes.recipes.find((r) => r.label === "C");
-  const stancePlanText =
-    recipeC?.stance_plan
-      ? `
+  const stancePlanText = recipeC?.stance_plan
+    ? `
 CRITICAL FOR VARIANT C: Use this poem-level stance plan consistently:
 - Subject form: ${recipeC.stance_plan.subject_form}${
-          recipeC.stance_plan.world_frame
-            ? `\n- World frame: ${recipeC.stance_plan.world_frame}`
-            : ""
-        }${
-          recipeC.stance_plan.register_shift
-            ? `\n- Register shift: ${recipeC.stance_plan.register_shift}`
-            : ""
-        }${recipeC.stance_plan.notes ? `\n- Notes: ${recipeC.stance_plan.notes}` : ""}
+        recipeC.stance_plan.world_frame
+          ? `\n- World frame: ${recipeC.stance_plan.world_frame}`
+          : ""
+      }${
+        recipeC.stance_plan.register_shift
+          ? `\n- Register shift: ${recipeC.stance_plan.register_shift}`
+          : ""
+      }${
+        recipeC.stance_plan.notes
+          ? `\n- Notes: ${recipeC.stance_plan.notes}`
+          : ""
+      }
 
-You MUST set c_subject_form_used to "${recipeC.stance_plan.subject_form}" for variant C.
-If the mode is balanced or adventurous, c_subject_form_used MUST NOT be "i".`
-      : "";
+${process.env.OMIT_SUBJECT_FORM_FROM_PROMPT === "1" 
+  ? `For variant C, use subject form: ${recipeC.stance_plan.subject_form} (this will be detected automatically).`
+  : `You MUST set c_subject_form_used to "${recipeC.stance_plan.subject_form}" for variant C.
+If the mode is balanced or adventurous, c_subject_form_used MUST NOT be "i".`}`
+    : "";
 
   userPromptParts.push(
     `
@@ -1357,13 +1359,8 @@ Generate 3 variants following the recipes above.
 - Variant C: Follow Recipe C (${recipes.recipes[2].directive.slice(0, 50)}...)
 ${stancePlanText}
 
-PHASE 1 REQUIREMENTS:
-1. Extract 3–6 semantic anchors from SOURCE LINE (UPPER_SNAKE ids, no pronouns).
-2. For EACH variant, provide "anchor_realizations" with EXACT substrings from variant text.
-3. For Variant B: Include "b_image_shift_summary" (1 sentence, must mention at least one anchor ID explicitly).
-4. For Variant C: Include "c_world_shift_summary" (1 sentence) and "c_subject_form_used" (must match stance plan above).
-
-Return ONLY valid JSON.
+CRITICAL: Return ONLY valid JSON with the structure shown in system instructions.
+Each variant's "text" field must contain ONLY the translation - no labels (Variant A:), no explanations, no meta-commentary, no multi-line paragraphs.
 `.trim()
   );
 
@@ -1371,4 +1368,165 @@ Return ONLY valid JSON.
     system: systemPrompt,
     user: userPromptParts.join("\n\n"),
   };
+}
+
+/**
+ * Formats notebook notes for inclusion in AI prompts.
+ * Used in AI Assist Step C: Deep Contextual Suggestions
+ * and Journey Summary generation.
+ *
+ * @param notes - The notebook notes from chat_threads.state.notebook_notes
+ * @param poemLines - Array of source poem lines
+ * @param completedLines - Record of completed translations (lineIndex -> translation)
+ * @returns Formatted string ready for inclusion in LLM prompts
+ */
+export function formatNotebookNotesForPrompt(
+  notes: {
+    thread_note: string | null;
+    line_notes: Record<number, string>;
+  },
+  poemLines: string[],
+  completedLines: Record<number, string>
+): string {
+  const sections: string[] = [];
+
+  // General reflection
+  if (notes.thread_note && notes.thread_note.trim()) {
+    sections.push(`GENERAL REFLECTION:\n"${notes.thread_note}"`);
+  }
+
+  // Line-specific notes with context
+  const lineNoteEntries = Object.entries(notes.line_notes || {})
+    .filter(([, note]) => note && typeof note === "string" && note.trim())
+    .map(([lineIndex, note]) => {
+      const idx = parseInt(lineIndex);
+      const sourceLine = poemLines[idx] || "";
+      const translatedLine = completedLines[idx] || "";
+
+      return `Line ${
+        idx + 1
+      }:\n  Source: "${sourceLine}"\n  Translation: "${translatedLine}"\n  Student's Note: "${note}"`;
+    });
+
+  if (lineNoteEntries.length > 0) {
+    sections.push(`LINE-SPECIFIC NOTES:\n${lineNoteEntries.join("\n\n")}`);
+  }
+
+  return sections.length > 0
+    ? `\n\nSTUDENT'S TRANSLATION DIARY (NOTES):\n${sections.join("\n\n")}`
+    : "";
+}
+
+/**
+ * AI Assist Step C: Deep Contextual Suggestions
+ * Reviews the student's translation choices and notes to provide contextual guidance
+ */
+export interface AIAssistStepCContext {
+  poemLines: string[];
+  completedLines: Record<number, string>;
+  guideAnswers: GuideAnswers;
+  notes: {
+    thread_note: string | null;
+    line_notes: Record<number, string>;
+  };
+}
+
+/**
+ * Builds the system prompt for AI Assist Step C
+ */
+export function buildAIAssistStepCSystemPrompt(): string {
+  return `You are a translation mentor helping a student develop their poetry translation.
+
+Your role is to:
+1. Identify the student's translation goals based on their choices and notes
+2. Provide 3 specific, actionable suggestions to develop their translation further
+3. Focus on their creative process and thinking, not on "correctness"
+
+IMPORTANT GUIDELINES:
+- Be warm and encouraging, like a supportive mentor
+- Celebrate their creative decisions and thought process
+- Provide specific, actionable suggestions tied to actual lines
+- Help them see possibilities they might not have considered
+- Focus on growth and exploration, not judgment
+- Return ONLY valid JSON format
+
+Response format:
+{
+  "aims": "Brief description of what the student seems to be trying to achieve (1-2 sentences)",
+  "suggestions": [
+    {
+      "title": "Short title (3-5 words)",
+      "description": "Detailed explanation with specific line references",
+      "lineReferences": [0, 2, 5]
+    }
+  ],
+  "confidence": 0.0-1.0
+}`;
+}
+
+/**
+ * Builds the user prompt for AI Assist Step C
+ */
+export function buildAIAssistStepCPrompt(context: AIAssistStepCContext): string {
+  const { poemLines, completedLines, guideAnswers, notes } = context;
+
+  // Format completed translations
+  const completedTranslations = Object.entries(completedLines)
+    .map(([idx, translation]) => {
+      const lineNum = parseInt(idx);
+      const sourceLine = poemLines[lineNum] || "";
+      return `Line ${lineNum + 1}:\n  Source: "${sourceLine}"\n  Translation: "${translation}"`;
+    })
+    .join("\n\n");
+
+  // Extract translation preferences
+  const translationZone = guideAnswers.translationZone?.trim();
+  const translationIntent = guideAnswers.translationIntent?.trim();
+  const closeness = guideAnswers.stance?.closeness;
+  const vibes = guideAnswers.style?.vibes?.filter(Boolean) ?? [];
+  const mustKeep = guideAnswers.policy?.must_keep?.filter(Boolean) ?? [];
+  const noGo = guideAnswers.policy?.no_go?.filter(Boolean) ?? [];
+
+  const preferencesSection = `
+STUDENT'S TRANSLATION PREFERENCES:
+${translationZone ? `Translation Zone: ${translationZone}` : ""}
+${translationIntent ? `Translation Intent: ${translationIntent}` : ""}
+${closeness ? `Approach: ${LINE_CLOSENESS_DESCRIPTIONS[closeness]}` : ""}
+${vibes.length > 0 ? `Style Preferences: ${vibes.join(", ")}` : ""}
+${mustKeep.length > 0 ? `Must Preserve: ${mustKeep.join(", ")}` : ""}
+${noGo.length > 0 ? `Avoid: ${noGo.join(", ")}` : ""}
+`.trim();
+
+  // Format notes
+  const notesSection = formatNotebookNotesForPrompt(
+    notes,
+    poemLines,
+    completedLines
+  );
+
+  return `
+SOURCE POEM:
+${poemLines.map((line, idx) => `${idx + 1}. ${line}`).join("\n")}
+
+STUDENT'S COMPLETED TRANSLATIONS:
+${completedTranslations || "No lines completed yet"}
+
+${preferencesSection}
+${notesSection}
+
+TASK:
+Based on the source text, the student's translation choices, their preferences, and their notes:
+
+1. Identify what the student seems to be trying to achieve (their "aims")
+2. Provide exactly 3 specific suggestions to help them develop their translation further
+3. Each suggestion should:
+   - Reference specific lines from their work
+   - Be actionable and concrete
+   - Help them explore new possibilities
+   - Build on their existing thinking
+
+Focus on their creative process and growth. Celebrate what they're doing well while opening doors to new possibilities.
+
+Return ONLY valid JSON in the format specified.
+`.trim();
 }

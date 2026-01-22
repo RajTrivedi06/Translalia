@@ -189,10 +189,10 @@
     "confirmDialogDescription": "قصيدتك ومنطقة الترجمة ونية الترجمة مضبوطة. يمكنك إجراء تغييرات في أي وقت. انقر على 'بدء الورشة' للبدء في الترجمة.",
     "confirmDialogConfirm": "بدء الورشة",
     "confirmDialogCancel": "إلغاء",
-    "viewpointRange": "نطاق وجهات النظر",
-    "viewpointRangeHelper": "تحكم في مدى اختلاف نسخ الترجمة",
-    "viewpointRangeRequired": "يرجى تحديد نطاق وجهة النظر للمتابعة",
-    "viewpointMode": {
+    "translationRange": "نطاق الترجمة",
+    "translationRangeHelper": "تحكم في مدى اختلاف نسخ الترجمة",
+    "translationRangeRequired": "يرجى تحديد نطاق الترجمة للمتابعة",
+    "translationMode": {
       "focused": "مركّز",
       "balanced": "متوازن",
       "adventurous": "مغامر"

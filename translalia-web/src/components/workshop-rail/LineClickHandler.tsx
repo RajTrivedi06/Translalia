@@ -83,8 +83,6 @@ export function LineClickHandler({
   // Determine styling based on status
   const bgColor = isComplete
     ? "bg-green-50 hover:bg-green-100"
-    : isProcessing
-    ? "bg-blue-50 hover:bg-blue-100"
     : isFailed
     ? "bg-red-50 hover:bg-red-100"
     : "hover:bg-gray-50";
@@ -194,10 +192,7 @@ export function LineClickHandler({
         </div>
       </div>
 
-      {/* Subtle processing sheen without blocking message */}
-      {isProcessing && !isComplete && (
-        <div className="pointer-events-none absolute inset-0 rounded-lg border border-blue-200 bg-blue-50/40" />
-      )}
+      {/* Subtle processing indicator - removed blue background overlay */}
     </div>
   );
 }

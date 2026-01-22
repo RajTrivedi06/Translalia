@@ -1,0 +1,11 @@
+[
+    {
+      "threads_with_audit": 28,
+      "min_entries": 1,
+      "p50_entries": 6,
+      "p90_entries": 11,
+      "p99_entries": 18.73,
+      "max_entries": 19,
+      "avg_entries": "6.68"
+    }
+  ]

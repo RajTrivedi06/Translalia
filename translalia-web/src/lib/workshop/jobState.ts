@@ -9,6 +9,8 @@ import type {
   TranslationTickResult,
   ProcessingStatus,
 } from "@/types/translationJob";
+import { createRetryTelemetryCollector, noOpRetryTelemetry } from "@/lib/telemetry/retryTelemetry";
+import type { TickInstrumentation } from "./runTranslationTick";
 
 const DEFAULT_MAX_CONCURRENT = 5;
 const DEFAULT_MAX_STANZAS_PER_TICK = 5; // Increased from 2 to match maxConcurrent for parallel processing
@@ -90,11 +92,48 @@ async function fetchThreadState(threadId: string): Promise<ThreadState> {
   return ((data?.state as ThreadState) ?? {}) as ThreadState;
 }
 
+/**
+ * Helper to log state writer activity before write
+ */
+function logStateWrite(
+  writer: string,
+  threadId: string,
+  state: ThreadState,
+  previousVersion?: number,
+  fieldPath?: string[]
+): void {
+  const translationJob = state.translation_job;
+  const jobVersion = translationJob?.version ?? "none";
+  const chunks = translationJob?.chunks || {};
+  const chunk0Lines = chunks[0]?.lines?.length ?? "none";
+  const chunk1Lines = chunks[1]?.lines?.length ?? "none";
+  const activeIndices = translationJob?.active || [];
+  const queueLength = translationJob?.queue?.length ?? "none";
+  const activeLength = activeIndices.length;
+  const activeDisplay = activeLength > 0 ? `[${activeIndices.join(",")}]` : "[]";
+  
+  const versionCheck = previousVersion !== undefined ? "yes" : "no";
+  const writingVersion = translationJob?.version ?? "none";
+  const prevSeenVersion = previousVersion ?? "none";
+  
+  const updatingPart = fieldPath && Array.isArray(fieldPath) && fieldPath.length > 0 ? ` updating=${fieldPath.join(".")}` : "";
+  
+  console.log(
+    `[STATE_WRITE] writer=${writer} threadId=${threadId} jobVersion=${jobVersion} ` +
+    `chunks[0].lines=${chunk0Lines} chunks[1].lines=${chunk1Lines} ` +
+    `queue.length=${queueLength} active=${activeDisplay}${updatingPart} ` +
+    `versionCheck=${versionCheck} prevSeenVersion=${prevSeenVersion} writingVersion=${writingVersion}`
+  );
+}
+
 async function writeThreadState(
   threadId: string,
   state: ThreadState,
   previousVersion?: number
 ): Promise<void> {
+  // ✅ LOG: State write activity
+  logStateWrite("writeThreadState", threadId, state, previousVersion);
+  
   const supabase = await supabaseServer();
   let query = supabase
     .from("chat_threads")
@@ -209,12 +248,94 @@ export async function createTranslationJob(
 
 type JobUpdater = (job: TranslationJobState) => TranslationJobState | null;
 
+/**
+ * Monotonicity check: Detect if verified state has REGRESSED compared to what we intended to write.
+ * This catches state clobber from unsafe writers (e.g., audit writes overwriting translation_job).
+ *
+ * Returns an error message if regression detected, null otherwise.
+ */
+function checkMonotonicity(
+  intended: TranslationJobState,
+  verified: TranslationJobState | undefined,
+  threadId: string
+): string | null {
+  if (!verified) {
+    return `[MONOTONICITY] threadId=${threadId} verified job is null/undefined after write!`;
+  }
+
+  const errors: string[] = [];
+
+  // Check version regression
+  if (verified.version < intended.version) {
+    errors.push(
+      `version regressed: intended=${intended.version} verified=${verified.version}`
+    );
+  }
+
+  // Check chunk-level regressions
+  const intendedChunks = intended.chunks || {};
+  const verifiedChunks = verified.chunks || {};
+
+  for (const [idxStr, intendedChunk] of Object.entries(intendedChunks)) {
+    const idx = parseInt(idxStr, 10);
+    const verifiedChunk = verifiedChunks[idx];
+
+    if (!verifiedChunk) {
+      errors.push(`chunk[${idx}] missing in verified state`);
+      continue;
+    }
+
+    // Check linesProcessed regression
+    if (verifiedChunk.linesProcessed < intendedChunk.linesProcessed) {
+      errors.push(
+        `chunk[${idx}].linesProcessed regressed: intended=${intendedChunk.linesProcessed} verified=${verifiedChunk.linesProcessed}`
+      );
+    }
+
+    // Check lines array length regression
+    const intendedLinesLen = intendedChunk.lines?.length ?? 0;
+    const verifiedLinesLen = verifiedChunk.lines?.length ?? 0;
+    if (verifiedLinesLen < intendedLinesLen) {
+      errors.push(
+        `chunk[${idx}].lines.length regressed: intended=${intendedLinesLen} verified=${verifiedLinesLen}`
+      );
+    }
+
+    // Check status regression (completed -> non-completed is a regression)
+    if (
+      intendedChunk.status === "completed" &&
+      verifiedChunk.status !== "completed"
+    ) {
+      errors.push(
+        `chunk[${idx}].status regressed: intended=${intendedChunk.status} verified=${verifiedChunk.status}`
+      );
+    }
+  }
+
+  if (errors.length > 0) {
+    return (
+      `[MONOTONICITY_VIOLATION] threadId=${threadId} ` +
+      `intendedVersion=${intended.version} verifiedVersion=${verified.version} ` +
+      `errors=[${errors.join("; ")}]`
+    );
+  }
+
+  return null;
+}
+
 async function mutateTranslationJob(
   threadId: string,
   updater: JobUpdater,
-  maxAttempts = 3
+  maxAttempts = 3,
+  instrumentation?: TickInstrumentation
 ): Promise<TranslationJobState | null> {
+  // ISS-016: Instrument DB update retry telemetry
+  const retryTelemetry = instrumentation?.retries
+    ? createRetryTelemetryCollector({ retries: instrumentation.retries })
+    : noOpRetryTelemetry;
+  
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const attemptStart = Date.now();
     const state = await fetchThreadState(threadId);
     const current = state.translation_job;
 
@@ -229,6 +350,15 @@ async function mutateTranslationJob(
       return current;
     }
 
+    // ✅ DIAGNOSTIC: Log lines array state before persistence
+    console.log("[mutateTranslationJob] BEFORE writeThreadState:");
+    console.log(`  job.status=${updated.status}, job.queue=[${updated.queue.join(", ")}], job.active=[${updated.active.join(", ")}]`);
+    Object.entries(updated.chunks || {}).forEach(([idx, chunk]) => {
+      console.log(
+        `  Chunk ${idx}: status=${chunk.status}, linesProcessed=${chunk.linesProcessed}, totalLines=${chunk.totalLines}, lines=${chunk.lines ? `${chunk.lines.length} (defined)` : "undefined"}`
+      );
+    });
+
     updated.version = current.version + 1;
     updated.updatedAt = Date.now();
     updated.processing_status = computeProcessingStatus(updated);
@@ -239,9 +369,52 @@ async function mutateTranslationJob(
 
     try {
       await writeThreadState(threadId, nextState, current.version);
+
+      // ✅ DIAGNOSTIC: Verify lines array after persistence by re-reading from DB
+      const verified = await fetchThreadState(threadId);
+      const verifiedJob = verified.translation_job;
+      console.log("[mutateTranslationJob] AFTER writeThreadState (verified from DB):");
+      console.log(`  job.status=${verifiedJob?.status ?? "null"}, job.queue=[${verifiedJob?.queue.join(", ") ?? "[]"}], job.active=[${verifiedJob?.active.join(", ") ?? "[]"}]`);
+      Object.entries(verifiedJob?.chunks || {}).forEach(([idx, chunk]) => {
+        console.log(
+          `  Chunk ${idx}: status=${chunk.status}, linesProcessed=${chunk.linesProcessed}, totalLines=${chunk.totalLines}, lines=${chunk.lines ? `${chunk.lines.length} (defined)` : "undefined"}`
+        );
+      });
+
+      // ✅ CRITICAL: Monotonicity check - detect state regressions
+      const regressionError = checkMonotonicity(updated, verifiedJob, threadId);
+      if (regressionError) {
+        console.error(regressionError);
+
+        // In dev, throw to surface the issue immediately
+        if (
+          process.env.NODE_ENV === "development" ||
+          process.env.DEBUG_MONOTONICITY === "1"
+        ) {
+          throw new Error(regressionError);
+        }
+
+        // In production, log but continue (state is already written, can't undo)
+        // The reconciliation logic in runTranslationTick should recover
+      }
+
       return updated;
     } catch (error: unknown) {
       if (error instanceof Error && error.message.includes("concurrently")) {
+        const attemptDuration = Date.now() - attemptStart;
+        // ISS-016: Record DB update retry
+        retryTelemetry.recordRetry({
+          layer: "db_update",
+          operation: `update_job_${threadId.slice(0, 8)}`,
+          attempt: attempt + 1,
+          maxAttempts,
+          reason: "Concurrent modification",
+          elapsedMs: attemptDuration,
+        });
+        
+        console.warn(
+          `[mutateTranslationJob] Retry ${attempt + 1}/${maxAttempts} due to concurrent modification`
+        );
         continue;
       }
       throw error;
@@ -271,26 +444,132 @@ export async function updateStanzaStatus(
   stanzaIndex: number,
   update: Partial<TranslationStanzaState>
 ): Promise<TranslationJobState | null> {
+  console.log(
+    `[updateStanzaStatus] ENTRY: stanzaIndex=${stanzaIndex}, update keys:`,
+    Object.keys(update)
+  );
+  console.log(
+    `[updateStanzaStatus] update.lines length:`,
+    update.lines?.length ?? "undefined"
+  );
+
   return mutateTranslationJob(threadId, (job) => {
     const chunkOrStanzaStates = job.chunks || job.stanzas || {};
     const stanza = chunkOrStanzaStates[stanzaIndex];
     if (!stanza) {
+      console.warn(`[updateStanzaStatus] Stanza ${stanzaIndex} not found!`);
       return job;
     }
 
+    console.log(
+      `[updateStanzaStatus] BEFORE: stanza.lines length:`,
+      stanza.lines?.length ?? "undefined"
+    );
+
     // Update both chunks and stanzas for backward compatibility
     if (job.chunks) {
-      job.chunks[stanzaIndex] = {
+      // ✅ FIX: Preserve lines array invariant - ensure it always exists
+      const updated = {
         ...stanza,
         ...update,
+        chunkIndex: stanzaIndex,
+        // Ensure lines array exists (never replace with undefined)
+        lines: update.lines ?? stanza.lines ?? [],
+      } as TranslationChunkState;
+
+      console.log(
+        `[updateStanzaStatus] AFTER chunks merge: lines length:`,
+        updated.lines?.length ?? "undefined"
+      );
+      job.chunks[stanzaIndex] = updated;
+    }
+
+    if (job.stanzas) {
+      const updated = {
+        ...stanza,
+        ...update,
+        stanzaIndex: stanzaIndex,
+      };
+
+      console.log(
+        `[updateStanzaStatus] AFTER stanzas merge: lines length:`,
+        updated.lines?.length ?? "undefined"
+      );
+      job.stanzas[stanzaIndex] = updated;
+    }
+
+    return job;
+  });
+}
+
+/**
+ * ISS-003: Update a single translated line in a stanza (safe for out-of-order completion)
+ * Merges the line by line_number, preserving existing lines and updating linesProcessed correctly
+ */
+export async function updateSingleLine(
+  threadId: string,
+  stanzaIndex: number,
+  lineData: import("@/types/translationJob").TranslatedLine
+): Promise<TranslationJobState | null> {
+  return mutateTranslationJob(threadId, (job) => {
+    const chunkOrStanzaStates = job.chunks || job.stanzas || {};
+    const stanza = chunkOrStanzaStates[stanzaIndex];
+    if (!stanza) {
+      console.warn(`[updateSingleLine] Stanza ${stanzaIndex} not found!`);
+      return job;
+    }
+
+    // Ensure lines array exists
+    const existingLines = stanza.lines || [];
+    
+    // Find existing line by line_number
+    const lineIndex = existingLines.findIndex(
+      (line) => line.line_number === lineData.line_number
+    );
+
+    // Merge: update existing line or append new one
+    const updatedLines = [...existingLines];
+    if (lineIndex >= 0) {
+      // Update existing line (idempotent - safe for retries)
+      updatedLines[lineIndex] = lineData;
+    } else {
+      // Append new line (out-of-order completion)
+      updatedLines.push(lineData);
+      // Sort by line_number to maintain order (for UI display)
+      updatedLines.sort((a, b) => a.line_number - b.line_number);
+    }
+
+    // ISS-003: Compute linesProcessed from actual completed lines (not sequential index)
+    const linesProcessed = updatedLines.filter(
+      (line) =>
+        line.translationStatus === "translated" ||
+        line.translationStatus === "failed"
+    ).length;
+
+    // Update stanza with merged lines and correct linesProcessed
+    const updatedStanza = {
+      ...stanza,
+      lines: updatedLines,
+      linesProcessed,
+      lastLineTranslated: Math.max(
+        ...updatedLines
+          .filter((l) => l.translationStatus === "translated")
+          .map((l) => l.line_number),
+        stanza.lastLineTranslated ?? -1
+      ),
+    };
+
+    // Update both chunks and stanzas
+    if (job.chunks) {
+      job.chunks[stanzaIndex] = {
+        ...updatedStanza,
         chunkIndex: stanzaIndex,
       } as TranslationChunkState;
     }
 
     if (job.stanzas) {
       job.stanzas[stanzaIndex] = {
-        ...stanza,
-        ...update,
+        ...updatedStanza,
         stanzaIndex: stanzaIndex,
       };
     }
@@ -463,8 +742,16 @@ export function markJobCompletedIfDone(
     }
   );
 
-  // ✅ NEW: Check if all chunks are either completed or failed (no processing/queued)
-  const hasActiveWork = job.active.length > 0 || job.queue.length > 0;
+  // ✅ FIX: Make hasActiveWork robust - don't rely only on arrays
+  // Check for ANY chunk that hasn't reached a terminal status (completed/failed)
+  // This catches chunks stuck in "processing", "queued", or "pending" with incomplete lines
+  const hasActiveWorkFromArrays = job.active.length > 0 || job.queue.length > 0;
+  const hasActiveWorkFromChunks = Object.values(chunkOrStanzaStates).some(
+    (stanza) =>
+      // Any chunk not in terminal status is active work
+      stanza.status !== "completed" && stanza.status !== "failed"
+  );
+  const hasActiveWork = hasActiveWorkFromArrays || hasActiveWorkFromChunks;
 
   if (!hasPendingChunks && !hasIncompleteLines && !hasActiveWork) {
     job.status = "completed";
