@@ -1,47 +1,30 @@
 import crypto from "crypto";
 import { randomUUID } from "crypto";
 
+// =============================================================================
+// In-Memory Fallback (DEV ONLY)
+// =============================================================================
+// This Map is ONLY used when Redis is not configured (local development).
+// On Vercel/serverless, this is useless because each function instance has
+// its own memory that's wiped after ~10-30 seconds of inactivity.
 const mem = new Map<string, { expires: number; value: unknown }>();
+
+// =============================================================================
+// Utility Functions
+// =============================================================================
 
 export function stableHash(obj: unknown): string {
   const json = JSON.stringify(
     obj,
-    Object.keys(obj as Record<string, unknown>).sort()
+    Object.keys(obj as Record<string, unknown>).sort(),
   );
   return crypto.createHash("sha256").update(json).digest("hex");
 }
 
-export async function cacheGet<T>(key: string): Promise<T | null> {
-  const item = mem.get(key);
-  if (!item) return null;
-  if (Date.now() > item.expires) {
-    mem.delete(key);
-    return null;
-  }
-  return item.value as T;
-}
-
-export async function cacheSet<T>(
-  key: string,
-  value: T,
-  ttlSec = 3600
-): Promise<void> {
-  mem.set(key, { expires: Date.now() + ttlSec * 1000, value });
-}
-
-/**
- * Delete a key from the cache.
- * CRITICAL: Use this for lock release, NOT cacheSet(key, null, 0)
- */
-export async function cacheDelete(key: string): Promise<void> {
-  mem.delete(key);
-}
-
 // =============================================================================
-// Upstash Redis Lock Helpers
+// Upstash Redis Client (Lazy-Initialized Singleton)
 // =============================================================================
 
-// Lazy-initialized Redis client singleton
 let redisClient: unknown = null;
 
 /**
@@ -60,13 +43,13 @@ export async function getUpstashRedis(): Promise<unknown> {
     if (process.env.USE_REDIS_LOCK === "true") {
       throw new Error(
         `USE_REDIS_LOCK=true is set but Redis is not configured. ` +
-        `Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN environment variables. ` +
-        `In-memory locks are not safe for multi-process/serverless environments.`
+          `Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN environment variables. ` +
+          `In-memory locks are not safe for multi-process/serverless environments.`,
       );
     }
     if (process.env.NODE_ENV === "production") {
       throw new Error(
-        "UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are required in production for atomic locking"
+        "UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are required in production for atomic locking",
       );
     }
     return null;
@@ -87,6 +70,182 @@ export async function getUpstashRedis(): Promise<unknown> {
     return null;
   }
 }
+
+// =============================================================================
+// Cache Functions (Now Redis-backed!)
+// =============================================================================
+// These functions now use Upstash Redis in production/serverless environments,
+// with in-memory fallback for local development without Redis configured.
+//
+// KEY INSIGHT: The same Redis instance is used for:
+// - LLM response caching (this section)
+// - Distributed locks (lockHelper below)
+// - Rate limiting (separate file)
+// - Job queues (separate file)
+//
+// We prefix cache keys with "cache:" to avoid collisions with lock keys.
+
+/**
+ * Get a cached value by key.
+ *
+ * Production/Vercel: Reads from Upstash Redis (shared across all instances)
+ * Development: Falls back to in-memory Map (not shared, but fine for local dev)
+ */
+export async function cacheGet<T>(key: string): Promise<T | null> {
+  const prefixedKey = `cache:${key}`;
+
+  // Production or serverless: use Redis
+  if (
+    process.env.NODE_ENV === "production" ||
+    process.env.USE_REDIS_LOCK === "true"
+  ) {
+    try {
+      const redis = await getUpstashRedis();
+      if (!redis) {
+        // Shouldn't happen in production, but handle gracefully
+        console.warn("[cacheGet] Redis not available, falling back to memory");
+        return memoryGet<T>(key);
+      }
+
+      const value = await (
+        redis as { get: (key: string) => Promise<string | null> }
+      ).get(prefixedKey);
+
+      if (value === null) {
+        return null;
+      }
+
+      // Upstash Redis automatically deserializes JSON, but let's be safe
+      try {
+        // If it's already an object (auto-deserialized), return it
+        if (typeof value === "object") {
+          return value as T;
+        }
+        // If it's a string, try to parse it
+        return JSON.parse(value) as T;
+      } catch {
+        // If parsing fails, return as-is (might be a simple string)
+        return value as T;
+      }
+    } catch (error) {
+      console.error("[cacheGet] Redis error, falling back to memory:", error);
+      return memoryGet<T>(key);
+    }
+  }
+
+  // Development: use in-memory fallback
+  return memoryGet<T>(key);
+}
+
+/**
+ * Set a cached value with TTL.
+ *
+ * Production/Vercel: Writes to Upstash Redis (persists across instances)
+ * Development: Falls back to in-memory Map
+ *
+ * @param key - Cache key (will be prefixed with "cache:")
+ * @param value - Value to cache (will be JSON serialized)
+ * @param ttlSec - Time-to-live in seconds (default: 3600 = 1 hour)
+ */
+export async function cacheSet<T>(
+  key: string,
+  value: T,
+  ttlSec = 3600,
+): Promise<void> {
+  const prefixedKey = `cache:${key}`;
+
+  // Production or serverless: use Redis
+  if (
+    process.env.NODE_ENV === "production" ||
+    process.env.USE_REDIS_LOCK === "true"
+  ) {
+    try {
+      const redis = await getUpstashRedis();
+      if (!redis) {
+        console.warn("[cacheSet] Redis not available, falling back to memory");
+        memorySet(key, value, ttlSec);
+        return;
+      }
+
+      // SET with EX (expiration in seconds)
+      // Upstash Redis handles JSON serialization automatically
+      await (
+        redis as {
+          set: (
+            key: string,
+            value: unknown,
+            opts: { ex: number },
+          ) => Promise<string | null>;
+        }
+      ).set(prefixedKey, value, { ex: ttlSec });
+    } catch (error) {
+      console.error("[cacheSet] Redis error, falling back to memory:", error);
+      memorySet(key, value, ttlSec);
+    }
+    return;
+  }
+
+  // Development: use in-memory fallback
+  memorySet(key, value, ttlSec);
+}
+
+/**
+ * Delete a key from the cache.
+ * CRITICAL: Use this for explicit cache invalidation.
+ */
+export async function cacheDelete(key: string): Promise<void> {
+  const prefixedKey = `cache:${key}`;
+
+  // Production or serverless: use Redis
+  if (
+    process.env.NODE_ENV === "production" ||
+    process.env.USE_REDIS_LOCK === "true"
+  ) {
+    try {
+      const redis = await getUpstashRedis();
+      if (!redis) {
+        console.warn(
+          "[cacheDelete] Redis not available, falling back to memory",
+        );
+        mem.delete(key);
+        return;
+      }
+
+      await (redis as { del: (key: string) => Promise<number> }).del(
+        prefixedKey,
+      );
+    } catch (error) {
+      console.error("[cacheDelete] Redis error:", error);
+      mem.delete(key);
+    }
+    return;
+  }
+
+  // Development: use in-memory fallback
+  mem.delete(key);
+}
+
+// =============================================================================
+// In-Memory Helpers (DEV ONLY)
+// =============================================================================
+
+function memoryGet<T>(key: string): T | null {
+  const item = mem.get(key);
+  if (!item) return null;
+  if (Date.now() > item.expires) {
+    mem.delete(key);
+    return null;
+  }
+  return item.value as T;
+}
+
+function memorySet<T>(key: string, value: T, ttlSec: number): void {
+  mem.set(key, { expires: Date.now() + ttlSec * 1000, value });
+}
+
+// =============================================================================
+// Upstash Redis Lock Helpers
+// =============================================================================
 
 /**
  * Lock helper with explicit acquire/release semantics.
@@ -119,7 +278,7 @@ export const lockHelper = {
         // But handle it defensively for production mode
         throw new Error(
           "Redis required for locking but getUpstashRedis() returned null. " +
-          "Check Redis configuration."
+            "Check Redis configuration.",
         );
       }
       // SET key <uuid> NX EX ttlSec - returns "OK" if acquired, null if already exists
@@ -128,7 +287,7 @@ export const lockHelper = {
           set: (
             key: string,
             value: string,
-            opts: { nx: boolean; ex: number }
+            opts: { nx: boolean; ex: number },
           ) => Promise<string | null>;
         }
       ).set(key, token, { nx: true, ex: ttlSec });
@@ -139,12 +298,12 @@ export const lockHelper = {
     // DEV ONLY: In-memory fallback (NOT safe for Vercel/serverless!)
     if (process.env.NODE_ENV !== "test") {
       console.warn(
-        "[lockHelper] Using in-memory lock (dev only, not safe for production)"
+        "[lockHelper] Using in-memory lock (dev only, not safe for production)",
       );
     }
-    const existing = await cacheGet<string>(key);
+    const existing = memoryGet<string>(key);
     if (existing) return null;
-    await cacheSet(key, token, ttlSec);
+    memorySet(key, token, ttlSec);
     return token;
   },
 
@@ -188,7 +347,7 @@ export const lockHelper = {
             eval: (
               script: string,
               keys: string[],
-              args: string[]
+              args: string[],
             ) => Promise<number>;
           }
         ).eval(luaScript, [key], [token]);
@@ -206,9 +365,9 @@ export const lockHelper = {
     }
 
     // DEV ONLY: In-memory compare-and-delete
-    const existing = await cacheGet<string>(key);
+    const existing = memoryGet<string>(key);
     if (existing === token) {
-      await cacheDelete(key);
+      mem.delete(key);
     }
   },
 };
@@ -247,7 +406,7 @@ export function startLockHeartbeat(
   key: string,
   token: string,
   ttlSec: number,
-  intervalMs?: number
+  intervalMs?: number,
 ): () => void {
   // Default interval: refresh at 1/3 of TTL (e.g., 200s for 600s TTL)
   const interval = intervalMs ?? Math.floor((ttlSec * 1000) / 3);
@@ -274,7 +433,9 @@ export function startLockHeartbeat(
       ) {
         const redis = await getUpstashRedis();
         if (!redis) {
-          console.warn(`[lockHeartbeat] Redis not available, stopping heartbeat for ${key}`);
+          console.warn(
+            `[lockHeartbeat] Redis not available, stopping heartbeat for ${key}`,
+          );
           clearInterval(timer);
           activeHeartbeats.delete(key);
           return;
@@ -296,7 +457,7 @@ export function startLockHeartbeat(
               eval: (
                 script: string,
                 keys: string[],
-                args: string[]
+                args: string[],
               ) => Promise<number>;
             }
           ).eval(luaScript, [key], [token, ttlSec.toString()]);
@@ -305,7 +466,7 @@ export function startLockHeartbeat(
             // We no longer own the lock - stop heartbeat
             console.warn(
               `[lockHeartbeat] Lock ${key} no longer owned (token mismatch), stopping heartbeat ` +
-              `(beat #${heartbeatCount}, elapsed=${elapsed}s)`
+                `(beat #${heartbeatCount}, elapsed=${elapsed}s)`,
             );
             clearInterval(timer);
             activeHeartbeats.delete(key);
@@ -316,7 +477,7 @@ export function startLockHeartbeat(
             // Key doesn't exist - stop heartbeat
             console.warn(
               `[lockHeartbeat] Lock ${key} expired/deleted, stopping heartbeat ` +
-              `(beat #${heartbeatCount}, elapsed=${elapsed}s)`
+                `(beat #${heartbeatCount}, elapsed=${elapsed}s)`,
             );
             clearInterval(timer);
             activeHeartbeats.delete(key);
@@ -325,11 +486,14 @@ export function startLockHeartbeat(
 
           console.log(
             `[lockHeartbeat] ❤️ Extended ${key} TTL to ${ttlSec}s ` +
-            `(beat #${heartbeatCount}, elapsed=${elapsed}s)`
+              `(beat #${heartbeatCount}, elapsed=${elapsed}s)`,
           );
         } catch (evalError) {
           // Fallback for Redis clients that don't support eval
-          console.warn(`[lockHeartbeat] Lua eval failed, using fallback:`, evalError);
+          console.warn(
+            `[lockHeartbeat] Lua eval failed, using fallback:`,
+            evalError,
+          );
 
           const currentValue = await (
             redis as { get: (key: string) => Promise<string | null> }
@@ -337,15 +501,17 @@ export function startLockHeartbeat(
 
           if (currentValue === token) {
             await (
-              redis as { expire: (key: string, seconds: number) => Promise<number> }
+              redis as {
+                expire: (key: string, seconds: number) => Promise<number>;
+              }
             ).expire(key, ttlSec);
             console.log(
               `[lockHeartbeat] ❤️ Extended ${key} TTL to ${ttlSec}s (fallback) ` +
-              `(beat #${heartbeatCount}, elapsed=${elapsed}s)`
+                `(beat #${heartbeatCount}, elapsed=${elapsed}s)`,
             );
           } else {
             console.warn(
-              `[lockHeartbeat] Lock ${key} no longer owned, stopping heartbeat (fallback)`
+              `[lockHeartbeat] Lock ${key} no longer owned, stopping heartbeat (fallback)`,
             );
             clearInterval(timer);
             activeHeartbeats.delete(key);
@@ -355,16 +521,16 @@ export function startLockHeartbeat(
       }
 
       // DEV ONLY: In-memory lock extension
-      const existing = await cacheGet<string>(key);
+      const existing = memoryGet<string>(key);
       if (existing === token) {
-        await cacheSet(key, token, ttlSec);
+        memorySet(key, token, ttlSec);
         console.log(
           `[lockHeartbeat] ❤️ Extended ${key} TTL to ${ttlSec}s (in-memory) ` +
-          `(beat #${heartbeatCount}, elapsed=${elapsed}s)`
+            `(beat #${heartbeatCount}, elapsed=${elapsed}s)`,
         );
       } else {
         console.warn(
-          `[lockHeartbeat] Lock ${key} no longer owned (in-memory), stopping heartbeat`
+          `[lockHeartbeat] Lock ${key} no longer owned (in-memory), stopping heartbeat`,
         );
         clearInterval(timer);
         activeHeartbeats.delete(key);
@@ -378,7 +544,7 @@ export function startLockHeartbeat(
   activeHeartbeats.set(key, timer);
 
   console.log(
-    `[lockHeartbeat] Started heartbeat for ${key} (interval=${interval}ms, TTL=${ttlSec}s)`
+    `[lockHeartbeat] Started heartbeat for ${key} (interval=${interval}ms, TTL=${ttlSec}s)`,
   );
 
   // Return a function to stop the heartbeat
@@ -387,7 +553,7 @@ export function startLockHeartbeat(
     activeHeartbeats.delete(key);
     const elapsed = Math.floor((Date.now() - startTime) / 1000);
     console.log(
-      `[lockHeartbeat] Stopped heartbeat for ${key} (${heartbeatCount} beats, elapsed=${elapsed}s)`
+      `[lockHeartbeat] Stopped heartbeat for ${key} (${heartbeatCount} beats, elapsed=${elapsed}s)`,
     );
   };
 }
