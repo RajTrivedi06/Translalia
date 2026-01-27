@@ -9,7 +9,7 @@ export const Card = React.forwardRef<HTMLDivElement, CardProps>(
     return (
       <div
         ref={ref}
-        className={`rounded-2xl border shadow-sm bg-white ${className}`}
+        className={`rounded-lg border border-border-subtle bg-surface shadow-card ${className}`}
         style={style}
         {...props}
       >
@@ -28,7 +28,7 @@ export function CardHeader({
   className?: string;
   children: React.ReactNode;
 }) {
-  return <div className={`p-4 border-b ${className}`}>{children}</div>;
+  return <div className={`p-4 border-b border-border-subtle ${className}`}>{children}</div>;
 }
 
 export function CardTitle({
@@ -38,7 +38,7 @@ export function CardTitle({
   className?: string;
   children: React.ReactNode;
 }) {
-  return <h2 className={`text-lg font-semibold ${className}`}>{children}</h2>;
+  return <h2 className={`text-lg font-semibold text-foreground ${className}`}>{children}</h2>;
 }
 
 export function CardContent({
@@ -49,4 +49,14 @@ export function CardContent({
   children: React.ReactNode;
 }) {
   return <div className={`p-4 ${className}`}>{children}</div>;
+}
+
+export function CardFooter({
+  className = "",
+  children,
+}: {
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return <div className={`p-4 pt-0 flex items-center gap-2 ${className}`}>{children}</div>;
 }

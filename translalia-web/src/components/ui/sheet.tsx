@@ -85,22 +85,20 @@ export function SheetContent({
   if (!ctx || !ctx.open) return null;
   return (
     <div
-      className="fixed inset-0 z-50"
+      className="fixed inset-0 z-50 animate-fade-in"
       role="dialog"
       aria-modal="true"
       aria-labelledby={ariaLabelledby}
     >
       <div
-        className="absolute inset-0 bg-black/40"
+        className="absolute inset-0 bg-foreground/40"
         onClick={() => ctx.onOpenChange(false)}
       />
       <div
         ref={contentRef}
-        className={
-          `absolute top-0 h-full w-full max-w-[720px] bg-white dark:bg-neutral-900 shadow-xl outline-none ${
-            side === "right" ? "right-0" : "left-0"
-          } ` + className
-        }
+        className={`absolute top-0 h-full w-full max-w-[720px] bg-surface shadow-modal outline-none ${
+          side === "right" ? "right-0 animate-slide-in-right" : "left-0 animate-slide-in-left"
+        } ${className}`}
         tabIndex={-1}
       >
         {children}
@@ -118,7 +116,7 @@ export function SheetHeader({
 }) {
   return (
     <div
-      className={`flex items-center justify-between border-b px-4 py-3 ${className}`}
+      className={`flex items-center justify-between border-b border-border-subtle px-6 py-4 ${className}`}
     >
       {children}
     </div>
@@ -135,7 +133,23 @@ export function SheetTitle({
   className?: string;
 }) {
   return (
-    <div id={id} className={`font-semibold ${className}`}>
+    <h2 id={id} className={`text-lg font-semibold text-foreground ${className}`}>
+      {children}
+    </h2>
+  );
+}
+
+export function SheetFooter({
+  className = "",
+  children,
+}: {
+  className?: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div
+      className={`flex items-center justify-end gap-3 border-t border-border-subtle px-6 py-4 ${className}`}
+    >
       {children}
     </div>
   );

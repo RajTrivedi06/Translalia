@@ -13,8 +13,8 @@ export function CollapsedPanelTab({
     <div
       className={cn(
         "flex h-full w-full items-center justify-center",
-        "bg-slate-50/60 text-slate-500",
-        onClick && "cursor-pointer hover:bg-slate-100/80",
+        "bg-muted/60 text-foreground-muted transition-colors duration-fast",
+        onClick && "cursor-pointer hover:bg-muted/80 hover:text-foreground-secondary",
         className
       )}
       onClick={onClick}

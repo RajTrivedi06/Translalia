@@ -65,18 +65,18 @@ function getSuggestionErrorMessage(reason?: string): string {
   }
 }
 
-// Part of speech type and color mapping
+// Part of speech type and color mapping - soft pastels for readability
 const POS_COLORS = {
-  noun: "bg-blue-50 text-blue-700 border-blue-200",
-  verb: "bg-green-50 text-green-700 border-green-200",
-  adjective: "bg-purple-50 text-purple-700 border-purple-200",
-  adverb: "bg-orange-50 text-orange-700 border-orange-200",
-  pronoun: "bg-pink-50 text-pink-700 border-pink-200",
-  preposition: "bg-yellow-50 text-yellow-700 border-yellow-200",
-  conjunction: "bg-indigo-50 text-indigo-700 border-indigo-200",
-  article: "bg-gray-50 text-gray-700 border-gray-200",
-  interjection: "bg-red-50 text-red-700 border-red-200",
-  neutral: "bg-slate-50 text-slate-700 border-slate-200",
+  noun: "bg-sky-50/80 text-sky-700 border-sky-200/80",
+  verb: "bg-emerald-50/80 text-emerald-700 border-emerald-200/80",
+  adjective: "bg-violet-50/80 text-violet-700 border-violet-200/80",
+  adverb: "bg-amber-50/80 text-amber-700 border-amber-200/80",
+  pronoun: "bg-rose-50/80 text-rose-700 border-rose-200/80",
+  preposition: "bg-lime-50/80 text-lime-700 border-lime-200/80",
+  conjunction: "bg-indigo-50/80 text-indigo-700 border-indigo-200/80",
+  article: "bg-stone-50/80 text-stone-600 border-stone-200/80",
+  interjection: "bg-red-50/80 text-error border-red-200/80",
+  neutral: "bg-muted text-foreground-secondary border-border-subtle",
 } as const;
 
 function normalizePartOfSpeechTag(
@@ -173,12 +173,12 @@ function DraggableSourceWord({
       {...listeners}
       style={style}
       className={cn(
-        "px-3 py-1.5 bg-blue-50 border border-blue-200 rounded text-sm font-medium",
-        "cursor-pointer hover:bg-blue-100 hover:border-blue-300 transition-colors",
+        "px-3 py-1.5 bg-accent-light/30 border border-accent/30 rounded-md text-sm font-medium",
+        "cursor-pointer hover:bg-accent-light/50 hover:border-accent/50 transition-all duration-fast",
         "select-none touch-none",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2",
         isDragging && "opacity-40 cursor-grabbing",
-        clicked && "scale-[1.03] ring-2 ring-green-200"
+        clicked && "scale-[1.03] ring-2 ring-success/40"
       )}
       role="button"
       tabIndex={0}
@@ -841,10 +841,10 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
     return (
       <div className="p-6 flex items-center justify-center h-full">
         <div className="text-center space-y-2">
-          <div className="text-sm font-medium text-gray-700">
+          <div className="text-sm font-medium text-foreground-secondary">
             Select a line to begin translation
           </div>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-foreground-muted">
             You’ll get 3 full-line translation variants for every line.
           </p>
         </div>
@@ -855,9 +855,9 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
   if (error) {
     return (
       <div className="p-6 flex items-center justify-center">
-        <Card className="max-w-md w-full border-red-200 bg-red-50">
+        <Card className="max-w-md w-full border-error/30 bg-error-light">
           <CardContent className="pt-6">
-            <p className="text-sm text-red-600 text-center mb-4">
+            <p className="text-sm text-error text-center mb-4">
               Translation failed. Please try again.
             </p>
             <Button
@@ -941,7 +941,7 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
               <ChevronRight className="h-4 w-4" />
             </Button>
             {currentLineIndex !== null && (
-              <span className="text-sm text-gray-500 ml-1">
+              <span className="text-sm text-foreground-muted ml-1">
                 Line {currentLineIndex + 1} of {poemLines.length}
               </span>
             )}
@@ -949,7 +949,7 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
 
           <div className="flex items-center gap-2">
             {badgeModelUsed && (
-              <Badge variant="secondary" className="bg-blue-50 text-blue-700">
+              <Badge variant="secondary" className="bg-accent-light/30 text-accent-dark">
                 {badgeModelUsed}
               </Badge>
             )}
@@ -1026,9 +1026,9 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
 
         {/* Finalize Translation Button - Show when all lines are completed */}
         {allLinesCompleted && (
-          <div className="mt-8 pt-6 border-t border-gray-200">
+          <div className="mt-8 pt-6 border-t border-border-subtle">
             <div className="flex flex-col items-center gap-4">
-              <div className="flex items-center gap-2 text-green-600">
+              <div className="flex items-center gap-2 text-success">
                 <CheckCircle2 className="w-5 h-5" />
                 <span className="text-sm font-medium">
                   All {poemLines.length} lines completed!
@@ -1042,7 +1042,7 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
                 <Sparkles className="w-5 h-5 mr-2" />
                 Finalize Translation
               </Button>
-              <p className="text-xs text-gray-500 text-center max-w-md">
+              <p className="text-xs text-foreground-muted text-center max-w-md">
                 Review your complete translation, make final adjustments, and
                 finalize your translation
               </p>
@@ -1217,10 +1217,10 @@ function TranslationVariantCard({
         }
       }}
       className={cn(
-        "transition-all border-2",
+        "transition-all duration-fast border-2 rounded-md",
         isSelected
-          ? "border-green-500 bg-green-50 shadow-md"
-          : "border-gray-200 hover:border-blue-400 hover:shadow-sm"
+          ? "border-success bg-success-light shadow-panel-shadow"
+          : "border-border-subtle hover:border-accent/50 hover:shadow-card"
       )}
     >
       <CardContent className="p-4 space-y-3">
@@ -1228,13 +1228,13 @@ function TranslationVariantCard({
           <div className="flex items-center gap-2">
             <Badge
               variant={isSelected ? "default" : "secondary"}
-              className={isSelected ? "bg-green-600" : ""}
+              className={isSelected ? "bg-success" : ""}
             >
               Variant {variant.variant}
             </Badge>
-            {isSelected && <CheckCircle2 className="w-4 h-4 text-green-600" />}
+            {isSelected && <CheckCircle2 className="w-4 h-4 text-success" />}
           </div>
-          {/* <div className="text-xs text-gray-500">
+          {/* <div className="text-xs text-foreground-muted">
             Literalness: {(variant.metadata.literalness * 100).toFixed(0)}%
           </div> */}
         </div>
@@ -1345,7 +1345,7 @@ function DraggableVariantToken({
         !disabled && "cursor-pointer hover:-translate-y-0.5 hover:shadow",
         isDragging && "opacity-60 scale-95 cursor-grabbing",
         disabled && "opacity-40 cursor-not-allowed",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
         clicked && "scale-[1.03] ring-2 ring-green-200",
         POS_COLORS[pos]
       )}
@@ -1427,7 +1427,7 @@ function DraggableVariantToken({
       role="button"
       tabIndex={disabled ? -1 : 0}
     >
-      <span className="text-gray-900 pointer-events-none">
+      <span className="text-foreground pointer-events-none">
         {token.translation || "…"}
       </span>
     </div>

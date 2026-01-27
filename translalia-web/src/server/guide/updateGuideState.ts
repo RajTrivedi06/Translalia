@@ -217,13 +217,15 @@ export async function updateGuideState(
     // If guide_answers exists in state JSONB, remove it atomically to prevent legacy issues
     if (currentState.guide_answers) {
       // Use jsonb_set to remove guide_answers without clobbering other state fields
-      await supabase.rpc("patch_thread_state_field", {
-        p_thread_id: threadId,
-        p_path: "{guide_answers}",
-        p_value: "null",
-      }).catch(() => {
+      try {
+        await supabase.rpc("patch_thread_state_field", {
+          p_thread_id: threadId,
+          p_path: "{guide_answers}",
+          p_value: "null",
+        });
+      } catch {
         // Silently ignore if RPC doesn't exist - columns are the source of truth now
-      });
+      }
     }
 
     if (updateError) {

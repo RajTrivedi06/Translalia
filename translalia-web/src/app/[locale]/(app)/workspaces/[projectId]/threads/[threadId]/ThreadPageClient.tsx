@@ -377,9 +377,9 @@ export default function ThreadPageClient({
       onDragEnd={handleDragEnd}
     >
       {/* Soft neutral background that fills entire viewport */}
-      <div className="flex h-[calc(100vh-var(--header-h))] w-full flex-col bg-[#f5f5f7]">
+      <div className="flex h-[calc(100vh-var(--header-h))] w-full flex-col bg-base">
         {/* Header */}
-        <div className="border-b border-slate-200/50 bg-white/80 px-6 py-3 backdrop-blur-sm sm:px-8">
+        <div className="border-b border-border/50 bg-white/80 px-6 py-3 backdrop-blur-sm sm:px-8">
           <div className="mx-auto max-w-7xl">
             <div className="flex flex-col items-start justify-between sm:flex-row sm:items-center sm:gap-4">
               <div className="flex items-center gap-4">
@@ -387,7 +387,7 @@ export default function ThreadPageClient({
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="gap-2 text-slate-600 hover:text-slate-900"
+                    className="gap-2 text-foreground-secondary hover:text-foreground"
                   >
                     <ArrowLeft className="w-4 h-4" />
                     <span className="hidden sm:inline">Back to chats</span>
@@ -395,7 +395,7 @@ export default function ThreadPageClient({
                   </Button>
                 </Link>
                 <div className="h-6 w-px bg-slate-300" />
-                <h1 className="text-xl font-semibold tracking-tight text-slate-500 sm:text-2xl">
+                <h1 className="text-xl font-semibold tracking-tight text-foreground-muted sm:text-2xl">
                   {t("title")}
                 </h1>
               </div>
@@ -450,7 +450,7 @@ export default function ThreadPageClient({
                   >
                     <div className="px-4 py-3">
                       <div className="flex items-center justify-between gap-3">
-                        <h2 className="text-xl font-semibold tracking-tight text-slate-900">
+                        <h2 className="text-xl font-semibold tracking-tight text-foreground">
                           {t("gettingStarted")}
                         </h2>
                         {isWorkshopStarted && (
@@ -459,7 +459,7 @@ export default function ThreadPageClient({
                             variant="ghost"
                             size="sm"
                             onClick={handleToggleGettingStarted}
-                            className="h-8 w-8 p-0 text-slate-600 hover:text-slate-900"
+                            className="h-8 w-8 p-0 text-foreground-secondary hover:text-foreground"
                             title={t("collapseGuidePanel")}
                           >
                             <ChevronLeft className="h-4 w-4" />
@@ -509,7 +509,7 @@ export default function ThreadPageClient({
               <>
                 <div
                   className={cn(
-                    "flex h-full min-h-0 flex-col overflow-hidden border-l border-slate-200/50 bg-white shadow-sm",
+                    "flex h-full min-h-0 flex-col overflow-hidden border-l border-border/50 bg-white shadow-sm",
                     "rounded-none transition-all duration-500 ease-in-out bg-white/70"
                   )}
                 >
@@ -522,7 +522,7 @@ export default function ThreadPageClient({
                 </div>
                 <div
                   className={cn(
-                    "flex h-full min-h-0 flex-col overflow-hidden border-l border-slate-200/50 bg-white shadow-sm",
+                    "flex h-full min-h-0 flex-col overflow-hidden border-l border-border/50 bg-white shadow-sm",
                     "rounded-none transition-all duration-500 ease-in-out bg-white/70"
                   )}
                 >
@@ -535,7 +535,7 @@ export default function ThreadPageClient({
                 </div>
                 <div
                   className={cn(
-                    "flex h-full min-h-0 flex-col overflow-hidden border-l border-slate-200/50 bg-white shadow-sm",
+                    "flex h-full min-h-0 flex-col overflow-hidden border-l border-border/50 bg-white shadow-sm",
                     "rounded-r-2xl rounded-l-none transition-all duration-500 ease-in-out bg-white/70"
                   )}
                 >
@@ -554,7 +554,7 @@ export default function ThreadPageClient({
                 <motion.div
                   layout
                   className={cn(
-                    "flex h-full min-h-0 flex-col overflow-hidden border-l border-slate-200/50 bg-white shadow-sm",
+                    "flex h-full min-h-0 flex-col overflow-hidden border-l border-border/50 bg-white shadow-sm",
                     "transition-colors duration-500 bg-white/70 hover:bg-white/90",
                     isNotebookCollapsed &&
                       isReflectionCollapsed &&
@@ -590,11 +590,11 @@ export default function ThreadPageClient({
                         exit="exit"
                         className="flex h-full flex-col"
                       >
-                        <div className="px-4 py-3 border-b border-slate-200 relative">
-                          <h2 className="text-xl font-semibold tracking-tight text-slate-900">
+                        <div className="px-4 py-3 border-b border-border relative">
+                          <h2 className="text-xl font-semibold tracking-tight text-foreground">
                             {t("workshop")}
                           </h2>
-                          <p className="text-sm text-slate-500">
+                          <p className="text-sm text-foreground-muted">
                             {t("workshopDescription")}
                           </p>
                         </div>
@@ -610,7 +610,7 @@ export default function ThreadPageClient({
                 <motion.div
                   layout
                   className={cn(
-                    "flex h-full min-h-0 flex-col overflow-hidden border-l border-slate-200/50 bg-white shadow-sm",
+                    "flex h-full min-h-0 flex-col overflow-hidden border-l border-border/50 bg-white shadow-sm",
                     "transition-colors duration-500 bg-white/70 hover:bg-white/90",
                     isReflectionCollapsed && "rounded-r-2xl",
                     !isNotebookCollapsed && "rounded-none"
@@ -644,8 +644,8 @@ export default function ThreadPageClient({
                         exit="exit"
                         className="flex h-full flex-col"
                       >
-                        <div className="px-4 py-3 border-b border-slate-200 relative">
-                          <h2 className="text-xl font-semibold tracking-tight text-slate-900">
+                        <div className="px-4 py-3 border-b border-border relative">
+                          <h2 className="text-xl font-semibold tracking-tight text-foreground">
                             {t("notebook")}
                           </h2>
                         </div>
@@ -669,7 +669,7 @@ export default function ThreadPageClient({
                 <motion.div
                   layout
                   className={cn(
-                    "flex h-full min-h-0 flex-col overflow-hidden border-l border-slate-200/50 bg-white shadow-sm",
+                    "flex h-full min-h-0 flex-col overflow-hidden border-l border-border/50 bg-white shadow-sm",
                     "transition-colors duration-500 bg-white/70 hover:bg-white/90 rounded-r-2xl"
                   )}
                 >
@@ -701,11 +701,11 @@ export default function ThreadPageClient({
                         exit="exit"
                         className="flex h-full flex-col"
                       >
-                        <div className="px-4 py-3 border-b border-slate-200 relative">
-                          <h2 className="text-xl font-semibold tracking-tight text-slate-900">
+                        <div className="px-4 py-3 border-b border-border relative">
+                          <h2 className="text-xl font-semibold tracking-tight text-foreground">
                             {t("reflection")}
                           </h2>
-                          <p className="text-sm text-slate-500">
+                          <p className="text-sm text-foreground-muted">
                             {t("reflectionDescription")}
                           </p>
                         </div>

@@ -101,26 +101,39 @@ export default function NotebookPhase6({
     onDragCancel: () => setIsDragActive(false),
   });
 
-  const totalLines = poemLines.length;
+  const sourceLineCount = poemLines.length;
 
-  // Check if all lines are completed
+  // Find max line index across completedLines (includes extra lines beyond source)
+  const maxCompletedIndex = React.useMemo(() => {
+    const indices = Object.keys(completedLines).map(Number).filter(n => !isNaN(n));
+    return indices.length > 0 ? Math.max(...indices) : -1;
+  }, [completedLines]);
+
+  // Total lines = max of source lines and completed lines
+  const totalLines = Math.max(sourceLineCount, maxCompletedIndex + 1);
+
+  // Check if all lines are completed (source lines + any extra lines)
   const allLinesCompleted = React.useMemo(() => {
-    if (poemLines.length === 0) return false;
-    return poemLines.every((_, idx) => {
+    if (sourceLineCount === 0) return false;
+    // Check all source lines are completed
+    const sourceComplete = poemLines.every((_, idx) => {
       const completed = completedLines[idx];
       return completed && completed.trim().length > 0;
     });
-  }, [poemLines, completedLines]);
+    return sourceComplete;
+  }, [poemLines, sourceLineCount, completedLines]);
 
-  // Assemble poem preview
+  // Assemble poem preview - include extra lines beyond source
   const poemPreview = React.useMemo(() => {
-    return poemLines
-      .map((_, idx) => {
-        const completed = completedLines[idx];
-        return completed && completed.trim().length > 0 ? completed.trim() : "";
-      })
-      .join("\n");
-  }, [poemLines, completedLines]);
+    const lines: string[] = [];
+    // Include all lines from 0 to max(sourceLineCount, maxCompletedIndex)
+    const maxIdx = Math.max(sourceLineCount - 1, maxCompletedIndex);
+    for (let idx = 0; idx <= maxIdx; idx++) {
+      const completed = completedLines[idx];
+      lines.push(completed && completed.trim().length > 0 ? completed.trim() : "");
+    }
+    return lines.join("\n");
+  }, [sourceLineCount, maxCompletedIndex, completedLines]);
 
   // Auto-save lines when they change (debounced)
   React.useEffect(() => {
@@ -332,11 +345,11 @@ export default function NotebookPhase6({
     return (
       <div className="h-full flex items-center justify-center p-6">
         <div className="text-center max-w-md">
-          <FileText className="w-12 h-12 mx-auto text-gray-300 mb-4" />
-          <h3 className="text-base font-medium text-gray-800 mb-1">
+          <FileText className="w-12 h-12 mx-auto text-foreground-disabled mb-4" />
+          <h3 className="text-base font-medium text-foreground mb-1">
             No poem loaded
           </h3>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-foreground-secondary">
             Complete the Guide Rail to load a poem and start translating.
           </p>
         </div>
@@ -350,7 +363,7 @@ export default function NotebookPhase6({
       <div className="flex items-center justify-between border-b bg-white px-4 py-2">
         <div className="flex items-center gap-2 min-w-0">
           {showTitle ? (
-            <div className="text-sm font-semibold text-slate-900">Notebook</div>
+            <div className="text-sm font-semibold text-foreground">Notebook</div>
           ) : null}
           <Badge variant="secondary" className="text-[11px]">
             Line {activeIdx + 1} of {totalLines}
@@ -358,7 +371,7 @@ export default function NotebookPhase6({
           {Object.keys(draftLines).length > 0 && (
             <Badge
               variant="secondary"
-              className="text-[11px] text-amber-600 bg-amber-50"
+              className="text-[11px] text-warning bg-warning-light"
             >
               {Object.keys(draftLines).length} unsaved
             </Badge>
@@ -391,17 +404,18 @@ export default function NotebookPhase6({
 
       {/* Column Headers - Sticky */}
       <div className="grid grid-cols-2 border-b bg-white sticky top-0 z-10">
-        <div className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide border-r">
+        <div className="px-4 py-3 text-xs font-semibold text-foreground-muted uppercase tracking-wide border-r">
           Source
         </div>
-        <div className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+        <div className="px-4 py-3 text-xs font-semibold text-foreground-muted uppercase tracking-wide">
           Translation
         </div>
       </div>
 
       {/* Main body: row-based layout for perfect alignment */}
       <div className="flex-1 min-h-0 overflow-y-auto bg-white">
-        {poemLines.map((line, idx) => {
+        {/* Render all lines including extras beyond source poem */}
+        {Array.from({ length: totalLines }, (_, idx) => {
           const isActive = idx === currentLineIndex;
           const draft = draftLines[idx];
           const completed = completedLines[idx];
@@ -410,13 +424,16 @@ export default function NotebookPhase6({
             completed && !draft ? "completed" : draft ? "draft" : "empty";
           const hasContent = text.trim().length > 0;
           const isHovered = hoveredLineIndex === idx;
+          const isExtraLine = idx >= sourceLineCount;
+          const sourceLine = poemLines[idx] ?? "";
 
           return (
             <div
               key={`row-${idx}`}
               className={[
-                "grid grid-cols-2 border-b border-slate-100 transition-colors",
-                isActive ? "bg-blue-50/50" : "hover:bg-slate-50/50",
+                "grid grid-cols-2 border-b border-border-subtle transition-colors",
+                isActive ? "bg-accent-light/20" : "hover:bg-muted/50/50",
+                isExtraLine ? "bg-purple-50/30" : "",
               ].join(" ")}
               onMouseEnter={() => setHoveredLineIndex(idx)}
               onMouseLeave={() => setHoveredLineIndex(null)}
@@ -426,21 +443,24 @@ export default function NotebookPhase6({
                 type="button"
                 onClick={() => setCurrentLineIndex(idx)}
                 className={[
-                  "w-full text-left px-3 py-3 text-base leading-relaxed border-r border-slate-100",
-                  "hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-200",
+                  "w-full text-left px-3 py-3 text-base leading-relaxed border-r border-border-subtle",
+                  "hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/50",
                   "flex items-start gap-2",
-                  isActive ? "bg-blue-50 text-slate-900" : "text-slate-700",
+                  isActive ? "bg-accent-light/30 text-foreground" : "text-foreground-secondary",
+                  isExtraLine ? "bg-purple-50/50" : "",
                 ].join(" ")}
               >
                 <span
                   className={[
                     "mt-0.5 inline-flex h-5 w-5 flex-shrink-0 items-center justify-center font-mono text-xs",
-                    isActive ? "text-blue-600" : "text-slate-300",
+                    isActive ? "text-accent" : isExtraLine ? "text-purple-400" : "text-foreground-disabled",
                   ].join(" ")}
                 >
                   {idx + 1}
                 </span>
-                <span className="flex-1 min-w-0">{line}</span>
+                <span className={["flex-1 min-w-0", isExtraLine ? "italic text-purple-400" : ""].join(" ")}>
+                  {isExtraLine ? "(extra line)" : sourceLine}
+                </span>
               </button>
 
               {/* Translation Cell */}
@@ -448,7 +468,7 @@ export default function NotebookPhase6({
                 className={[
                   "group relative px-3 py-3",
                   "flex items-start gap-2",
-                  isActive ? "bg-amber-50/50" : "",
+                  isActive ? "bg-warning-light/30" : "",
                 ].join(" ")}
                 onClick={() => setCurrentLineIndex(idx)}
               >
@@ -456,10 +476,10 @@ export default function NotebookPhase6({
                   className={[
                     "mt-0.5 inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[11px]",
                     status === "completed"
-                      ? "bg-green-100 text-green-700"
+                      ? "bg-success-light text-success"
                       : status === "draft"
-                      ? "bg-amber-100 text-amber-800"
-                      : "bg-slate-100 text-slate-400",
+                      ? "bg-warning-light text-warning"
+                      : "bg-muted text-foreground-muted",
                   ].join(" ")}
                   aria-hidden="true"
                 >
@@ -552,8 +572,8 @@ export default function NotebookPhase6({
                         "w-full resize-none border-0 bg-transparent p-0 text-base leading-relaxed",
                         "focus:ring-0 focus:outline-none",
                         status === "empty"
-                          ? "text-slate-300 italic placeholder:text-slate-300"
-                          : "text-slate-800",
+                          ? "text-foreground-disabled italic placeholder:text-foreground-disabled"
+                          : "text-foreground",
                       ].join(" ")}
                       rows={1}
                       style={{
@@ -573,8 +593,8 @@ export default function NotebookPhase6({
                       clearDraft(idx);
                     }}
                     className={[
-                      "mt-0.5 flex-shrink-0 rounded p-1 text-slate-400",
-                      "hover:bg-slate-200 hover:text-slate-600",
+                      "mt-0.5 flex-shrink-0 rounded p-1 text-foreground-muted",
+                      "hover:bg-muted hover:text-foreground-secondary",
                       "transition-colors",
                     ].join(" ")}
                     aria-label="Clear line"
@@ -586,12 +606,36 @@ export default function NotebookPhase6({
             </div>
           );
         })}
+
+        {/* Add Line button */}
+        <div className="border-b border-border-subtle px-3 py-2">
+          <button
+            type="button"
+            onClick={() => {
+              // Add a new line by setting a draft at the next index
+              const nextIndex = totalLines;
+              setDraft(nextIndex, "");
+              setCurrentLineIndex(nextIndex);
+              // Focus the new textarea after render
+              setTimeout(() => {
+                const textarea = textareaRefs.current[nextIndex];
+                if (textarea) {
+                  textarea.focus();
+                }
+              }, 100);
+            }}
+            className="flex items-center gap-2 text-sm text-purple-600 hover:text-purple-700 hover:bg-purple-50 px-2 py-1 rounded transition-colors"
+          >
+            <span className="text-lg">+</span>
+            <span>Add extra line</span>
+          </button>
+        </div>
       </div>
 
       {/* Save error display */}
       {saveError && (
         <div className="border-t bg-white px-4 py-2">
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 flex items-start gap-2">
+          <div className="rounded-lg border border-warning/30 bg-warning-light px-3 py-2 text-sm text-warning flex items-start gap-2">
             <span>{saveError}</span>
           </div>
         </div>

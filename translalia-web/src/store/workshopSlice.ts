@@ -121,8 +121,19 @@ export const useWorkshopStore = create<WorkshopState>()(
         }),
 
       setCompletedLines: (lines: Record<number, string>) =>
-        set({
-          completedLines: lines,
+        set((state) => {
+          // Clear drafts for lines that are being set as completed
+          // This ensures green tick appears instead of yellow label
+          const savedLineIndices = new Set(Object.keys(lines).map(Number));
+          const remainingDrafts = Object.fromEntries(
+            Object.entries(state.draftLines).filter(
+              ([key]) => !savedLineIndices.has(Number(key))
+            )
+          );
+          return {
+            completedLines: lines,
+            draftLines: remainingDrafts,
+          };
         }),
 
       setDraft: (index: number, translation: string) =>

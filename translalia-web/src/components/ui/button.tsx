@@ -2,7 +2,7 @@
 import * as React from "react";
 
 type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "default" | "outline" | "ghost";
+  variant?: "default" | "outline" | "ghost" | "destructive";
   size?: "sm" | "md" | "lg";
 };
 
@@ -12,23 +12,32 @@ export function Button({
   size = "md",
   ...props
 }: ButtonProps) {
+  // Base styles: consistent across all variants
   const base =
-    "inline-flex items-center justify-center rounded-md text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 disabled:opacity-60 disabled:cursor-not-allowed";
-  const variants =
-    variant === "outline"
-      ? "border bg-white hover:bg-neutral-50 dark:bg-neutral-900"
-      : variant === "ghost"
-      ? "bg-transparent hover:bg-neutral-100 dark:hover:bg-neutral-800"
-      : "bg-neutral-900 text-white hover:bg-neutral-800";
-  const sizes =
-    size === "sm"
-      ? "px-2 py-1"
-      : size === "lg"
-      ? "px-4 py-2 text-base"
-      : "px-3 py-1.5";
+    "inline-flex items-center justify-center font-medium rounded-md transition-all duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none";
+
+  // Variant styles using semantic tokens
+  const variantStyles = {
+    default:
+      "bg-accent text-white hover:bg-accent-dark shadow-card",
+    outline:
+      "border border-border bg-surface text-foreground hover:bg-muted shadow-card",
+    ghost:
+      "bg-transparent text-foreground hover:bg-muted",
+    destructive:
+      "bg-error text-white hover:bg-error/90 shadow-card",
+  };
+
+  // Size styles: consistent padding scale
+  const sizeStyles = {
+    sm: "h-8 px-3 text-sm",
+    md: "h-10 px-4 text-sm",
+    lg: "h-12 px-6 text-base",
+  };
+
   return (
     <button
-      className={`${base} ${variants} ${sizes} ${className}`}
+      className={`${base} ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
       {...props}
     />
   );

@@ -2,9 +2,10 @@
 
 import * as React from "react";
 import { X, RotateCcw, Save, Check } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useWorkshopStore } from "@/store/workshopSlice";
 import { useThreadId } from "@/hooks/useThreadId";
-import { useWorkshopState } from "@/lib/hooks/useWorkshopFlow";
+import { useWorkshopState, useSaveManualLineWithoutInvalidation } from "@/lib/hooks/useWorkshopFlow";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -24,6 +25,8 @@ export function FullTranslationEditor({
 
   const threadId = useThreadId() || undefined;
   const { data: savedWorkshopLines } = useWorkshopState(threadId);
+  const saveManualLineBatch = useSaveManualLineWithoutInvalidation();
+  const queryClient = useQueryClient();
 
   const [wholeTranslation, setWholeTranslation] = React.useState("");
   const [hasUnsavedChanges, setHasUnsavedChanges] = React.useState(false);
@@ -58,36 +61,54 @@ export function FullTranslationEditor({
   );
 
   // Assemble whole translation from current state
+  // Include extra lines beyond poemLines.length if they exist in DB or drafts
   const assembleWholeTranslation = React.useCallback(() => {
-    return poemLines.map((_, idx) => getStudioValue(idx) || "").join("\n");
-  }, [poemLines, getStudioValue]);
+    // Find the max line index across all sources
+    let maxIndex = poemLines.length - 1;
 
-  // Sanitize newlines from assembled translation to prevent index drift
-  const sanitizeTranslation = React.useCallback((text: string) => {
-    // Replace any newlines within lines with spaces, then rejoin
-    return text
-      .split("\n")
-      .map((line) => line.replace(/[\r\n]+/g, " ").trim())
-      .join("\n");
-  }, []);
+    // Check savedWorkshopLines for extra lines (handles both array and object format)
+    if (savedWorkshopLines) {
+      if (Array.isArray(savedWorkshopLines)) {
+        maxIndex = Math.max(maxIndex, savedWorkshopLines.length - 1);
+      } else {
+        const dbIndices = Object.keys(savedWorkshopLines).map(Number).filter(n => !isNaN(n));
+        if (dbIndices.length > 0) {
+          maxIndex = Math.max(maxIndex, ...dbIndices);
+        }
+      }
+    }
+
+    // Check draftLines for extra lines
+    const draftIndices = Object.keys(draftLines).map(Number).filter(n => !isNaN(n));
+    if (draftIndices.length > 0) {
+      maxIndex = Math.max(maxIndex, ...draftIndices);
+    }
+
+    // Build the translation including all lines up to maxIndex
+    const lines: string[] = [];
+    for (let idx = 0; idx <= maxIndex; idx++) {
+      lines.push(getStudioValue(idx) || "");
+    }
+    return lines.join("\n");
+  }, [poemLines.length, savedWorkshopLines, draftLines, getStudioValue]);
 
   // Initialize translation when opening
   React.useEffect(() => {
     if (open && !wholeTranslation) {
-      setWholeTranslation(sanitizeTranslation(assembleWholeTranslation()));
+      setWholeTranslation(assembleWholeTranslation());
       setHasUnsavedChanges(false);
     }
-  }, [open, wholeTranslation, assembleWholeTranslation, sanitizeTranslation]);
+  }, [open, wholeTranslation, assembleWholeTranslation]);
 
   // Resync when drafts/completed lines change while open (but only if no unsaved changes)
   React.useEffect(() => {
     if (open && !hasUnsavedChanges) {
-      const newTranslation = sanitizeTranslation(assembleWholeTranslation());
+      const newTranslation = assembleWholeTranslation();
       if (newTranslation !== wholeTranslation) {
         setWholeTranslation(newTranslation);
       }
     }
-  }, [open, hasUnsavedChanges, assembleWholeTranslation, sanitizeTranslation, draftLines]);
+  }, [open, hasUnsavedChanges, assembleWholeTranslation, draftLines]);
 
   // Reset when closing
   React.useEffect(() => {
@@ -122,33 +143,66 @@ export function FullTranslationEditor({
     [handleClose]
   );
 
-  // Save as draft
+  // Save to database (not just local drafts) so lines get green ticks
   const handleSaveDraft = React.useCallback(async () => {
     if (!threadId || !hasUnsavedChanges) return;
 
     setIsSaving(true);
     try {
-      // Split and sanitize any embedded newlines to prevent index drift
+      // Split and sanitize any embedded newlines
       const translationLines = wholeTranslation
         .split("\n")
         .map((line) => line.replace(/[\r\n]+/g, " ").trim());
 
-      const nextDraftLines: Record<number, string> = {};
-      // Process up to poemLines.length, ensuring we capture all lines
-      for (let idx = 0; idx < poemLines.length; idx++) {
-        const draft = (translationLines[idx] ?? "").trim();
-        const confirmed = (getConfirmedTranslation(idx) ?? "").trim();
-        // Only add to drafts if non-empty and differs from confirmed
-        // Never write empty draft over confirmed (would hide it)
-        if (draft !== confirmed && (draft.length > 0 || confirmed.length === 0)) {
-          nextDraftLines[idx] = draft;
+      // Collect ALL lines to save to database (including extras beyond source length)
+      // This gives users full flexibility to add as many lines as needed
+      const linesToSave: Array<{ lineIndex: number; text: string }> = [];
+      for (let idx = 0; idx < translationLines.length; idx++) {
+        const text = translationLines[idx].trim();
+        // Only save non-empty lines
+        if (text.length > 0) {
+          linesToSave.push({ lineIndex: idx, text });
         }
       }
 
-      setDraftLines(nextDraftLines);
+      // Save all lines to the database sequentially
+      let successCount = 0;
+      for (const { lineIndex, text } of linesToSave) {
+        try {
+          await saveManualLineBatch.mutateAsync({
+            threadId,
+            lineIndex,
+            // For extra lines beyond source, use empty string as original
+            originalLine: poemLines[lineIndex] ?? "",
+            translatedLine: text,
+          });
+          successCount++;
+        } catch (lineError) {
+          console.error(
+            `[FullTranslationEditor] Failed to save line ${lineIndex}:`,
+            lineError
+          );
+        }
+      }
+
+      // Clear all drafts since we've saved to DB
+      setDraftLines({});
+
+      // Invalidate and refetch to trigger WorkshopRail sync
+      // This will update completedLines from DB and show green ticks
+      await queryClient.invalidateQueries({
+        queryKey: ["workshop-state", threadId],
+      });
+
+      console.log(
+        `[FullTranslationEditor] Saved ${successCount}/${linesToSave.length} lines to database`
+      );
+
       setHasUnsavedChanges(false);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
+    } catch (e) {
+      console.error("[FullTranslationEditor] Failed to save:", e);
     } finally {
       setIsSaving(false);
     }
@@ -156,8 +210,9 @@ export function FullTranslationEditor({
     threadId,
     hasUnsavedChanges,
     wholeTranslation,
-    poemLines.length,
-    getConfirmedTranslation,
+    poemLines,
+    saveManualLineBatch,
+    queryClient,
     setDraftLines,
   ]);
 
@@ -189,18 +244,46 @@ export function FullTranslationEditor({
     setHasUnsavedChanges(false);
   }, [assembleWholeTranslation]);
 
-  // Calculate completion stats
-  const completedCount = React.useMemo(() => {
+  // Calculate completion stats - count ALL saved lines including extras
+  const { completedCount, totalSavedLines } = React.useMemo(() => {
     let count = 0;
-    for (let idx = 0; idx < poemLines.length; idx++) {
-      if (getConfirmedTranslation(idx) !== null) count++;
-    }
-    return count;
-  }, [poemLines.length, getConfirmedTranslation]);
+    let maxSavedIndex = -1;
 
-  const totalLines = poemLines.length;
+    // Count from savedWorkshopLines (handles both array and object format)
+    if (savedWorkshopLines) {
+      if (Array.isArray(savedWorkshopLines)) {
+        savedWorkshopLines.forEach((v, idx) => {
+          if (v && typeof v === "object") {
+            const translated = (v as { translated?: string }).translated;
+            if (typeof translated === "string" && translated.trim().length > 0) {
+              count++;
+              maxSavedIndex = Math.max(maxSavedIndex, idx);
+            }
+          }
+        });
+      } else {
+        Object.entries(savedWorkshopLines).forEach(([k, v]) => {
+          const idx = Number(k);
+          if (!isNaN(idx) && v && typeof v === "object") {
+            const translated = (v as { translated?: string }).translated;
+            if (typeof translated === "string" && translated.trim().length > 0) {
+              count++;
+              maxSavedIndex = Math.max(maxSavedIndex, idx);
+            }
+          }
+        });
+      }
+    }
+
+    return { completedCount: count, totalSavedLines: maxSavedIndex + 1 };
+  }, [savedWorkshopLines]);
+
+  const totalSourceLines = poemLines.length;
   const progressPercentage =
-    totalLines > 0 ? Math.round((completedCount / totalLines) * 100) : 0;
+    totalSourceLines > 0 ? Math.round((completedCount / totalSourceLines) * 100) : 0;
+
+  // Count translation lines for line count indicator
+  const translationLineCount = wholeTranslation.split("\n").length;
 
   // Use a ref to track if we should render (for exit animation)
   const [shouldRender, setShouldRender] = React.useState(open);
@@ -213,9 +296,6 @@ export function FullTranslationEditor({
       return () => clearTimeout(timer);
     }
   }, [open]);
-
-  // Get translation lines as array
-  const translationLines = wholeTranslation.split("\n");
 
   if (!shouldRender) return null;
 
@@ -247,11 +327,11 @@ export function FullTranslationEditor({
         {/* Header */}
         <div className="flex items-center justify-between border-b px-6 py-4 flex-shrink-0">
           <div className="flex items-center gap-4">
-            <h2 className="text-2xl font-bold text-slate-900">
+            <h2 className="text-2xl font-bold text-foreground">
               Full Translation Editor
             </h2>
             <Badge variant="secondary" className="text-xs">
-              {completedCount} of {totalLines} lines ({progressPercentage}%)
+              {completedCount} of {totalSourceLines} lines ({progressPercentage}%)
             </Badge>
             {hasUnsavedChanges && (
               <Badge
@@ -294,7 +374,7 @@ export function FullTranslationEditor({
         </div>
 
         {/* Column Headers */}
-        <div className="grid grid-cols-2 bg-slate-50/80 flex-shrink-0">
+        <div className="grid grid-cols-2 bg-muted/80 flex-shrink-0">
           <div className="px-8 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
             Source Poem
           </div>
@@ -303,108 +383,83 @@ export function FullTranslationEditor({
           </div>
         </div>
 
-        {/* Main Content - Row-based side by side */}
-        <div className="flex-1 min-h-0 overflow-y-auto">
-          <div className="grid grid-cols-2 min-h-full">
-            {/* Source Poem Column */}
-            <div className="px-8 py-6 bg-slate-50/30">
-              <div className="space-y-1">
+        {/* Main Content - Source reference + free-form translation editor */}
+        <div className="flex-1 min-h-0 overflow-hidden grid grid-cols-2">
+          {/* Source Poem Column - Read-only reference with line numbers */}
+          <div className="overflow-y-auto border-r border-border bg-muted/30">
+            <div className="px-6 py-6">
+              <div className="space-y-0">
                 {poemLines.map((line, idx) => (
                   <div
                     key={`source-${idx}`}
-                    className="text-lg leading-relaxed text-slate-700 min-h-[2rem] flex items-center"
-                    style={{ fontFamily: "Georgia, serif" }}
+                    className="flex items-start gap-3 min-h-[1.75rem]"
                   >
-                    {line || <span className="opacity-0">.</span>}
+                    <span className="text-xs text-slate-400 font-mono w-5 text-right flex-shrink-0 pt-0.5">
+                      {idx + 1}
+                    </span>
+                    <span
+                      className="text-lg leading-relaxed text-foreground-secondary flex-1"
+                      style={{ fontFamily: "Georgia, serif", lineHeight: "1.75" }}
+                    >
+                      {line || <span className="opacity-30 italic">empty line</span>}
+                    </span>
                   </div>
                 ))}
               </div>
             </div>
+          </div>
 
-            {/* Translation Poem Column */}
-            <div className="px-8 py-6 bg-white">
-              <div className="space-y-1">
-                {poemLines.map((_, idx) => {
-                  const lineValue = translationLines[idx] ?? "";
-                  return (
-                    <div
-                      key={`translation-${idx}`}
-                      className="min-h-[2rem] flex items-center"
-                    >
-                      <textarea
-                        value={lineValue}
-                        onChange={(e) => {
-                          const lines = [...translationLines];
-                          // Ensure array has enough elements
-                          while (lines.length <= idx) {
-                            lines.push("");
-                          }
-                          // Strip any newlines that may be pasted in
-                          lines[idx] = e.target.value.replace(/[\r\n]+/g, " ");
-                          setWholeTranslation(lines.join("\n"));
-                          setHasUnsavedChanges(true);
-                        }}
-                        onKeyDown={(e) => {
-                          // Prevent Enter from inserting newlines (causes index drift)
-                          if (e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault();
-                            // Optionally move focus to next textarea
-                            const nextTextarea = document.querySelector(
-                              `[data-line-idx="${idx + 1}"]`
-                            ) as HTMLTextAreaElement | null;
-                            if (nextTextarea) {
-                              nextTextarea.focus();
-                            }
-                          }
-                        }}
-                        data-line-idx={idx}
-                        className={cn(
-                          "w-full resize-none border-0 bg-transparent p-0",
-                          "text-lg leading-relaxed text-slate-800",
-                          "focus:outline-none focus:ring-0",
-                          "placeholder:text-slate-300 placeholder:italic",
-                          !lineValue && "italic text-slate-300"
-                        )}
-                        placeholder="..."
-                        spellCheck={false}
-                        rows={1}
-                        style={{
-                          fontFamily: "Georgia, serif",
-                          minHeight: "2rem",
-                          overflow: "hidden",
-                          lineHeight: "1.75",
-                        }}
-                        onInput={(e) => {
-                          const target = e.target as HTMLTextAreaElement;
-                          target.style.height = "auto";
-                          target.style.height = `${Math.max(
-                            32,
-                            target.scrollHeight
-                          )}px`;
-                        }}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
+          {/* Translation Column - Single free-form textarea */}
+          <div className="overflow-y-auto bg-white">
+            <div className="px-6 py-6 h-full">
+              <textarea
+                value={wholeTranslation}
+                onChange={(e) => {
+                  setWholeTranslation(e.target.value);
+                  setHasUnsavedChanges(true);
+                }}
+                className={cn(
+                  "w-full h-full min-h-[400px] resize-none border-0 bg-transparent p-0",
+                  "text-lg text-foreground",
+                  "focus:outline-none focus:ring-0",
+                  "placeholder:text-slate-300 placeholder:italic"
+                )}
+                placeholder="Type your translation here...&#10;&#10;Each line corresponds to a source line.&#10;Press Enter to create new lines."
+                spellCheck={false}
+                style={{
+                  fontFamily: "Georgia, serif",
+                  lineHeight: "1.75",
+                }}
+              />
             </div>
           </div>
         </div>
 
         {/* Footer Actions */}
         <div className="border-t px-6 py-4 bg-white flex items-center justify-between flex-shrink-0">
-          <div className="text-sm text-slate-600">
-            {totalLines - completedCount > 0 ? (
-              <span>
-                {totalLines - completedCount} line
-                {totalLines - completedCount !== 1 ? "s" : ""} remaining
-              </span>
-            ) : (
-              <span className="flex items-center gap-1.5 text-green-600 font-medium">
-                <Check className="w-4 h-4" />
-                Translation complete!
-              </span>
-            )}
+          <div className="flex items-center gap-4 text-sm">
+            {/* Line count indicator */}
+            <span className="font-mono text-slate-500">
+              {translationLineCount} translation lines
+            </span>
+            <span className="text-slate-400 text-xs">
+              ({totalSourceLines} source)
+            </span>
+            <span className="text-slate-300">|</span>
+            {/* Completion status */}
+            <span className="text-slate-600">
+              {totalSourceLines - completedCount > 0 ? (
+                <span>
+                  {totalSourceLines - completedCount} line
+                  {totalSourceLines - completedCount !== 1 ? "s" : ""} to confirm
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5 text-green-600 font-medium">
+                  <Check className="w-4 h-4" />
+                  All confirmed!
+                </span>
+              )}
+            </span>
           </div>
           <div className="flex items-center gap-3">
             <Button
@@ -414,7 +469,7 @@ export function FullTranslationEditor({
               className="gap-2"
             >
               <Save className="h-4 w-4" />
-              {isSaving ? "Saving..." : "Save Draft"}
+              {isSaving ? "Saving..." : "Save All"}
             </Button>
           </div>
         </div>

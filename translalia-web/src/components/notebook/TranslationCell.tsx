@@ -117,7 +117,7 @@ export function TranslationCell({
             cell.isModified && "border-green-500",
             chipText ? "text-gray-900" : "text-gray-400",
             "hover:border-blue-300",
-            cell.isEditing && "ring-2 ring-blue-300"
+            cell.isEditing && "ring-2 ring-accent"
           )}
           onClick={() => {
             if (!cell.isEditing) onEdit(cell.id);

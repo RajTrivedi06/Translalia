@@ -55,16 +55,16 @@ export default async function LocaleLayout({
           <NextIntlClientProvider messages={messages} locale={locale}>
             <div
               suppressHydrationWarning
-              className="locale-wrapper min-h-screen bg-white text-slate-900"
+              className="locale-wrapper min-h-screen bg-base text-foreground"
             >
-              <header className="sticky top-0 z-40 h-[var(--header-h)] border-b bg-white/80 backdrop-blur">
+              <header className="sticky top-0 z-40 h-[var(--header-h)] border-b border-border-subtle bg-surface/80 backdrop-blur">
                 <div className="mx-auto flex h-full max-w-screen-2xl items-center justify-between px-4 py-2">
                   <Link
                     href="/"
-                    className="font-serif text-xl font-light leading-[0.85] tracking-[-0.03em] text-slate-900 hover:text-slate-900 transition-colors cursor-pointer"
+                    className="font-serif text-xl font-light leading-[0.85] tracking-[-0.03em] text-foreground hover:text-foreground transition-colors duration-fast cursor-pointer"
                   >
                     <span>
-                      Trans<span className="italic text-sky-600">lalia</span>
+                      Trans<span className="italic text-accent">lalia</span>
                     </span>
                   </Link>
                   <div className="flex items-center gap-3">

@@ -76,7 +76,7 @@ function ExpandableSection({
         "overflow-hidden rounded-2xl transition-all duration-300",
         variant === "highlight"
           ? "bg-gradient-to-br from-amber-50/80 to-orange-50/60 ring-1 ring-amber-200/60"
-          : "bg-stone-50/80 ring-1 ring-stone-200/60"
+          : "bg-muted/80 ring-1 ring-border-subtle/60"
       )}
     >
       <button
@@ -84,20 +84,20 @@ function ExpandableSection({
         className={cn(
           "flex w-full items-center gap-3 px-5 py-4 text-left transition-colors",
           variant === "highlight"
-            ? "hover:bg-amber-100/40"
-            : "hover:bg-stone-100/60"
+            ? "hover:bg-warning-light/40"
+            : "hover:bg-muted/60"
         )}
       >
         <Icon
           className={cn(
             "h-4 w-4 flex-shrink-0",
-            variant === "highlight" ? "text-amber-600" : "text-stone-500"
+            variant === "highlight" ? "text-warning" : "text-foreground-muted"
           )}
         />
         <span
           className={cn(
             "flex-1 text-sm font-medium",
-            variant === "highlight" ? "text-amber-900" : "text-stone-700"
+            variant === "highlight" ? "text-foreground" : "text-foreground-secondary"
           )}
         >
           {title}
@@ -106,7 +106,7 @@ function ExpandableSection({
           className={cn(
             "h-4 w-4 transition-transform duration-200",
             isOpen && "rotate-180",
-            variant === "highlight" ? "text-amber-500" : "text-stone-400"
+            variant === "highlight" ? "text-warning" : "text-foreground-muted"
           )}
         />
       </button>
@@ -144,20 +144,20 @@ function PoemEntry({ entry, t }: { entry: DiaryEntry; t: (key: string) => string
         "group relative overflow-hidden rounded-3xl bg-white transition-all duration-500",
         "shadow-[0_1px_3px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)]",
         "hover:shadow-[0_4px_20px_rgba(0,0,0,0.06),0_8px_32px_rgba(0,0,0,0.04)]",
-        "ring-1 ring-stone-200/80"
+        "ring-1 ring-border-subtle/80"
       )}
     >
       {/* Decorative accent */}
       <div className="absolute left-0 top-0 h-full w-1 bg-gradient-to-b from-amber-400 via-orange-400 to-rose-400 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
 
       {/* Header */}
-      <header className="border-b border-stone-100 px-8 py-6">
+      <header className="border-b border-border-subtle px-8 py-6">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
-            <h2 className="font-serif text-xl font-medium tracking-tight text-stone-900 md:text-2xl">
+            <h2 className="font-serif text-xl font-medium tracking-tight text-foreground md:text-2xl">
               {entry.title || "Untitled Poem"}
             </h2>
-            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-stone-500">
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-foreground-muted">
               <span className="flex items-center gap-1.5">
                 <Calendar className="h-3.5 w-3.5" />
                 {new Date(entry.thread_created_at).toLocaleDateString("en-US", {
@@ -171,7 +171,7 @@ function PoemEntry({ entry, t }: { entry: DiaryEntry; t: (key: string) => string
                 {validLines.length} lines
               </span>
               {hasJourney && (
-                <span className="flex items-center gap-1.5 text-amber-600">
+                <span className="flex items-center gap-1.5 text-warning">
                   <Sparkles className="h-3.5 w-3.5" />
                   Journey reviewed
                 </span>
@@ -183,8 +183,8 @@ function PoemEntry({ entry, t }: { entry: DiaryEntry; t: (key: string) => string
             className={cn(
               "flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-all",
               expanded
-                ? "bg-stone-900 text-white"
-                : "bg-stone-100 text-stone-700 hover:bg-stone-200"
+                ? "bg-accent text-white"
+                : "bg-muted text-foreground-secondary hover:bg-border-subtle"
             )}
           >
             {expanded ? "Collapse" : "View"}
@@ -210,18 +210,18 @@ function PoemEntry({ entry, t }: { entry: DiaryEntry; t: (key: string) => string
             {/* Side-by-side translation view */}
             <section>
               <div className="mb-4 flex items-center gap-2">
-                <BookOpen className="h-4 w-4 text-stone-400" />
-                <h3 className="text-sm font-semibold uppercase tracking-wider text-stone-500">
+                <BookOpen className="h-4 w-4 text-foreground-muted" />
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-foreground-muted">
                   Translation
                 </h3>
               </div>
 
               {/* Column headers */}
               <div className="mb-3 grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="text-xs font-medium uppercase tracking-wider text-stone-400">
+                <div className="text-xs font-medium uppercase tracking-wider text-foreground-muted">
                   {t("originalText")}
                 </div>
-                <div className="hidden text-xs font-medium uppercase tracking-wider text-stone-400 md:block">
+                <div className="hidden text-xs font-medium uppercase tracking-wider text-foreground-muted md:block">
                   {t("translatedText")}
                 </div>
               </div>
@@ -242,19 +242,19 @@ function PoemEntry({ entry, t }: { entry: DiaryEntry; t: (key: string) => string
                       <span className="absolute -left-2 top-0 font-mono text-xs text-stone-300">
                         {String(idx + 1).padStart(2, "0")}
                       </span>
-                      <p className="pl-4 font-serif text-base leading-relaxed text-stone-600 md:text-lg">
+                      <p className="pl-4 font-serif text-base leading-relaxed text-foreground-secondary md:text-lg">
                         {line.original}
                       </p>
                     </div>
 
                     {/* Mobile label for translated */}
-                    <div className="text-xs font-medium uppercase tracking-wider text-stone-400 md:hidden">
+                    <div className="text-xs font-medium uppercase tracking-wider text-foreground-muted md:hidden">
                       {t("translatedText")}
                     </div>
 
                     {/* Translated */}
                     <div className="relative md:border-l md:border-stone-200 md:pl-4">
-                      <p className="font-serif text-base font-medium leading-relaxed text-stone-900 md:text-lg">
+                      <p className="font-serif text-base font-medium leading-relaxed text-foreground md:text-lg">
                         {line.translated}
                       </p>
                     </div>
@@ -262,7 +262,7 @@ function PoemEntry({ entry, t }: { entry: DiaryEntry; t: (key: string) => string
                     {/* Line note indicator */}
                     {entry.notebook_notes?.line_notes?.[idx] && (
                       <div className="col-span-full mt-2 flex items-start gap-2 rounded-lg bg-amber-50/80 p-3 text-sm text-amber-800">
-                        <StickyNote className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-amber-500" />
+                        <StickyNote className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-warning" />
                         <span className="italic">
                           {entry.notebook_notes.line_notes[idx]}
                         </span>
@@ -281,8 +281,8 @@ function PoemEntry({ entry, t }: { entry: DiaryEntry; t: (key: string) => string
                 defaultOpen={false}
               >
                 {entry.notebook_notes?.thread_note && (
-                  <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-stone-200/60">
-                    <p className="font-serif text-base leading-relaxed text-stone-700">
+                  <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-border-subtle/60">
+                    <p className="font-serif text-base leading-relaxed text-foreground-secondary">
                       {entry.notebook_notes.thread_note}
                     </p>
                   </div>
@@ -302,7 +302,7 @@ function PoemEntry({ entry, t }: { entry: DiaryEntry; t: (key: string) => string
                   {/* Reflection */}
                   {entry.reflection_text && (
                     <div className="rounded-xl bg-white/80 p-4 shadow-sm">
-                      <p className="font-serif text-base leading-relaxed text-stone-700">
+                      <p className="font-serif text-base leading-relaxed text-foreground-secondary">
                         {entry.reflection_text}
                       </p>
                     </div>
@@ -320,7 +320,7 @@ function PoemEntry({ entry, t }: { entry: DiaryEntry; t: (key: string) => string
                           {entry.insights.map((insight, idx) => (
                             <li
                               key={idx}
-                              className="flex gap-2 text-sm text-stone-600"
+                              className="flex gap-2 text-sm text-foreground-secondary"
                             >
                               <ArrowRight className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-amber-400" />
                               {insight}
@@ -340,7 +340,7 @@ function PoemEntry({ entry, t }: { entry: DiaryEntry; t: (key: string) => string
                           {entry.strengths.map((strength, idx) => (
                             <li
                               key={idx}
-                              className="flex gap-2 text-sm text-stone-600"
+                              className="flex gap-2 text-sm text-foreground-secondary"
                             >
                               <ArrowRight className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-emerald-400" />
                               {strength}
@@ -360,7 +360,7 @@ function PoemEntry({ entry, t }: { entry: DiaryEntry; t: (key: string) => string
                           {entry.challenges.map((challenge, idx) => (
                             <li
                               key={idx}
-                              className="flex gap-2 text-sm text-stone-600"
+                              className="flex gap-2 text-sm text-foreground-secondary"
                             >
                               <ArrowRight className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-rose-400" />
                               {challenge}
@@ -380,7 +380,7 @@ function PoemEntry({ entry, t }: { entry: DiaryEntry; t: (key: string) => string
                           {entry.recommendations.map((rec, idx) => (
                             <li
                               key={idx}
-                              className="flex gap-2 text-sm text-stone-600"
+                              className="flex gap-2 text-sm text-foreground-secondary"
                             >
                               <ArrowRight className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-blue-400" />
                               {rec}
@@ -400,7 +400,7 @@ function PoemEntry({ entry, t }: { entry: DiaryEntry; t: (key: string) => string
                 title={`${t("originalText")} (Full)`}
                 icon={FileText}
               >
-                <pre className="whitespace-pre-wrap font-serif text-base leading-relaxed text-stone-600">
+                <pre className="whitespace-pre-wrap font-serif text-base leading-relaxed text-foreground-secondary">
                   {entry.raw_poem}
                 </pre>
               </ExpandableSection>
@@ -411,8 +411,8 @@ function PoemEntry({ entry, t }: { entry: DiaryEntry; t: (key: string) => string
 
       {/* Preview when collapsed */}
       {!expanded && validLines.length > 0 && (
-        <div className="border-t border-stone-100 px-8 py-4">
-          <p className="truncate font-serif text-sm italic text-stone-500">
+        <div className="border-t border-border-subtle px-8 py-4">
+          <p className="truncate font-serif text-sm italic text-foreground-muted">
             "{validLines[0].translated}"
             {validLines.length > 1 && "..."}
           </p>
@@ -493,9 +493,9 @@ export default function DiaryPage() {
           <div className="flex flex-col items-center gap-4">
             <div className="relative">
               <div className="h-12 w-12 animate-pulse rounded-full bg-gradient-to-br from-amber-200 to-orange-200" />
-              <Loader2 className="absolute inset-0 m-auto h-6 w-6 animate-spin text-amber-600" />
+              <Loader2 className="absolute inset-0 m-auto h-6 w-6 animate-spin text-warning" />
             </div>
-            <p className="text-sm text-stone-500">Loading your translations...</p>
+            <p className="text-sm text-foreground-muted">Loading your translations...</p>
           </div>
         </div>
       </div>
@@ -533,14 +533,14 @@ export default function DiaryPage() {
         <div className="relative mx-auto max-w-4xl px-4 py-12 sm:px-6 sm:py-16">
           <div className="flex items-end justify-between gap-4">
             <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-amber-600">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-warning">
                 {t("title")}
               </p>
-              <h1 className="font-serif text-3xl font-medium tracking-tight text-stone-900 sm:text-4xl md:text-5xl">
+              <h1 className="font-serif text-3xl font-medium tracking-tight text-foreground sm:text-4xl md:text-5xl">
                 {t("heading")}
               </h1>
               {allItems.length > 0 && (
-                <p className="mt-3 text-stone-500">
+                <p className="mt-3 text-foreground-muted">
                   {allItems.length} completed translation{allItems.length !== 1 ? "s" : ""}
                 </p>
               )}
@@ -554,18 +554,18 @@ export default function DiaryPage() {
       <main className="mx-auto max-w-4xl px-4 py-8 sm:px-6 sm:py-12">
         {allItems.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-3xl border-2 border-dashed border-stone-200 bg-white/50 px-6 py-16 text-center">
-            <div className="mb-4 rounded-full bg-stone-100 p-4">
-              <BookOpen className="h-8 w-8 text-stone-400" />
+            <div className="mb-4 rounded-full bg-muted p-4">
+              <BookOpen className="h-8 w-8 text-foreground-muted" />
             </div>
-            <h2 className="mb-2 font-serif text-xl font-medium text-stone-700">
+            <h2 className="mb-2 font-serif text-xl font-medium text-foreground-secondary">
               No completed translations yet
             </h2>
-            <p className="mb-6 max-w-sm text-sm text-stone-500">
+            <p className="mb-6 max-w-sm text-sm text-foreground-muted">
               {t("noCompletedPoems")}
             </p>
             <Button
               onClick={() => router.push("/workspaces")}
-              className="bg-stone-900 text-white hover:bg-stone-800"
+              className="bg-accent text-white hover:bg-stone-800"
             >
               {tNav("workspaces")}
               <ArrowRight className="ml-2 h-4 w-4" />
@@ -584,7 +584,7 @@ export default function DiaryPage() {
                   variant="outline"
                   onClick={handleLoadMore}
                   disabled={isLoading}
-                  className="rounded-full border-stone-300 px-8 text-stone-700 hover:bg-stone-100"
+                  className="rounded-full border-stone-300 px-8 text-foreground-secondary hover:bg-muted"
                 >
                   {isLoading ? (
                     <>

@@ -209,7 +209,7 @@ export function TokenSuggestionsPopover({
                       className={cn(
                         "flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold",
                         "transition",
-                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
                         rangeMode === mode
                           ? "bg-slate-900 text-white"
                           : "bg-slate-100 text-slate-700 hover:bg-slate-200"

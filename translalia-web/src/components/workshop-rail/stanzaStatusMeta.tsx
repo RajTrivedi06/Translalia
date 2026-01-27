@@ -18,32 +18,32 @@ interface StatusMeta {
 export const STANZA_STATUS_META: Record<TranslationStanzaStatus, StatusMeta> = {
   pending: {
     label: "Pending",
-    badgeClass: "bg-gray-100 text-gray-700 border border-gray-200",
-    dotClass: "bg-gray-400",
+    badgeClass: "bg-muted text-foreground-secondary border border-border-subtle",
+    dotClass: "bg-foreground-muted",
     icon: PauseCircle,
   },
   queued: {
     label: "Queued",
-    badgeClass: "bg-slate-100 text-slate-700 border border-slate-200",
-    dotClass: "bg-slate-400",
+    badgeClass: "bg-muted text-foreground-secondary border border-border-subtle",
+    dotClass: "bg-foreground-muted",
     icon: Clock3,
   },
   processing: {
     label: "Processing",
-    badgeClass: "bg-amber-50 text-amber-700 border border-amber-200",
-    dotClass: "bg-amber-500",
+    badgeClass: "bg-warning-light text-warning border border-warning/30",
+    dotClass: "bg-warning",
     icon: Loader2,
   },
   completed: {
     label: "Ready",
-    badgeClass: "bg-green-50 text-green-700 border border-green-200",
-    dotClass: "bg-green-500",
+    badgeClass: "bg-success-light text-success border border-success/30",
+    dotClass: "bg-success",
     icon: CheckCircle2,
   },
   failed: {
     label: "Needs Attention",
-    badgeClass: "bg-red-50 text-red-700 border border-red-200",
-    dotClass: "bg-red-500",
+    badgeClass: "bg-error-light text-error border border-error/30",
+    dotClass: "bg-error",
     icon: AlertTriangle,
   },
 };

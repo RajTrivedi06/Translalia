@@ -426,7 +426,7 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
       <div className="h-full flex flex-col">
         <WorkshopHeader showTitle={showHeaderTitle} />
         <div className="flex-1 flex items-center justify-center p-6">
-          <div className="text-sm text-gray-600">Loading workshop…</div>
+          <div className="text-sm text-foreground-secondary">Loading workshop…</div>
         </div>
       </div>
     );
@@ -439,9 +439,9 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
         <WorkshopHeader showTitle={showHeaderTitle} />
         <div className="flex-1 flex items-center justify-center p-6">
           <div className="text-center max-w-sm">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-muted flex items-center justify-center">
               <svg
-                className="w-8 h-8 text-gray-400"
+                className="w-8 h-8 text-foreground-muted"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -454,14 +454,14 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
                 />
               </svg>
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            <h3 className="text-lg font-semibold text-foreground mb-2">
               Workshop Locked
             </h3>
-            <p className="text-sm text-gray-600 mb-4">
+            <p className="text-sm text-foreground-secondary mb-4">
               Complete the Guide Rail setup on the left to unlock the workshop.
               Fill in all required fields and confirm to begin.
             </p>
-            <div className="text-xs text-gray-500 space-y-1">
+            <div className="text-xs text-foreground-muted space-y-1">
               <p>✓ Add your poem</p>
               <p>✓ Define translation zone</p>
               <p>✓ Set translation intent</p>
@@ -479,10 +479,10 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
         <WorkshopHeader showTitle={showHeaderTitle} />
         <div className="flex-1 flex items-center justify-center p-6">
           <div className="text-center max-w-sm">
-            <h3 className="text-lg font-medium text-gray-700 mb-2">
+            <h3 className="text-lg font-medium text-foreground-secondary mb-2">
               No Poem Loaded
             </h3>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-foreground-muted">
               Complete the Guide Rail on the left to analyze a poem and start
               translating.
             </p>
@@ -544,10 +544,10 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
                     // Reset line selection when switching segments
                     deselectLine();
                   }}
-                  className="p-4 border rounded-lg cursor-pointer hover:bg-blue-50 transition-colors"
+                  className="p-4 border border-border-subtle rounded-md cursor-pointer hover:bg-accent-light/20 hover:border-accent/50 transition-all duration-fast shadow-card"
                 >
                   <div className="flex items-center justify-between mb-2">
-                    <div className="font-semibold text-lg">
+                    <div className="font-semibold text-lg text-foreground">
                       {t("segment", { number: stanza.number })}
                     </div>
                     {statusMeta && (
@@ -558,12 +558,12 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
                       </span>
                     )}
                   </div>
-                  <div className="text-sm text-gray-600 mb-2">
+                  <div className="text-sm text-foreground-secondary mb-2">
                     {stanza.lines.length} line
                     {stanza.lines.length !== 1 ? "s" : ""}
                   </div>
                   {/* Preview first line */}
-                  <div className="text-sm text-gray-500 italic">
+                  <div className="text-sm text-foreground-muted italic font-serif">
                     {stanza.lines[0]}...
                   </div>
                 </div>
@@ -738,22 +738,22 @@ function WorkshopNavigationToggle({
   disableLines = false,
 }: WorkshopNavigationToggleProps) {
   const baseBtn =
-    "rounded-full px-4 py-1.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 focus-visible:ring-offset-2";
-  const activeClasses = "bg-slate-900 text-white shadow";
-  const inactiveClasses = "text-slate-600 hover:bg-slate-100";
+    "rounded-full px-4 py-1.5 text-sm font-medium transition-all duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2";
+  const activeClasses = "bg-accent text-white shadow-card";
+  const inactiveClasses = "text-foreground-secondary hover:bg-muted";
   const disabledClasses = "opacity-40 cursor-not-allowed hover:bg-transparent";
 
   return (
-    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border-subtle bg-muted px-4 py-3">
       <div>
         {subtitle ? (
-          <p className="text-xs uppercase tracking-wide text-slate-500">
+          <p className="text-xs uppercase tracking-wide text-foreground-muted">
             {subtitle}
           </p>
         ) : null}
-        <p className="text-sm font-semibold text-slate-900">{title}</p>
+        <p className="text-sm font-semibold text-foreground">{title}</p>
       </div>
-      <div className="inline-flex rounded-full border border-slate-200 bg-white p-1">
+      <div className="inline-flex rounded-full border border-border-subtle bg-surface p-1">
         <button
           type="button"
           onClick={() => {

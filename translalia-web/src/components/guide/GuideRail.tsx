@@ -434,117 +434,119 @@ export function GuideRail({
 
   const ui = {
     panel: cn(
-      "flex h-full flex-col overflow-hidden rounded-2xl",
-      "border border-slate-200 bg-white shadow-sm"
+      "flex h-full flex-col overflow-hidden rounded-lg",
+      "border border-border bg-surface shadow-card"
     ),
 
     panelHeader: cn(
       "flex flex-row items-start justify-between gap-3",
       "px-5 py-4",
-      "border-b border-slate-100"
+      "border-b border-border-subtle"
     ),
 
-    panelTitle: "truncate text-base font-semibold text-slate-900 lg:text-lg",
-    panelSubtitle: "mt-1 text-sm text-slate-500",
+    panelTitle: "truncate text-base font-semibold text-foreground lg:text-lg",
+    panelSubtitle: "mt-1 text-sm text-foreground-secondary",
 
     iconButton: cn(
-      "flex-shrink-0 rounded-lg p-2",
-      "text-slate-400 transition",
-      "hover:bg-slate-50 hover:text-slate-600",
-      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+      "flex-shrink-0 rounded-md p-2",
+      "text-foreground-muted transition-colors duration-fast",
+      "hover:bg-muted hover:text-foreground-secondary",
+      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
     ),
 
     scrollRegion: cn(
       "flex-1 min-h-0 max-h-[calc(100vh-200px)] overflow-y-auto overflow-x-hidden",
-      "bg-slate-50/60",
+      "bg-muted/60",
       "px-4 py-5 md:px-5 md:py-6"
     ),
 
-    footer: cn("bg-white px-5 py-4", "border-t border-slate-100"),
+    footer: cn("bg-surface px-5 py-4", "border-t border-border-subtle"),
 
-    card: cn("rounded-2xl border bg-white shadow-sm", "transition-colors"),
+    card: cn("rounded-lg border border-border-subtle bg-surface shadow-card", "transition-colors duration-fast"),
 
     cardHeader: cn(
       "flex items-start justify-between gap-4",
       "px-5 py-4",
-      "border-b border-slate-100"
+      "border-b border-border-subtle"
     ),
 
     cardBody: cn("px-5 py-5"),
 
-    label: "text-sm font-semibold text-slate-900",
-    helper: "mt-1 text-sm text-slate-500",
-    subtle: "text-xs text-slate-500",
-    subtleItalic: "text-xs text-slate-400 italic",
+    label: "text-sm font-semibold text-foreground",
+    helper: "mt-1 text-sm text-foreground-secondary",
+    subtle: "text-xs text-foreground-secondary",
+    subtleItalic: "text-xs text-foreground-muted italic",
 
     pill: cn(
       "inline-flex items-center gap-2 rounded-full",
-      "bg-slate-100 px-3 py-1",
-      "text-xs font-medium text-slate-600"
+      "bg-muted px-3 py-1",
+      "text-xs font-medium text-foreground-secondary"
     ),
 
     input: cn(
-      "w-full rounded-xl border border-slate-300 bg-white",
-      "px-4 py-2.5 text-sm text-slate-900",
-      "shadow-sm",
-      "placeholder:text-slate-400",
-      "focus:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-100",
-      "disabled:bg-slate-50 disabled:text-slate-500"
+      "w-full rounded-md border border-border bg-surface",
+      "px-4 py-2.5 text-sm text-foreground",
+      "shadow-card",
+      "placeholder:text-foreground-muted",
+      "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30",
+      "disabled:bg-muted disabled:text-foreground-muted",
+      "transition-colors duration-fast"
     ),
 
     textarea: cn(
-      "w-full rounded-xl border border-slate-300 bg-white",
-      "px-4 py-3 text-sm text-slate-900",
+      "w-full rounded-md border border-border bg-surface",
+      "px-4 py-3 text-sm text-foreground",
       "leading-relaxed",
-      "shadow-sm",
-      "placeholder:text-slate-400",
-      "focus:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-100",
-      "disabled:bg-slate-50 disabled:text-slate-500"
+      "shadow-card",
+      "placeholder:text-foreground-muted",
+      "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30",
+      "disabled:bg-muted disabled:text-foreground-muted",
+      "transition-colors duration-fast"
     ),
 
     primaryBtn: cn(
-      "inline-flex items-center justify-center rounded-lg",
-      "bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white",
-      "shadow-sm transition",
-      "hover:bg-slate-800",
-      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200",
-      "disabled:cursor-not-allowed disabled:opacity-60"
+      "inline-flex items-center justify-center rounded-md",
+      "bg-accent px-4 py-2.5 text-sm font-semibold text-white",
+      "shadow-card transition-all duration-fast",
+      "hover:bg-accent-dark",
+      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2",
+      "disabled:cursor-not-allowed disabled:opacity-50"
     ),
 
     blueBtn: cn(
-      "inline-flex items-center justify-center rounded-lg",
-      "bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white",
-      "shadow-sm transition",
-      "hover:bg-blue-700",
-      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200",
-      "disabled:cursor-not-allowed disabled:opacity-60"
+      "inline-flex items-center justify-center rounded-md",
+      "bg-accent px-4 py-2.5 text-sm font-semibold text-white",
+      "shadow-card transition-all duration-fast",
+      "hover:bg-accent-dark",
+      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2",
+      "disabled:cursor-not-allowed disabled:opacity-50"
     ),
 
     ghostBtn: cn(
-      "inline-flex items-center justify-center rounded-lg",
-      "border border-slate-200 bg-white px-4 py-2.5",
-      "text-sm font-medium text-slate-700",
-      "transition",
-      "hover:bg-slate-50",
-      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200",
-      "disabled:cursor-not-allowed disabled:opacity-60"
+      "inline-flex items-center justify-center rounded-md",
+      "border border-border bg-surface px-4 py-2.5",
+      "text-sm font-medium text-foreground",
+      "transition-all duration-fast",
+      "hover:bg-muted",
+      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2",
+      "disabled:cursor-not-allowed disabled:opacity-50"
     ),
 
     textBtn: cn(
-      "text-sm font-semibold text-slate-600 transition",
-      "hover:text-slate-900",
-      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200",
-      "rounded"
+      "text-sm font-semibold text-foreground-secondary transition-colors duration-fast",
+      "hover:text-foreground",
+      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2",
+      "rounded-md"
     ),
 
     errorBox: cn(
-      "rounded-xl border border-red-200 bg-red-50",
-      "px-4 py-3 text-sm text-red-700"
+      "rounded-md border border-error/30 bg-error-light",
+      "px-4 py-3 text-sm text-error"
     ),
 
     infoBox: cn(
-      "rounded-xl border border-blue-200 bg-blue-50",
-      "px-4 py-3 text-sm text-blue-800"
+      "rounded-md border border-accent/30 bg-accent-light/30",
+      "px-4 py-3 text-sm text-accent-dark"
     ),
   };
 
@@ -844,8 +846,8 @@ export function GuideRail({
           ui.card,
           "lg:row-span-3 flex flex-col h-full min-h-0",
           !isPoemSubmitted
-            ? "border-blue-500 bg-blue-50/50 ring-4 ring-blue-100"
-            : "border-slate-200"
+            ? "border-accent bg-accent-light/20 ring-2 ring-accent/30"
+            : "border-border-subtle"
         )}
         aria-labelledby="poem-section-title"
       >
@@ -892,7 +894,7 @@ export function GuideRail({
               className={cn(
                 ui.textarea,
                 "flex-1 min-h-[200px] resize-none",
-                !isPoemSubmitted && "focus:bg-blue-50/30"
+                !isPoemSubmitted && "focus:bg-accent-light/10"
               )}
             />
 
@@ -908,10 +910,10 @@ export function GuideRail({
                   onClick={() => setShowGuideHints((prev) => !prev)}
                   className={cn(
                     "inline-flex items-center gap-2",
-                    "text-sm font-semibold text-blue-700",
-                    "transition hover:text-blue-800",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200",
-                    "rounded"
+                    "text-sm font-semibold text-accent",
+                    "transition-colors duration-fast hover:text-accent-dark",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2",
+                    "rounded-md"
                   )}
                 >
                   <Info className="h-4 w-4" aria-hidden="true" />
@@ -944,10 +946,10 @@ export function GuideRail({
                             setPreserveFormatting(!poem.preserveFormatting);
                           }}
                           className={cn(
-                            "text-sm font-semibold text-blue-700 underline",
-                            "transition hover:text-blue-800",
-                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200",
-                            "rounded"
+                            "text-sm font-semibold text-accent underline",
+                            "transition-colors duration-fast hover:text-accent-dark",
+                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2",
+                            "rounded-md"
                           )}
                         >
                           {poem.preserveFormatting
@@ -1030,7 +1032,7 @@ export function GuideRail({
             />
 
             {varietyError && (
-              <p className="text-sm text-red-700">{varietyError}</p>
+              <p className="text-sm text-error">{varietyError}</p>
             )}
 
             {canEditVariety && !isSourceVarietySubmitted && (
@@ -1091,7 +1093,7 @@ export function GuideRail({
               className={cn(ui.textarea, "resize-y")}
             />
 
-            {zoneError && <p className="text-sm text-red-700">{zoneError}</p>}
+            {zoneError && <p className="text-sm text-error">{zoneError}</p>}
 
             <div className="flex justify-end">
               <button
@@ -1146,7 +1148,7 @@ export function GuideRail({
             />
 
             {intentError && (
-              <p className="text-sm text-red-700">{intentError}</p>
+              <p className="text-sm text-error">{intentError}</p>
             )}
 
             <div className="flex justify-end">
@@ -1184,12 +1186,12 @@ export function GuideRail({
                   }}
                   disabled={isSavingTranslationRangeMode}
                   className={cn(
-                    "flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold",
-                    "transition",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200",
+                    "flex-1 rounded-md px-4 py-2.5 text-sm font-semibold",
+                    "transition-all duration-fast",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2",
                     translationRangeMode === mode
-                      ? "bg-slate-900 text-white"
-                      : "bg-slate-100 text-slate-700 hover:bg-slate-200",
+                      ? "bg-accent text-white"
+                      : "bg-muted text-foreground hover:bg-border-subtle",
                     isSavingTranslationRangeMode && "opacity-70"
                   )}
                   aria-pressed={translationRangeMode === mode}
@@ -1200,7 +1202,7 @@ export function GuideRail({
             </div>
 
             {!translationRangeMode && (
-              <p className="text-sm text-red-700">
+              <p className="text-sm text-error">
                 {t("translationRangeRequired", {
                   defaultValue: "Please select a translation range to continue",
                 })}
@@ -1212,7 +1214,7 @@ export function GuideRail({
 
           // Step 5: Translation Model
           <div key="step-5" className="space-y-4">
-            <p className="text-sm text-slate-600 leading-relaxed">
+            <p className="text-sm text-foreground-secondary leading-relaxed">
               {t("translationModelHelper")}
             </p>
 
@@ -1235,12 +1237,12 @@ export function GuideRail({
                   }}
                   disabled={isSavingTranslationModel}
                   className={cn(
-                    "rounded-xl px-4 py-3 text-left",
-                    "transition",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200",
+                    "rounded-md px-4 py-3 text-left",
+                    "transition-all duration-fast",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2",
                     translationModel === model
-                      ? "bg-slate-900 text-white"
-                      : "bg-slate-100 text-slate-800 hover:bg-slate-200",
+                      ? "bg-accent text-white"
+                      : "bg-muted text-foreground hover:bg-border-subtle",
                     isSavingTranslationModel && "opacity-70"
                   )}
                   aria-pressed={translationModel === model}
@@ -1324,10 +1326,10 @@ export function GuideRail({
                 type="button"
                 onClick={handleResetAll}
                 className={cn(
-                  "w-full rounded-lg px-4 py-2.5 text-sm font-semibold",
-                  "text-slate-700 transition",
-                  "hover:bg-slate-50 hover:text-slate-900",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200",
+                  "w-full rounded-md px-4 py-2.5 text-sm font-semibold",
+                  "text-foreground-secondary transition-all duration-fast",
+                  "hover:bg-muted hover:text-foreground",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2",
                   "sm:w-auto"
                 )}
               >
@@ -1389,10 +1391,10 @@ export function GuideRail({
   } catch (error) {
     return (
       <div
-        className={cn("h-full p-6 bg-red-50 border border-red-200", className)}
+        className={cn("h-full p-6 bg-error-light border border-error/30 rounded-lg", className)}
       >
-        <h1 className="text-xl font-bold text-red-900">Error in GuideRail</h1>
-        <pre className="mt-3 text-xs text-red-900/80">{String(error)}</pre>
+        <h1 className="text-xl font-bold text-error">Error in GuideRail</h1>
+        <pre className="mt-3 text-xs text-error/80">{String(error)}</pre>
       </div>
     );
   }

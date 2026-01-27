@@ -58,18 +58,18 @@ export function Dialog({
   if (!open) return null;
   return (
     <div
-      className="fixed inset-0 z-50"
+      className="fixed inset-0 z-50 animate-fade-in"
       role="dialog"
       aria-modal="true"
       aria-labelledby={ariaLabelledby}
     >
       <div
-        className="absolute inset-0 bg-black/40"
+        className="absolute inset-0 bg-foreground/40"
         onClick={() => onOpenChange(false)}
       />
       <div
         ref={contentRef}
-        className="absolute left-1/2 top-1/2 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-xl bg-white p-4 shadow-xl outline-none dark:bg-neutral-900"
+        className="absolute left-1/2 top-1/2 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg bg-surface p-6 shadow-modal outline-none"
         tabIndex={-1}
       >
         {children}
@@ -87,7 +87,7 @@ export function DialogHeader({
 }) {
   return (
     <div
-      className={`flex items-center justify-between border-b px-2 pb-2 ${className}`}
+      className={`flex items-center justify-between border-b border-border-subtle pb-4 ${className}`}
     >
       {children}
     </div>
@@ -104,9 +104,9 @@ export function DialogTitle({
   className?: string;
 }) {
   return (
-    <div id={id} className={`font-semibold ${className}`}>
+    <h2 id={id} className={`text-lg font-semibold text-foreground ${className}`}>
       {children}
-    </div>
+    </h2>
   );
 }
 
@@ -118,7 +118,7 @@ export function DialogDescription({
   className?: string;
 }) {
   return (
-    <div className={`text-sm text-gray-600 mt-2 ${className}`}>{children}</div>
+    <p className={`text-sm text-foreground-secondary mt-2 ${className}`}>{children}</p>
   );
 }
 
@@ -130,7 +130,7 @@ export function DialogFooter({
   className?: string;
 }) {
   return (
-    <div className={`flex items-center gap-2 mt-6 ${className}`}>
+    <div className={`flex items-center justify-end gap-3 mt-6 ${className}`}>
       {children}
     </div>
   );
@@ -143,7 +143,7 @@ export function DialogContent({
   children?: React.ReactNode;
   className?: string;
 }) {
-  return <div className={className}>{children}</div>;
+  return <div className={`py-4 ${className}`}>{children}</div>;
 }
 
 export default Dialog;

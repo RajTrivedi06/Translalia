@@ -52,7 +52,7 @@ export function GuideSteps({
   return (
     <div
       className={cn(
-        "rounded-2xl border border-slate-200 bg-white shadow-sm",
+        "rounded-lg border border-border-subtle bg-surface shadow-card",
         "h-full min-h-0 flex flex-col",
         className
       )}
@@ -77,26 +77,26 @@ export function GuideSteps({
             <AccordionItem
               key={value}
               value={value}
-              className="border-b border-slate-100 last:border-b-0"
+              className="border-b border-border-subtle last:border-b-0"
             >
               <AccordionTrigger
                 className={cn(
                   "hover:no-underline",
                   "px-5 py-4",
-                  "transition-colors",
-                  "hover:bg-slate-50 data-[state=open]:bg-slate-50",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+                  "transition-colors duration-fast",
+                  "hover:bg-muted data-[state=open]:bg-muted",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset"
                 )}
               >
                 <div className="flex w-full items-center gap-3">
                   <span
                     className={cn(
-                      "flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold",
+                      "flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold transition-colors duration-fast",
                       isComplete
-                        ? "bg-emerald-600 text-white"
+                        ? "bg-success text-white"
                         : isOpen
-                        ? "bg-slate-900 text-white"
-                        : "bg-slate-100 text-slate-700"
+                        ? "bg-accent text-white"
+                        : "bg-muted text-foreground-secondary"
                     )}
                     aria-hidden="true"
                   >
@@ -104,7 +104,7 @@ export function GuideSteps({
                   </span>
 
                   <span className="min-w-0 flex-1 text-left">
-                    <span className="block truncate text-sm font-semibold text-slate-900">
+                    <span className="block truncate text-sm font-semibold text-foreground">
                       {stepTitles[index]}
                     </span>
                   </span>
@@ -112,7 +112,7 @@ export function GuideSteps({
                   <div className="flex items-center gap-2">
                     {isComplete && (
                       <span
-                        className="text-sm font-semibold text-emerald-700"
+                        className="text-sm font-semibold text-success"
                         aria-label="Completed"
                         title="Completed"
                       >
@@ -128,10 +128,10 @@ export function GuideSteps({
                         }}
                         className={cn(
                           "flex items-center gap-1.5 rounded-md px-2 py-1",
-                          "text-xs font-medium text-slate-600",
-                          "hover:bg-slate-100 hover:text-slate-900",
-                          "transition-colors",
-                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+                          "text-xs font-medium text-foreground-secondary",
+                          "hover:bg-border-subtle hover:text-foreground",
+                          "transition-colors duration-fast",
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
                         )}
                         title="Edit this step"
                         aria-label="Edit this step"
