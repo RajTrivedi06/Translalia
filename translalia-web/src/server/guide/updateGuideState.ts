@@ -196,24 +196,35 @@ export async function updateGuideState(
       `versionCheck=no prevSeenVersion=${prevSeenVersion} writingVersion=${writingVersion}`
     );
 
-    // Build update payload: write to columns, NOT to JSONB
-    // Remove guide_answers from state to prevent re-introduction
-    const { guide_answers: _, ...stateWithoutGuideAnswers } = currentState;
+    // Build update payload: ONLY write to columns, NOT to JSONB
+    // This prevents clobbering recipe cache and other state fields like variant_recipes_v3
     const updatePayload: Record<string, unknown> = {
       translation_model: mergedAnswers.translationModel ?? null,
       translation_method: mergedAnswers.translationMethod ?? null,
       translation_intent: mergedAnswers.translationIntent ?? null,
       translation_zone: mergedAnswers.translationZone ?? null,
       source_language_variety: mergedAnswers.sourceLanguageVariety ?? null,
-      // Keep other state fields (translation_job, notebook_notes, etc.) but exclude guide_answers
-      state: stateWithoutGuideAnswers,
+      // NOTE: Do NOT update the state JSONB here - this was clobbering recipe cache
+      // Only remove guide_answers from state if it exists using atomic jsonb patch
     };
 
-    // Update columns (not JSONB)
+    // Update columns only (not full JSONB state)
     const { error: updateError } = await supabase
       .from("chat_threads")
       .update(updatePayload)
       .eq("id", threadId);
+    
+    // If guide_answers exists in state JSONB, remove it atomically to prevent legacy issues
+    if (currentState.guide_answers) {
+      // Use jsonb_set to remove guide_answers without clobbering other state fields
+      await supabase.rpc("patch_thread_state_field", {
+        p_thread_id: threadId,
+        p_path: "{guide_answers}",
+        p_value: "null",
+      }).catch(() => {
+        // Silently ignore if RPC doesn't exist - columns are the source of truth now
+      });
+    }
 
     if (updateError) {
       console.error("[updateGuideState] Update error:", updateError);

@@ -695,6 +695,7 @@ const LANGUAGE_PATTERNS: Array<{ pattern: RegExp; stopwords: Set<string> }> = [
  * Pick the appropriate stopword set based on target language hint.
  *
  * @param targetLanguageHint - Language name or code (e.g., "Spanish", "Español", "es", "German")
+ *        Also handles BCP-47 tags like "es-MX", "pt-BR", "fr-CA"
  * @returns The appropriate stopword set (defaults to English)
  */
 export function pickStopwords(targetLanguageHint?: string): Set<string> {
@@ -704,11 +705,46 @@ export function pickStopwords(targetLanguageHint?: string): Set<string> {
 
   const hint = targetLanguageHint.trim();
 
+  // First try matching the full hint
   for (const { pattern, stopwords } of LANGUAGE_PATTERNS) {
     if (pattern.test(hint)) {
       return stopwords;
     }
   }
+
+  // Handle BCP-47 tags like "es-MX", "pt-BR", "fr-CA"
+  // Extract the base language code before the hyphen
+  const bcp47Match = hint.match(/^([a-z]{2,3})[-_]/i);
+  if (bcp47Match) {
+    const baseCode = bcp47Match[1].toLowerCase();
+    // Map common base codes to languages
+    const baseCodeMap: Record<string, Set<string>> = {
+      fr: FR_STOPWORDS,
+      es: ES_STOPWORDS,
+      de: DE_STOPWORDS,
+      pt: PT_STOPWORDS,
+      it: IT_STOPWORDS,
+      en: EN_STOPWORDS,
+      // Also handle 3-letter codes
+      fra: FR_STOPWORDS,
+      spa: ES_STOPWORDS,
+      deu: DE_STOPWORDS,
+      por: PT_STOPWORDS,
+      ita: IT_STOPWORDS,
+      eng: EN_STOPWORDS,
+    };
+    if (baseCodeMap[baseCode]) {
+      return baseCodeMap[baseCode];
+    }
+  }
+
+  // Also try matching just the first 2-3 characters as a language code
+  const shortCode = hint.slice(0, 3).toLowerCase();
+  if (shortCode.startsWith("fr")) return FR_STOPWORDS;
+  if (shortCode.startsWith("es")) return ES_STOPWORDS;
+  if (shortCode.startsWith("de")) return DE_STOPWORDS;
+  if (shortCode.startsWith("pt")) return PT_STOPWORDS;
+  if (shortCode.startsWith("it")) return IT_STOPWORDS;
 
   // Default to English
   return EN_STOPWORDS;

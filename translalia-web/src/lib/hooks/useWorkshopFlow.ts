@@ -97,7 +97,7 @@ export function useWorkshopState(threadId: string | undefined) {
       return workshopLines;
     },
     enabled: !!threadId,
-    staleTime: 1000 * 60 * 5, // 5 minutes
+    staleTime: 1000 * 30, // 30 seconds - reduced from 5 minutes for better responsiveness
   });
 }
 

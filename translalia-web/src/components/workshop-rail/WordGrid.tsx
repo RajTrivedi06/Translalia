@@ -29,6 +29,42 @@ import { FullTranslationEditor } from "@/components/notebook/FullTranslationEdit
 import { CongratulationsModal } from "@/components/workshop/CongratulationsModal";
 import { Sparkles } from "lucide-react";
 
+/**
+ * Map all suggestion failure reasons to user-friendly messages
+ */
+function getSuggestionErrorMessage(reason?: string): string {
+  switch (reason) {
+    case "rate_limited":
+      return "You've hit the daily suggestions limit. Try again tomorrow.";
+    case "anchors_missing":
+      return "Add a draft or choose a variant first.";
+    case "thread_not_found":
+      return "We couldn't find this thread. Try refreshing the page.";
+    case "target_language_missing":
+    case "invalid_request":
+      return "Set a target language in Let's Get Started.";
+    case "internal_error":
+      return "Something went wrong on our side. Please try again.";
+    case "too_many_invalid":
+      return "Too many suggestions were filtered out. Add a draft or pick a variant, then try again.";
+    case "english_leakage":
+      return "Suggestions couldn't be generated in your target language. Try again.";
+    case "invalid_response":
+    case "repair_invalid_response":
+      return "AI returned unexpected format. Retrying may help.";
+    case "too_few_valid":
+      return "Couldn't find enough valid suggestions. Try with a longer line or more context.";
+    case "repair_failed":
+      return "Couldn't repair suggestions. Try with different context.";
+    case "non_english_script":
+      return "Suggestions contained unexpected characters. Try again.";
+    case "generation_failed":
+      return "Failed to generate suggestions. Please try again.";
+    default:
+      return "Couldn't load suggestions. Please try again.";
+  }
+}
+
 // Part of speech type and color mapping
 const POS_COLORS = {
   noun: "bg-blue-50 text-blue-700 border-blue-200",
@@ -275,6 +311,7 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
     mutate: translateLine,
     isPending: isTranslatingLine,
     error: translateError,
+    cancelCurrentRequest,
   } = useTranslateLine();
 
   const lineTranslations = useWorkshopStore((s) => s.lineTranslations);
@@ -311,16 +348,27 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
     return line.split(/\s+/).filter(Boolean);
   }, [currentLineIndex, poemLines]);
 
+  // Track if regenerate is in progress to avoid effect double-trigger
+  const isRegeneratingRef = React.useRef(false);
+
   React.useEffect(() => {
     if (currentLineIndex === null || !thread) return;
     const lineText = poemLines[currentLineIndex];
     if (typeof lineText !== "string") return;
 
-    // Already translated → no fetch
-    if (lineTranslations[currentLineIndex]) return;
+    // Skip if regenerate is in progress (avoid double-trigger with handleRegenerateWithSelectedModel)
+    if (isRegeneratingRef.current) return;
 
-    // Dedupe: prevent duplicate in-flight requests (React Strict Mode fires effects twice)
-    const requestKey = `${thread}:${currentLineIndex}`;
+    // Already translated → no fetch (unless model changed)
+    const existingTranslation = lineTranslations[currentLineIndex];
+    if (existingTranslation) {
+      // Check if model matches - if not, we might need to regenerate
+      // But don't auto-regenerate, just skip (user must explicitly regenerate)
+      return;
+    }
+
+    // Dedupe: prevent duplicate in-flight requests (include model in key)
+    const requestKey = `${thread}:${currentLineIndex}:${userSelectedModel ?? "default"}`;
     if (inFlightRequestRef.current === requestKey) {
       if (process.env.NODE_ENV !== "production") {
         console.warn(
@@ -343,14 +391,25 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
         stanzaIndex: lineContext?.stanzaIndex ?? ctx.stanzaIndex,
         prevLine: (lineContext?.prevLine ?? ctx.prevLine) || undefined,
         nextLine: (lineContext?.nextLine ?? ctx.nextLine) || undefined,
+        // Pass model override from client to ensure we use the currently selected model
+        modelOverride: userSelectedModel || undefined,
       },
       {
         onSuccess: (data) => {
-          setLineTranslation(currentLineIndex, data);
-          useWorkshopStore.setState({ modelUsed: data.modelUsed || null });
-          inFlightRequestRef.current = null;
+          // Only update if this is still the current request (not cancelled)
+          const currentKey = `${thread}:${currentLineIndex}:${userSelectedModel ?? "default"}`;
+          if (inFlightRequestRef.current === currentKey) {
+            setLineTranslation(currentLineIndex, data);
+            useWorkshopStore.setState({ modelUsed: data.modelUsed || null });
+            inFlightRequestRef.current = null;
+          }
         },
-        onError: () => {
+        onError: (err) => {
+          // Only clear if this is still the current request and not aborted
+          if (err instanceof Error && err.name === "AbortError") {
+            // Request was cancelled, don't clear ref
+            return;
+          }
           inFlightRequestRef.current = null;
         },
       }
@@ -363,6 +422,7 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
     lineContext,
     translateLine,
     setLineTranslation,
+    userSelectedModel,
   ]);
 
   // Get current line translation if available
@@ -398,18 +458,32 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
   const handleRegenerateWithSelectedModel = React.useCallback(() => {
     if (currentLineIndex === null || !thread) return;
 
+    // Cancel any in-flight request first
+    cancelCurrentRequest();
+    
+    // Set flag to prevent effect from double-triggering
+    isRegeneratingRef.current = true;
     setIsRegenerating(true);
+    
     // Clear cached translation to force refetch
     clearLineTranslation(currentLineIndex);
+    
+    // Clear the in-flight request key so the new request can proceed
+    inFlightRequestRef.current = null;
 
     const lineText = poemLines[currentLineIndex];
     if (typeof lineText !== "string") {
+      isRegeneratingRef.current = false;
       setIsRegenerating(false);
       return;
     }
 
     const ctx = buildLineContextForIndex(currentLineIndex, poemLines);
     const fullPoem = lineContext?.fullPoem ?? ctx.fullPoem;
+    
+    // Set new request key with model
+    const requestKey = `${thread}:${currentLineIndex}:${userSelectedModel ?? "default"}`;
+    inFlightRequestRef.current = requestKey;
 
     translateLine(
       {
@@ -420,15 +494,31 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
         stanzaIndex: lineContext?.stanzaIndex ?? ctx.stanzaIndex,
         prevLine: (lineContext?.prevLine ?? ctx.prevLine) || undefined,
         nextLine: (lineContext?.nextLine ?? ctx.nextLine) || undefined,
+        // Pass model override from client to ensure we use the currently selected model
+        modelOverride: userSelectedModel || undefined,
       },
       {
         onSuccess: (data) => {
+          // Only update if model matches what we requested
+          if (userSelectedModel && data.modelUsed && data.modelUsed !== userSelectedModel) {
+            console.warn(
+              `[WordGrid] Regenerate received different model: requested "${userSelectedModel}", got "${data.modelUsed}"`
+            );
+          }
           setLineTranslation(currentLineIndex, data);
           useWorkshopStore.setState({ modelUsed: data.modelUsed || null });
+          isRegeneratingRef.current = false;
           setIsRegenerating(false);
+          inFlightRequestRef.current = null;
         },
-        onError: () => {
+        onError: (err) => {
+          // Don't reset state if request was aborted (user switched models again)
+          if (err instanceof Error && err.name === "AbortError") {
+            return;
+          }
+          isRegeneratingRef.current = false;
           setIsRegenerating(false);
+          inFlightRequestRef.current = null;
         },
       }
     );
@@ -440,9 +530,11 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
     translateLine,
     setLineTranslation,
     clearLineTranslation,
+    cancelCurrentRequest,
+    userSelectedModel,
   ]);
 
-  // Clear suggestions when switching lines
+  // Clear suggestions and cancel requests when switching lines
   React.useEffect(() => {
     setAdditionalSuggestions([]);
     setIsLoadingSuggestions(false);
@@ -452,7 +544,10 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
     setTokenSuggestions([]);
     setIsLoadingTokenSuggestions(false);
     setTokenSuggestionsOpen(false);
-  }, [currentLineIndex]);
+    // Cancel any in-flight translation request when switching lines
+    cancelCurrentRequest();
+    inFlightRequestRef.current = null;
+  }, [currentLineIndex, cancelCurrentRequest]);
 
   const generateAdditionalSuggestions = React.useCallback(
     async (userGuidance?: string) => {
@@ -929,7 +1024,7 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
           onWordClick={handleAdditionalWordClick}
         />
 
-        {/* Finalize Poem Button - Show when all lines are completed */}
+        {/* Finalize Translation Button - Show when all lines are completed */}
         {allLinesCompleted && (
           <div className="mt-8 pt-6 border-t border-gray-200">
             <div className="flex flex-col items-center gap-4">
@@ -945,11 +1040,11 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
                 className="px-8 py-6 text-base font-semibold bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200"
               >
                 <Sparkles className="w-5 h-5 mr-2" />
-                Finalize Poem
+                Finalize Translation
               </Button>
               <p className="text-xs text-gray-500 text-center max-w-md">
                 Review your complete translation, make final adjustments, and
-                finalize your masterpiece
+                finalize your translation
               </p>
             </div>
           </div>

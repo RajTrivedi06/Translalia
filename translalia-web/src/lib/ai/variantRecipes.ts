@@ -732,11 +732,11 @@ import { createRetryTelemetryCollector, noOpRetryTelemetry } from "@/lib/telemet
 import type { TickInstrumentation } from "@/lib/workshop/runTranslationTick";
 
 /** Constants for lock retry */
-// Reduced to fail faster on true contention
-const MAX_LOCK_ATTEMPTS = 8; // Was 15, now max 31.5s wait (vs 95.5s)
-const BASE_BACKOFF_MS = 300; // Was 500, faster initial retry
-const LOCK_TTL_SECONDS = 120; // Was 90, give slow recipe gen more time
-const MAX_BACKOFF_MS = 4000; // Was 8000, cap backoff lower
+// Reduced to fail faster on true contention - prioritize interactive responsiveness
+const MAX_LOCK_ATTEMPTS = 6; // Was 8, now max ~15s wait (reduced from 31.5s)
+const BASE_BACKOFF_MS = 200; // Was 300, faster initial retry
+const LOCK_TTL_SECONDS = 90; // Was 120, reduced to detect stale locks faster
+const MAX_BACKOFF_MS = 3000; // Was 4000, cap backoff even lower for faster fail
 
 /**
  * Per-mode recipe storage structure.

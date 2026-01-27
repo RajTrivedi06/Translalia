@@ -57,8 +57,12 @@ function hashPayload(payload: unknown): string {
     .slice(0, 24);
 }
 
-function hasAnchorTokens(payload: TokenSuggestionsRequest): boolean {
-  const anchors = [
+/**
+ * Check if there are any tokens in the source or target text.
+ * Used for basic validation that the request has some context.
+ */
+function hasAnyTokens(payload: TokenSuggestionsRequest): boolean {
+  const allTexts = [
     payload.targetLineDraft ?? "",
     payload.variantFullTexts?.A ?? "",
     payload.variantFullTexts?.B ?? "",
@@ -66,7 +70,22 @@ function hasAnchorTokens(payload: TokenSuggestionsRequest): boolean {
     payload.sourceLine ?? "",
     payload.currentLine ?? "",
   ].filter((t) => t.trim().length > 0);
-  return anchors.some((text) => tokenize(text).length > 0);
+  return allTexts.some((text) => tokenize(text).length > 0);
+}
+
+/**
+ * Check if there are target-language anchors (draft or variants).
+ * The prompt builds anchors only from targetLineDraft and variantFullTexts,
+ * so we need at least one of these to generate meaningful suggestions.
+ */
+function hasTargetLanguageAnchors(payload: TokenSuggestionsRequest): boolean {
+  const targetAnchors = [
+    payload.targetLineDraft ?? "",
+    payload.variantFullTexts?.A ?? "",
+    payload.variantFullTexts?.B ?? "",
+    payload.variantFullTexts?.C ?? "",
+  ].filter((t) => t.trim().length > 0);
+  return targetAnchors.some((text) => tokenize(text).length > 0);
 }
 
 type GuideAnswersState = {
@@ -99,10 +118,21 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!hasAnchorTokens(parsed)) {
+    // Check for basic request validity (any tokens at all)
+    if (!hasAnyTokens(parsed)) {
       return NextResponse.json({
         ok: false,
         reason: "anchors_missing",
+      });
+    }
+
+    // Check for target-language anchors specifically
+    // The prompt needs draft or variant text to generate meaningful suggestions
+    if (!hasTargetLanguageAnchors(parsed)) {
+      return NextResponse.json({
+        ok: false,
+        reason: "anchors_missing",
+        message: "Add a draft or choose a variant before requesting word suggestions.",
       });
     }
 

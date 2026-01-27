@@ -68,7 +68,7 @@ export function CompletionConfirmationDialog({
                 All Lines Completed!
               </DialogTitle>
               <DialogDescription className="text-sm text-gray-600 mt-1">
-                You've translated all {totalLines} lines of your poem
+                You've translated all {totalLines} lines of your text
               </DialogDescription>
             </div>
           </div>
@@ -78,15 +78,15 @@ export function CompletionConfirmationDialog({
           {/* Question */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <p className="text-base font-semibold text-gray-900 mb-1">
-              Are you done working on the poem?
+              Are you done working on your text?
             </p>
             <p className="text-sm text-gray-600">
               Review your complete translation below. If you're satisfied, click
-              "Yes, I'm Done" to finalize your masterpiece.
+              "Yes, I'm Done" to finalize your translation.
             </p>
           </div>
 
-          {/* Poem Preview */}
+          {/* Translation Preview */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">

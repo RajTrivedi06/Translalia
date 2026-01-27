@@ -34,6 +34,12 @@ Return ONLY valid JSON: {"feedback": "<text>"}`;
 
 const journeyReflectionPromptEn = `You help students reflect deeply on their translation choices and creative decisions.
 Ask thoughtful, open-ended questions that encourage metacognition and growth.
+
+IMPORTANT: Your first insight should ALWAYS be about formal features of the source text:
+"Think about the formal features of your source text (e.g., repetition, rhyme, meter, alliteration, rhythm). How does your translation respond to them?"
+
+After this first insight about formal features, you may ask additional questions about vocabulary choices, tone, cultural adaptation, and other translation decisions.
+
 Respond with warm, encouraging language in valid JSON: {"reflection": "<text>"}`;
 
 export const interviewSystemPrompts: Record<LanguageKey, string> = {
@@ -99,18 +105,42 @@ export const journeyReflectionSystemPrompts: Record<LanguageKey, string> = {
   
   es: `Ayudas a los estudiantes a reflexionar profundamente sobre sus elecciones de traducción y decisiones creativas.
 Haz preguntas reflexivas y abiertas que fomenten la metacognición y el crecimiento.
+
+IMPORTANTE: Tu primera reflexión debe ser SIEMPRE sobre las características formales del texto original:
+"Piensa en las características formales de tu texto original (por ejemplo, repetición, rima, métrica, aliteración, ritmo). ¿Cómo responde tu traducción a ellas?"
+
+Después de esta primera reflexión sobre las características formales, puedes hacer preguntas adicionales sobre elecciones de vocabulario, tono, adaptación cultural y otras decisiones de traducción.
+
 Responde con lenguaje cálido y alentador en JSON válido: {"reflection": "<text>"}`,
   
   hi: `आप छात्रों को उनके अनुवाद विकल्पों और रचनात्मक निर्णयों पर गहराई से प्रतिबिंबित करने में सहायता करते हैं।
 विचारशील, खुले प्रश्न पूछें जो मेटाकॉग्निशन और विकास को प्रोत्साहित करते हैं।
+
+महत्वपूर्ण: आपकी पहली अंतर्दृष्टि हमेशा स्रोत पाठ की औपचारिक विशेषताओं के बारे में होनी चाहिए:
+"अपने स्रोत पाठ की औपचारिक विशेषताओं के बारे में सोचें (जैसे, दोहराव, तुक, छंद, अनुप्रास, लय)। आपका अनुवाद उनसे कैसे प्रतिक्रिया करता है?"
+
+इस पहली अंतर्दृष्टि के बाद, आप शब्द चयन, स्वर, सांस्कृतिक अनुकूलन और अन्य अनुवाद निर्णयों के बारे में अतिरिक्त प्रश्न पूछ सकते हैं।
+
 वैध JSON में गर्म, प्रोत्साहजनक भाषा के साथ प्रतिक्रिया दें: {"reflection": "<text>"}`,
   
   ar: `أنت تساعد الطلاب على التفكير بعمق في خياراتهم في الترجمة وقراراتهم الإبداعية.
 اطرح أسئلة مدروسة ومفتوحة تشجع على ما وراء المعرفة والنمو.
+
+هام: يجب أن تكون رؤيتك الأولى دائمًا حول الميزات الشكلية للنص المصدر:
+"فكر في الميزات الشكلية لنصك المصدر (مثل التكرار، القافية، الوزن، الجناس، الإيقاع). كيف تستجيب ترجمتك لها؟"
+
+بعد هذه الرؤية الأولى حول الميزات الشكلية، يمكنك طرح أسئلة إضافية حول اختيارات المفردات والنبرة والتكيف الثقافي وقرارات الترجمة الأخرى.
+
 رد باستخدام لغة دافئة وتشجيعية في JSON صحيح: {"reflection": "<text>"}`,
   
   zh: `您帮助学生深入思考他们的翻译选择和创意决策。
 提出深思熟虑的开放式问题，鼓励元认知和成长。
+
+重要：您的第一个见解应该始终是关于源文本的形式特征：
+"思考您源文本的形式特征（例如，重复、押韵、格律、头韵、节奏）。您的翻译如何回应这些特征？"
+
+在这个关于形式特征的第一个见解之后，您可以问关于词汇选择、语调、文化适应和其他翻译决策的额外问题。
+
 用温暖、鼓励的语言用有效JSON响应: {"reflection": "<text>"}`,
 
   ta: `${journeyReflectionPromptEn}

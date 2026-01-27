@@ -71,7 +71,7 @@ export function AdditionalSuggestions({
           Get More Suggestions
         </Button>
         <p className="text-xs text-muted-foreground text-center mt-2">
-          Get 7-9 additional context-aware word alternatives
+          Get more suggestions for the whole segment (or right-click on a word to see more possible translations of that word)
         </p>
       </div>
     );

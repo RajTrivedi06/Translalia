@@ -16,6 +16,8 @@ const RequestSchema = z.object({
   stanzaIndex: z.number().int().optional(),
   prevLine: z.string().optional(),
   nextLine: z.string().optional(),
+  /** Optional model override - if provided, use this model instead of the one in DB */
+  modelOverride: z.string().optional(),
 });
 
 /**
@@ -49,6 +51,7 @@ export async function POST(req: Request) {
       stanzaIndex,
       prevLine,
       nextLine,
+      modelOverride,
     } = validation.data;
 
     const rateCheck = await checkDailyLimit(
@@ -87,8 +90,9 @@ export async function POST(req: Request) {
     const guideAnswersState =
       (state as { guide_answers?: GuideAnswers }).guide_answers ?? {};
     const guideAnswers: GuideAnswers = {
+      // Use modelOverride from client if provided, otherwise fall back to DB/state
       translationModel:
-        thread.translation_model ?? guideAnswersState.translationModel ?? null,
+        modelOverride ?? thread.translation_model ?? guideAnswersState.translationModel ?? null,
       translationMethod:
         thread.translation_method ??
         guideAnswersState.translationMethod ??

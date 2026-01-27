@@ -62,13 +62,32 @@ export function FullTranslationEditor({
     return poemLines.map((_, idx) => getStudioValue(idx) || "").join("\n");
   }, [poemLines, getStudioValue]);
 
+  // Sanitize newlines from assembled translation to prevent index drift
+  const sanitizeTranslation = React.useCallback((text: string) => {
+    // Replace any newlines within lines with spaces, then rejoin
+    return text
+      .split("\n")
+      .map((line) => line.replace(/[\r\n]+/g, " ").trim())
+      .join("\n");
+  }, []);
+
   // Initialize translation when opening
   React.useEffect(() => {
     if (open && !wholeTranslation) {
-      setWholeTranslation(assembleWholeTranslation());
+      setWholeTranslation(sanitizeTranslation(assembleWholeTranslation()));
       setHasUnsavedChanges(false);
     }
-  }, [open, wholeTranslation, assembleWholeTranslation]);
+  }, [open, wholeTranslation, assembleWholeTranslation, sanitizeTranslation]);
+
+  // Resync when drafts/completed lines change while open (but only if no unsaved changes)
+  React.useEffect(() => {
+    if (open && !hasUnsavedChanges) {
+      const newTranslation = sanitizeTranslation(assembleWholeTranslation());
+      if (newTranslation !== wholeTranslation) {
+        setWholeTranslation(newTranslation);
+      }
+    }
+  }, [open, hasUnsavedChanges, assembleWholeTranslation, sanitizeTranslation, draftLines]);
 
   // Reset when closing
   React.useEffect(() => {
@@ -109,18 +128,22 @@ export function FullTranslationEditor({
 
     setIsSaving(true);
     try {
-      const translationLines = wholeTranslation.split("\n");
+      // Split and sanitize any embedded newlines to prevent index drift
+      const translationLines = wholeTranslation
+        .split("\n")
+        .map((line) => line.replace(/[\r\n]+/g, " ").trim());
 
       const nextDraftLines: Record<number, string> = {};
-      translationLines.forEach((line, idx) => {
-        if (idx < poemLines.length) {
-          const draft = line.trim();
-          const confirmed = (getConfirmedTranslation(idx) ?? "").trim();
-          if (draft !== confirmed && draft.length > 0) {
-            nextDraftLines[idx] = draft;
-          }
+      // Process up to poemLines.length, ensuring we capture all lines
+      for (let idx = 0; idx < poemLines.length; idx++) {
+        const draft = (translationLines[idx] ?? "").trim();
+        const confirmed = (getConfirmedTranslation(idx) ?? "").trim();
+        // Only add to drafts if non-empty and differs from confirmed
+        // Never write empty draft over confirmed (would hide it)
+        if (draft !== confirmed && (draft.length > 0 || confirmed.length === 0)) {
+          nextDraftLines[idx] = draft;
         }
-      });
+      }
 
       setDraftLines(nextDraftLines);
       setHasUnsavedChanges(false);
@@ -316,10 +339,25 @@ export function FullTranslationEditor({
                           while (lines.length <= idx) {
                             lines.push("");
                           }
-                          lines[idx] = e.target.value;
+                          // Strip any newlines that may be pasted in
+                          lines[idx] = e.target.value.replace(/[\r\n]+/g, " ");
                           setWholeTranslation(lines.join("\n"));
                           setHasUnsavedChanges(true);
                         }}
+                        onKeyDown={(e) => {
+                          // Prevent Enter from inserting newlines (causes index drift)
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            // Optionally move focus to next textarea
+                            const nextTextarea = document.querySelector(
+                              `[data-line-idx="${idx + 1}"]`
+                            ) as HTMLTextAreaElement | null;
+                            if (nextTextarea) {
+                              nextTextarea.focus();
+                            }
+                          }
+                        }}
+                        data-line-idx={idx}
                         className={cn(
                           "w-full resize-none border-0 bg-transparent p-0",
                           "text-lg leading-relaxed text-slate-800",

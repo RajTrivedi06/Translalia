@@ -482,7 +482,8 @@ export default function NotebookPhase6({
                       }}
                       value={text}
                       onChange={(e) => {
-                        const newValue = e.target.value;
+                        // Strip any newlines that may be pasted in
+                        const newValue = e.target.value.replace(/[\r\n]+/g, " ");
                         setDraft(idx, newValue);
                         setCurrentLineIndex(idx);
                         const target = e.target as HTMLTextAreaElement;
@@ -536,6 +537,14 @@ export default function NotebookPhase6({
                         if (modifier && e.key === "Enter") {
                           e.preventDefault();
                           void handleSave(idx);
+                        } else if (e.key === "Enter" && !e.shiftKey) {
+                          // Prevent plain Enter from inserting newlines (causes index drift)
+                          e.preventDefault();
+                          // Move focus to next line if available
+                          const nextTextarea = textareaRefs.current[idx + 1];
+                          if (nextTextarea) {
+                            nextTextarea.focus();
+                          }
                         }
                       }}
                       placeholder="(waiting for your translation)"

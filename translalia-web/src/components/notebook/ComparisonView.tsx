@@ -221,17 +221,23 @@ export function ComparisonView({
 
   // Save whole translation back to Studio drafts
   const handleSaveWholeTranslation = React.useCallback(() => {
-    // Split the whole translation back into lines
-    const translationLines = wholeTranslation.split("\n");
+    // Split the whole translation back into lines, sanitizing any embedded newlines
+    const translationLines = wholeTranslation
+      .split("\n")
+      .map((line) => line.replace(/[\r\n]+/g, " ").trim());
 
     // Only store drafts that differ from confirmed saves.
     // This avoids "blank drafts" overriding newly confirmed translations.
     const nextDraftLines: Record<number, string> = {};
     translationLines.forEach((line, idx) => {
       if (idx < poemLines.length) {
-        const draft = line.trim();
+        const draft = line;
         const confirmed = (getConfirmedTranslation(idx) ?? "").trim();
-        if (draft !== confirmed) {
+        // Only add to drafts if:
+        // 1. Draft is non-empty AND differs from confirmed, OR
+        // 2. Draft differs from confirmed AND confirmed is also empty (new line)
+        // Never write an empty draft over a confirmed line (that would hide it)
+        if (draft !== confirmed && (draft.length > 0 || confirmed.length === 0)) {
           nextDraftLines[idx] = draft;
         }
       }
@@ -747,9 +753,16 @@ export function ComparisonView({
                           onChange={(e) =>
                             setDraft(
                               line.lineNumber - 1,
-                              e.target.value
+                              // Strip any newlines that may be pasted in
+                              e.target.value.replace(/[\r\n]+/g, " ")
                             )
                           }
+                          onKeyDown={(e) => {
+                            // Prevent Enter from inserting newlines (causes index drift)
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
+                            }
+                          }}
                           placeholder={
                             line.isCompleted
                               ? undefined
@@ -1148,9 +1161,16 @@ export function ComparisonView({
                             onChange={(e) =>
                               setDraft(
                                 line.lineNumber - 1,
-                                e.target.value
+                                // Strip any newlines that may be pasted in
+                                e.target.value.replace(/[\r\n]+/g, " ")
                               )
                             }
+                            onKeyDown={(e) => {
+                              // Prevent Enter from inserting newlines (causes index drift)
+                              if (e.key === "Enter" && !e.shiftKey) {
+                                e.preventDefault();
+                              }
+                            }}
                             placeholder={
                               line.isCompleted
                                 ? undefined

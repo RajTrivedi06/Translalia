@@ -389,24 +389,25 @@ export async function regenerateVariantWithSalvage(
   }
 
   const regenStartTime = Date.now();
-  const maxTimeMs = options?.maxTimeMs ?? 90000; // Default: 90s max per regen
+  // Reduced from 90s to 45s for better interactive responsiveness
+  const maxTimeMs = options?.maxTimeMs ?? 45000; // Default: 45s max per regen
   
   // ISS-007: Configurable K for GPT-5 vs default
   const modelToUse = model ?? TRANSLATOR_MODEL;
   const isGpt5 = modelToUse.startsWith("gpt-5");
   const parallelRegenEnabled = process.env.ENABLE_GPT5_REGEN_PARALLEL !== "0";
   
-  // Determine K based on mode and model
-  const defaultK = context.mode === "focused" ? 1 : 6;
+  // Determine K based on mode and model - reduced defaults for faster response
+  const defaultK = context.mode === "focused" ? 1 : 4; // Was 6, now 4 for balanced/adventurous
   const gpt5K = parallelRegenEnabled
     ? Math.min(
-        Math.max(1, Number(process.env.GPT5_REGEN_K) || 3),
-        6
+        Math.max(1, Number(process.env.GPT5_REGEN_K) || 2), // Was 3, now 2 for GPT-5
+        4 // Was 6, cap at 4 for GPT-5
       )
     : defaultK;
   const defaultRegenK = Math.min(
-    Math.max(1, Number(process.env.DEFAULT_REGEN_K) || 6),
-    6
+    Math.max(1, Number(process.env.DEFAULT_REGEN_K) || 4), // Was 6, now 4
+    4 // Was 6, cap at 4
   );
   
   // ISS-007: Use GPT-5-specific K if GPT-5, else use default
