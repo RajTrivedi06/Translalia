@@ -262,6 +262,7 @@ export const lockHelper = {
    * IMPORTANT: Caller must store and pass this token to release().
    */
   async acquire(key: string, ttlSec: number): Promise<string | null> {
+    const startTime = Date.now();
     const token = randomUUID();
 
     // Production or explicit Redis flag: use Upstash Redis
@@ -292,7 +293,18 @@ export const lockHelper = {
         }
       ).set(key, token, { nx: true, ex: ttlSec });
 
-      return result === "OK" ? token : null;
+      const elapsed = Date.now() - startTime;
+      if (result === "OK") {
+        console.log(
+          `[lockHelper] ✅ Acquired ${key} in ${elapsed}ms (TTL: ${ttlSec}s, token: ${token.slice(0, 8)}...)`,
+        );
+        return token;
+      } else {
+        console.log(
+          `[lockHelper] ⏳ Failed to acquire ${key} (already held) in ${elapsed}ms`,
+        );
+        return null;
+      }
     }
 
     // DEV ONLY: In-memory fallback (NOT safe for Vercel/serverless!)
@@ -302,8 +314,17 @@ export const lockHelper = {
       );
     }
     const existing = memoryGet<string>(key);
-    if (existing) return null;
+    const elapsed = Date.now() - startTime;
+    if (existing) {
+      console.log(
+        `[lockHelper] ⏳ Failed to acquire ${key} (already held, in-memory) in ${elapsed}ms`,
+      );
+      return null;
+    }
     memorySet(key, token, ttlSec);
+    console.log(
+      `[lockHelper] ✅ Acquired ${key} in ${elapsed}ms (in-memory, TTL: ${ttlSec}s)`,
+    );
     return token;
   },
 
@@ -316,6 +337,7 @@ export const lockHelper = {
    * @param token - The token returned by acquire() (required)
    */
   async release(key: string, token: string): Promise<void> {
+    const startTime = Date.now();
     if (!token) {
       console.warn("[lockHelper.release] No token provided, skipping release");
       return;
@@ -351,7 +373,11 @@ export const lockHelper = {
             ) => Promise<number>;
           }
         ).eval(luaScript, [key], [token]);
-      } catch (err) {
+        const elapsed = Date.now() - startTime;
+        console.log(
+          `[lockHelper] 🔓 Released ${key} in ${elapsed}ms (token: ${token.slice(0, 8)}...)`,
+        );
+      } catch {
         // Fallback for Redis clients that don't support eval directly
         // Check-then-delete (not atomic, but better than unconditional delete)
         const currentValue = await (
@@ -360,6 +386,10 @@ export const lockHelper = {
         if (currentValue === token) {
           await (redis as { del: (key: string) => Promise<number> }).del(key);
         }
+        const elapsed = Date.now() - startTime;
+        console.log(
+          `[lockHelper] 🔓 Released ${key} in ${elapsed}ms (fallback, token: ${token.slice(0, 8)}...)`,
+        );
       }
       return;
     }
@@ -368,6 +398,10 @@ export const lockHelper = {
     const existing = memoryGet<string>(key);
     if (existing === token) {
       mem.delete(key);
+      const elapsed = Date.now() - startTime;
+      console.log(
+        `[lockHelper] 🔓 Released ${key} in ${elapsed}ms (in-memory)`,
+      );
     }
   },
 };

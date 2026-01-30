@@ -10,6 +10,7 @@ import {
   type TokenSuggestionsRequest,
 } from "@/lib/ai/suggestions/suggestionsSchemas";
 import { generateTokenSuggestions } from "@/lib/ai/suggestions/suggestionsService";
+import { createDiagnostics } from "@/lib/diagnostics";
 
 const CACHE_TTL_SECONDS = 3600;
 const SUGGESTION_RATE_LIMIT = parseInt(
@@ -97,13 +98,28 @@ type GuideAnswersState = {
 };
 
 export async function POST(req: Request) {
+  const diag = createDiagnostics("token-suggestions");
+
+  // Auth check
+  diag.mark("auth-start");
   const { user, response } = await requireUser();
-  if (!user) return response;
+  diag.mark("auth-end");
+  if (!user) {
+    diag.mark("auth-failed");
+    diag.summary();
+    return response;
+  }
 
   try {
+    // Parse and validate request body
+    diag.mark("parse-body-start");
     const body = await req.json();
     const validation = TokenSuggestionsRequestSchema.safeParse(body);
+    diag.mark("parse-body-end");
+
     if (!validation.success) {
+      diag.mark("validation-failed");
+      diag.summary();
       return NextResponse.json(
         { ok: false, reason: "invalid_request", details: validation.error.issues },
         { status: 400 }
@@ -112,6 +128,8 @@ export async function POST(req: Request) {
 
     const parsed = validation.data;
     if (!parsed.targetLanguage?.trim()) {
+      diag.mark("target-language-missing");
+      diag.summary();
       return NextResponse.json(
         { ok: false, reason: "target_language_missing" },
         { status: 400 }
@@ -120,6 +138,8 @@ export async function POST(req: Request) {
 
     // Check for basic request validity (any tokens at all)
     if (!hasAnyTokens(parsed)) {
+      diag.mark("anchors-missing-no-tokens");
+      diag.summary();
       return NextResponse.json({
         ok: false,
         reason: "anchors_missing",
@@ -129,6 +149,8 @@ export async function POST(req: Request) {
     // Check for target-language anchors specifically
     // The prompt needs draft or variant text to generate meaningful suggestions
     if (!hasTargetLanguageAnchors(parsed)) {
+      diag.mark("anchors-missing-no-target");
+      diag.summary();
       return NextResponse.json({
         ok: false,
         reason: "anchors_missing",
@@ -137,6 +159,7 @@ export async function POST(req: Request) {
     }
 
     // Rate limit (daily)
+    diag.mark("rate-limit-start");
     const today = new Date().toISOString().split("T")[0];
     const rateLimitKey = `suggestions:token:${user.id}:${today}`;
     const rateLimit = await checkRateLimit(
@@ -144,8 +167,11 @@ export async function POST(req: Request) {
       SUGGESTION_RATE_LIMIT,
       86400
     );
+    diag.mark("rate-limit-end");
 
     if (!rateLimit.success) {
+      diag.mark("rate-limited");
+      diag.summary();
       return NextResponse.json(
         {
           ok: false,
@@ -159,6 +185,7 @@ export async function POST(req: Request) {
     }
 
     // Verify thread ownership and fetch guide answers
+    diag.mark("db-query-start");
     const supabase = await supabaseServer();
     const { data: thread, error: threadError } = await supabase
       .from("chat_threads")
@@ -168,8 +195,11 @@ export async function POST(req: Request) {
       .eq("id", parsed.threadId)
       .eq("created_by", user.id)
       .single();
+    diag.mark("db-query-end");
 
     if (threadError || !thread) {
+      diag.mark("thread-not-found");
+      diag.summary();
       return NextResponse.json(
         { ok: false, reason: "thread_not_found" },
         { status: 404 }
@@ -240,8 +270,14 @@ export async function POST(req: Request) {
       poemTheme: parsed.poemTheme,
     })}`;
 
+    // Check cache
+    diag.mark("cache-check-start");
     const cached = await cacheGet<{ suggestions: unknown[] }>(cacheKey);
+    diag.mark("cache-check-end");
+
     if (cached?.suggestions) {
+      diag.mark("cache-hit");
+      diag.summary();
       return NextResponse.json({
         ok: true,
         suggestions: cached.suggestions,
@@ -249,23 +285,35 @@ export async function POST(req: Request) {
         lineIndex: parsed.lineIndex,
       });
     }
+    diag.mark("cache-miss");
 
+    // Generate suggestions via OpenAI
+    diag.mark("openai-start");
     const result = await generateTokenSuggestions({
       request: parsed,
       guideAnswers,
       targetLanguage: resolvedTargetLanguage,
       sourceLanguage,
     });
+    diag.mark("openai-end");
 
     if (!result.ok || !result.suggestions) {
+      diag.mark("generation-failed");
+      diag.error("generation", result.reason || "unknown");
+      diag.summary();
       return NextResponse.json({
         ok: false,
         reason: result.reason || "generation_failed",
       });
     }
 
+    // Cache the result
+    diag.mark("cache-set-start");
     await cacheSet(cacheKey, { suggestions: result.suggestions }, CACHE_TTL_SECONDS);
+    diag.mark("cache-set-end");
 
+    diag.mark("success");
+    diag.summary();
     return NextResponse.json({
       ok: true,
       suggestions: result.suggestions,
@@ -273,9 +321,29 @@ export async function POST(req: Request) {
       lineIndex: parsed.lineIndex,
     });
   } catch (error) {
-    console.error("[token-suggestions] Error:", error);
+    diag.error("unhandled", error);
+
+    // Log full error details for Vercel debugging
+    console.error("[token-suggestions] FULL ERROR:", {
+      name: error instanceof Error ? error.name : "Unknown",
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      // Check if it's an OpenAI error
+      status: (error as Record<string, unknown>)?.status,
+      code: (error as Record<string, unknown>)?.code,
+      type: (error as Record<string, unknown>)?.type,
+    });
+
+    diag.summary();
     return NextResponse.json(
-      { ok: false, reason: "internal_error" },
+      {
+        ok: false,
+        reason: "internal_error",
+        // Include error message in dev/preview for debugging
+        ...(process.env.VERCEL_ENV !== "production" && {
+          debug: error instanceof Error ? error.message : String(error),
+        }),
+      },
       { status: 500 }
     );
   }
