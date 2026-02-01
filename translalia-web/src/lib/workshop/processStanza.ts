@@ -196,11 +196,15 @@ export async function processStanza({
 
   // ISS-003: Bounded parallel line processing
   const parallelEnabled = process.env.MAIN_GEN_PARALLEL_LINES !== "0";
+  const rawLineConcurrency = process.env.MAIN_GEN_LINE_CONCURRENCY;
   const lineConcurrency = Math.min(
-    Math.max(1, Number(process.env.MAIN_GEN_LINE_CONCURRENCY) || 3),
-    6
+    Math.max(1, rawLineConcurrency ? parseInt(rawLineConcurrency, 10) : 6), // Default 6
+    8, // Allow up to 8 for aggressive parallelism
   );
 
+  console.log(
+    `[processStanza] Line concurrency: ${lineConcurrency} (env=${rawLineConcurrency || "unset"})`,
+  );
   console.log(
     `[processStanza] Starting stanza ${stanzaIndex} with ${totalLines} lines ` +
     `(parallel=${parallelEnabled}, concurrency=${lineConcurrency}, ` +

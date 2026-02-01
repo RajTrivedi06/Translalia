@@ -571,9 +571,10 @@ export async function runTranslationTick(
       // Note: This is computed inside the updater to ensure atomicity with selection
       const parallelStanzasEnabled =
         process.env.ENABLE_PARALLEL_STANZAS !== "0";
+      const rawMaxStanzas = process.env.MAX_STANZAS_PER_TICK;
       const maxStanzasPerTickEnv = parallelStanzasEnabled
         ? Math.min(
-            Math.max(1, Number(process.env.MAX_STANZAS_PER_TICK) || 1),
+            Math.max(1, rawMaxStanzas ? parseInt(rawMaxStanzas, 10) : 4), // Default 4
             5,
           )
         : 1;
@@ -693,8 +694,12 @@ export async function runTranslationTick(
     const completed: number[] = [];
     const failed: number[] = [];
     const skipped: number[] = [];
-    // ✅ B) TIME-SLICING: Strict time budget (default 2500ms for <2s HTTP responses)
-    const maxProcessingTime = options.maxProcessingTimeMs ?? 2500;
+    // OPTIMIZATION: Higher default budget for parallel processing
+    const parallelStanzasForBudget =
+      process.env.ENABLE_PARALLEL_STANZAS !== "0";
+    const maxProcessingTime =
+      options.maxProcessingTimeMs ??
+      (parallelStanzasForBudget ? 30000 : 2500); // 30s when parallel enabled
     const windowStart = Date.now();
 
     // ISS-005: Compute absolute deadline for interruptible processing
@@ -785,16 +790,30 @@ export async function runTranslationTick(
 
     // ISS-006: Bounded concurrency for stanzas
     const parallelStanzasEnabled = process.env.ENABLE_PARALLEL_STANZAS !== "0";
+    // OPTIMIZATION: More aggressive defaults, better parsing
+    const rawChunkConcurrency = process.env.CHUNK_CONCURRENCY;
     const chunkConcurrency = parallelStanzasEnabled
-      ? Math.min(Math.max(1, Number(process.env.CHUNK_CONCURRENCY) || 1), 3)
+      ? Math.min(
+          Math.max(1, rawChunkConcurrency ? parseInt(rawChunkConcurrency, 10) : 3), // Default 3
+          5, // Allow up to 5
+        )
       : 1;
 
     const stanzaLimiter = new ConcurrencyLimiter(chunkConcurrency);
 
     // ISS-006: Compute maxStanzasPerTick for logging (same logic as in updater)
+    const rawMaxStanzas = process.env.MAX_STANZAS_PER_TICK;
     const maxStanzasPerTickEnv = parallelStanzasEnabled
-      ? Math.min(Math.max(1, Number(process.env.MAX_STANZAS_PER_TICK) || 1), 5)
+      ? Math.min(
+          Math.max(1, rawMaxStanzas ? parseInt(rawMaxStanzas, 10) : 4), // Default 4
+          5,
+        )
       : 1;
+
+    // Log for debugging
+    console.log(
+      `[runTranslationTick] Chunk concurrency: ${chunkConcurrency} (env=${rawChunkConcurrency || "unset"})`,
+    );
 
     // Process chunks in parallel with Promise.allSettled
     // Note: With time-slicing, we typically process 1 chunk at a time

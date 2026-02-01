@@ -499,7 +499,9 @@ export function GuideRail({
       "leading-relaxed",
       "shadow-card",
       "placeholder:text-foreground-muted",
-      "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30",
+      "focus:outline-none focus:border-accent/60",
+      "focus:shadow-[inset_0_0_0_2px_rgb(var(--color-accent)/0.25)]",
+      "focus-visible:shadow-[inset_0_0_0_2px_rgb(var(--color-accent)/0.4)]",
       "disabled:bg-muted disabled:text-foreground-muted",
       "transition-colors duration-fast"
     ),
@@ -844,10 +846,7 @@ export function GuideRail({
       <section
         className={cn(
           ui.card,
-          "lg:row-span-3 flex flex-col h-full min-h-0",
-          !isPoemSubmitted
-            ? "border-accent bg-accent-light/20 ring-2 ring-accent/30"
-            : "border-border-subtle"
+          "lg:row-span-3 flex flex-col h-full min-h-0"
         )}
         aria-labelledby="poem-section-title"
       >
@@ -893,8 +892,7 @@ export function GuideRail({
               dir={dir}
               className={cn(
                 ui.textarea,
-                "flex-1 min-h-[200px] resize-none",
-                !isPoemSubmitted && "focus:bg-accent-light/10"
+                "flex-1 min-h-[200px] resize-none"
               )}
             />
 

@@ -71,19 +71,26 @@ export async function GET(req: NextRequest) {
   let tickScheduled = false;
   
   if (advance === "true") {
-    // ISS-002: Short timeout for HTTP response (200ms max wait)
-    // The tick itself has its own time budget (TICK_TIME_BUDGET_MS) for processing work
-    const HTTP_RESPONSE_TIMEOUT_MS = Number(process.env.TRANSLATION_STATUS_TIMEOUT_MS) || 200;
-    const TICK_TIME_BUDGET_MS = Number(process.env.TICK_TIME_BUDGET_MS) || 2500;
-    
+    // OPTIMIZATION: Let work continue in background, return status faster
+    const HTTP_RESPONSE_TIMEOUT_MS =
+      Number(process.env.TRANSLATION_STATUS_TIMEOUT_MS) || 300;
+    const TICK_TIME_BUDGET_MS =
+      Number(process.env.TICK_TIME_BUDGET_MS) || 30000; // 30s default
+
     // ISS-006: Configurable max stanzas per tick (with kill switch)
     const parallelStanzasEnabled = process.env.ENABLE_PARALLEL_STANZAS !== "0";
+    const rawMaxStanzas = process.env.MAX_STANZAS_PER_TICK;
     const maxStanzasPerTick = parallelStanzasEnabled
       ? Math.min(
-          Math.max(1, Number(process.env.MAX_STANZAS_PER_TICK) || 1),
-          5
+          Math.max(1, rawMaxStanzas ? parseInt(rawMaxStanzas, 10) : 4), // Default 4
+          5,
         )
       : 1;
+
+    console.log(
+      `[translation-status] Config: httpTimeout=${HTTP_RESPONSE_TIMEOUT_MS}ms, ` +
+        `tickBudget=${TICK_TIME_BUDGET_MS}ms, maxStanzas=${maxStanzasPerTick}`,
+    );
 
     // Start tick without awaiting (fire-and-forget pattern with timeout)
     const tickPromise = runTranslationTick(threadId, {

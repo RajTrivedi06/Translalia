@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useDndMonitor } from "@dnd-kit/core";
-import { FileText, X, Save } from "lucide-react";
+import { FileText, X, Save, Pencil } from "lucide-react";
 
 import { useWorkshopStore } from "@/store/workshopSlice";
 import { useThreadId } from "@/hooks/useThreadId";
@@ -10,7 +10,6 @@ import { useSaveManualLine, useSaveManualLineWithoutInvalidation } from "@/lib/h
 import { useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 
 import { NotebookDropZone } from "./NotebookDropZone";
@@ -72,7 +71,28 @@ export default function NotebookPhase6({
   );
   const autoSaveTimeoutRef = React.useRef<Record<number, NodeJS.Timeout>>({});
 
-  // Auto-resize textareas when text changes
+  // Auto-resize textareas when text changes - only expand when content overflows
+  const resizeTextareaIfOverflow = React.useCallback(
+    (textarea: HTMLTextAreaElement) => {
+      const currentClientHeight = textarea.clientHeight;
+      textarea.style.height = "auto";
+      const scrollHeight = textarea.scrollHeight;
+      if (scrollHeight <= currentClientHeight) {
+        textarea.style.height = "1.5rem";
+        textarea.style.overflowY = "hidden";
+      } else {
+        const lineHeight =
+          parseFloat(getComputedStyle(textarea).lineHeight) || 24;
+        const maxHeight = lineHeight * 4;
+        const newHeight = Math.min(scrollHeight, maxHeight);
+        textarea.style.height = `${newHeight}px`;
+        textarea.style.overflowY =
+          scrollHeight > maxHeight ? "auto" : "hidden";
+      }
+    },
+    []
+  );
+
   React.useEffect(() => {
     Object.values(textareaRefs.current).forEach((textarea) => {
       if (textarea) {
@@ -81,19 +101,11 @@ export default function NotebookPhase6({
           textarea.style.height = "1.5rem";
           textarea.style.overflowY = "hidden";
         } else {
-          textarea.style.height = "1.5rem";
-          const scrollHeight = textarea.scrollHeight;
-          const lineHeight =
-            parseFloat(getComputedStyle(textarea).lineHeight) || 24;
-          const maxHeight = lineHeight * 4;
-          const newHeight = Math.max(24, Math.min(scrollHeight, maxHeight));
-          textarea.style.height = `${newHeight}px`;
-          textarea.style.overflowY =
-            scrollHeight > maxHeight ? "auto" : "hidden";
+          resizeTextareaIfOverflow(textarea);
         }
       }
     });
-  }, [draftLines, completedLines]);
+  }, [draftLines, completedLines, resizeTextareaIfOverflow]);
 
   useDndMonitor({
     onDragStart: () => setIsDragActive(true),
@@ -341,9 +353,16 @@ export default function NotebookPhase6({
     queryClient,
   ]);
 
+  // Calculate progress for the header
+  const completedCount = React.useMemo(() => {
+    return Object.values(completedLines).filter(
+      (line) => line && line.trim().length > 0
+    ).length;
+  }, [completedLines]);
+
   if (poemLines.length === 0) {
     return (
-      <div className="h-full flex items-center justify-center p-6">
+      <div className="h-full flex items-center justify-center p-6 notebook-paper">
         <div className="text-center max-w-md">
           <FileText className="w-12 h-12 mx-auto text-foreground-disabled mb-4" />
           <h3 className="text-base font-medium text-foreground mb-1">
@@ -359,22 +378,21 @@ export default function NotebookPhase6({
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      {/* Minimal header */}
-      <div className="flex items-center justify-between border-b bg-white px-4 py-2">
-        <div className="flex items-center gap-2 min-w-0">
+      {/* Notebook Header - with paper gradient effect */}
+      <div className="notebook-header flex items-center justify-between px-5 py-3">
+        <div className="flex items-center gap-4 min-w-0">
           {showTitle ? (
-            <div className="text-sm font-semibold text-foreground">Notebook</div>
+            <h2 className="notebook-title">Notebook</h2>
           ) : null}
-          <Badge variant="secondary" className="text-[11px]">
-            Line {activeIdx + 1} of {totalLines}
-          </Badge>
+          {/* Progress counter */}
+          <span className="notebook-progress">
+            {completedCount}/{sourceLineCount} translated
+          </span>
           {Object.keys(draftLines).length > 0 && (
-            <Badge
-              variant="secondary"
-              className="text-[11px] text-warning bg-warning-light"
-            >
+            <span className="flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
               {Object.keys(draftLines).length} unsaved
-            </Badge>
+            </span>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -382,38 +400,38 @@ export default function NotebookPhase6({
             <Button
               variant="outline"
               size="sm"
-              className="h-8"
+              className="h-8 text-xs"
               onClick={handleSaveAll}
               disabled={isSaving || isSavingAll}
             >
-              <Save className="w-4 h-4 mr-2" />
+              <Save className="w-3.5 h-3.5 mr-1.5" />
               {isSavingAll ? "Saving..." : "Save All"}
             </Button>
           )}
           <Button
             variant="outline"
             size="sm"
-            className="h-8"
+            className="h-8 text-xs"
             onClick={() => setShowFullEditor(true)}
           >
-            <FileText className="w-4 h-4 mr-2" />
+            <FileText className="w-3.5 h-3.5 mr-1.5" />
             Full comparison
           </Button>
         </div>
       </div>
 
-      {/* Column Headers - Sticky */}
-      <div className="grid grid-cols-2 border-b bg-white sticky top-0 z-10">
-        <div className="px-4 py-3 text-xs font-semibold text-foreground-muted uppercase tracking-wide border-r">
+      {/* Column Headers */}
+      <div className="grid grid-cols-2 bg-surface sticky top-0 z-10">
+        <div className="notebook-column-header border-r border-border-subtle pl-14">
           Source
         </div>
-        <div className="px-4 py-3 text-xs font-semibold text-foreground-muted uppercase tracking-wide">
+        <div className="notebook-column-header pl-8">
           Translation
         </div>
       </div>
 
-      {/* Main body: row-based layout for perfect alignment */}
-      <div className="flex-1 min-h-0 overflow-y-auto bg-white">
+      {/* Main body: notebook paper */}
+      <div className="flex-1 min-h-0 overflow-y-auto notebook-paper">
         {/* Render all lines including extras beyond source poem */}
         {Array.from({ length: totalLines }, (_, idx) => {
           const isActive = idx === currentLineIndex;
@@ -431,9 +449,9 @@ export default function NotebookPhase6({
             <div
               key={`row-${idx}`}
               className={[
-                "grid grid-cols-2 border-b border-border-subtle transition-colors",
-                isActive ? "bg-accent-light/20" : "hover:bg-muted/50/50",
-                isExtraLine ? "bg-purple-50/30" : "",
+                "notebook-row grid grid-cols-2 border-b border-border-subtle relative",
+                isActive ? "notebook-row-selected" : "",
+                isExtraLine ? "bg-purple-50/20" : "",
               ].join(" ")}
               onMouseEnter={() => setHoveredLineIndex(idx)}
               onMouseLeave={() => setHoveredLineIndex(null)}
@@ -443,22 +461,25 @@ export default function NotebookPhase6({
                 type="button"
                 onClick={() => setCurrentLineIndex(idx)}
                 className={[
-                  "w-full text-left px-3 py-3 text-base leading-relaxed border-r border-border-subtle",
-                  "hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/50",
-                  "flex items-start gap-2",
-                  isActive ? "bg-accent-light/30 text-foreground" : "text-foreground-secondary",
-                  isExtraLine ? "bg-purple-50/50" : "",
+                  "w-full text-left px-3 py-3 border-r border-border-subtle",
+                  "focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/50",
+                  "flex items-start gap-1",
+                  isExtraLine ? "bg-purple-50/30" : "",
                 ].join(" ")}
               >
-                <span
-                  className={[
-                    "mt-0.5 inline-flex h-5 w-5 flex-shrink-0 items-center justify-center font-mono text-xs",
-                    isActive ? "text-accent" : isExtraLine ? "text-purple-400" : "text-foreground-disabled",
-                  ].join(" ")}
-                >
+                {/* Line number in margin style */}
+                <span className={[
+                  "notebook-line-number mt-0.5",
+                  isActive ? "!opacity-100 font-medium" : "",
+                  isExtraLine ? "!text-purple-400" : "",
+                ].join(" ")}>
                   {idx + 1}
                 </span>
-                <span className={["flex-1 min-w-0", isExtraLine ? "italic text-purple-400" : ""].join(" ")}>
+                <span className={[
+                  "flex-1 min-w-0 notebook-source-text text-[15px]",
+                  isExtraLine ? "italic text-purple-400" : "",
+                  isActive ? "text-stone-800" : "text-stone-600",
+                ].join(" ")}>
                   {isExtraLine ? "(extra line)" : sourceLine}
                 </span>
               </button>
@@ -468,27 +489,22 @@ export default function NotebookPhase6({
                 className={[
                   "group relative px-3 py-3",
                   "flex items-start gap-2",
-                  isActive ? "bg-warning-light/30" : "",
                 ].join(" ")}
                 onClick={() => setCurrentLineIndex(idx)}
               >
+                {/* Status indicator - compact dot */}
                 <span
                   className={[
-                    "mt-0.5 inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[11px]",
+                    "notebook-status-dot mt-2 ml-1",
                     status === "completed"
-                      ? "bg-success-light text-success"
+                      ? "status-completed"
                       : status === "draft"
-                      ? "bg-warning-light text-warning"
-                      : "bg-muted text-foreground-muted",
+                      ? "status-draft"
+                      : "status-pending",
                   ].join(" ")}
                   aria-hidden="true"
-                >
-                  {status === "completed"
-                    ? "✓"
-                    : status === "draft"
-                    ? "…"
-                    : "–"}
-                </span>
+                  title={status === "completed" ? "Completed" : status === "draft" ? "Draft" : "Pending"}
+                />
                 <div className="flex-1 min-w-0">
                   <NotebookDropZone
                     canDrop={true}
@@ -507,18 +523,7 @@ export default function NotebookPhase6({
                         setDraft(idx, newValue);
                         setCurrentLineIndex(idx);
                         const target = e.target as HTMLTextAreaElement;
-                        target.style.height = "auto";
-                        const scrollHeight = target.scrollHeight;
-                        const lineHeight =
-                          parseFloat(getComputedStyle(target).lineHeight) || 24;
-                        const maxHeight = lineHeight * 4;
-                        const newHeight = Math.max(
-                          24,
-                          Math.min(scrollHeight, maxHeight)
-                        );
-                        target.style.height = `${newHeight}px`;
-                        target.style.overflowY =
-                          scrollHeight > maxHeight ? "auto" : "hidden";
+                        resizeTextareaIfOverflow(target);
 
                         // Auto-save after 2 seconds of no typing
                         if (autoSaveTimeoutRef.current[idx]) {
@@ -534,19 +539,7 @@ export default function NotebookPhase6({
                         setCurrentLineIndex(idx);
                         const textarea = textareaRefs.current[idx];
                         if (textarea) {
-                          textarea.style.height = "auto";
-                          const scrollHeight = textarea.scrollHeight;
-                          const lineHeight =
-                            parseFloat(getComputedStyle(textarea).lineHeight) ||
-                            24;
-                          const maxHeight = lineHeight * 4;
-                          const newHeight = Math.max(
-                            24,
-                            Math.min(scrollHeight, maxHeight)
-                          );
-                          textarea.style.height = `${newHeight}px`;
-                          textarea.style.overflowY =
-                            scrollHeight > maxHeight ? "auto" : "hidden";
+                          resizeTextareaIfOverflow(textarea);
                         }
                       }}
                       onKeyDown={(e) => {
@@ -567,13 +560,13 @@ export default function NotebookPhase6({
                           }
                         }
                       }}
-                      placeholder="(waiting for your translation)"
+                      placeholder="..."
                       className={[
-                        "w-full resize-none border-0 bg-transparent p-0 text-base leading-relaxed",
-                        "focus:ring-0 focus:outline-none",
+                        "w-full resize-none border-0 bg-transparent p-0 text-[15px] leading-relaxed",
+                        "focus:ring-0 focus:outline-none notebook-translation-input",
                         status === "empty"
-                          ? "text-foreground-disabled italic placeholder:text-foreground-disabled"
-                          : "text-foreground",
+                          ? "notebook-empty-cell"
+                          : "notebook-translation-text",
                       ].join(" ")}
                       rows={1}
                       style={{
@@ -585,6 +578,10 @@ export default function NotebookPhase6({
                     />
                   </NotebookDropZone>
                 </div>
+                {/* Show pencil icon when empty and hovered, clear button when has content */}
+                {!hasContent && isHovered && (
+                  <Pencil className="w-4 h-4 text-stone-300 mt-0.5 flex-shrink-0 notebook-pending-icon" />
+                )}
                 {hasContent && (isHovered || isActive) && (
                   <button
                     type="button"
@@ -593,8 +590,8 @@ export default function NotebookPhase6({
                       clearDraft(idx);
                     }}
                     className={[
-                      "mt-0.5 flex-shrink-0 rounded p-1 text-foreground-muted",
-                      "hover:bg-muted hover:text-foreground-secondary",
+                      "mt-0.5 flex-shrink-0 rounded p-1 text-stone-400",
+                      "hover:bg-stone-100 hover:text-stone-600",
                       "transition-colors",
                     ].join(" ")}
                     aria-label="Clear line"
@@ -608,7 +605,7 @@ export default function NotebookPhase6({
         })}
 
         {/* Add Line button */}
-        <div className="border-b border-border-subtle px-3 py-2">
+        <div className="px-3 py-3 bg-muted/30">
           <button
             type="button"
             onClick={() => {
@@ -624,9 +621,9 @@ export default function NotebookPhase6({
                 }
               }, 100);
             }}
-            className="flex items-center gap-2 text-sm text-purple-600 hover:text-purple-700 hover:bg-purple-50 px-2 py-1 rounded transition-colors"
+            className="flex items-center gap-2 text-sm text-purple-600 hover:text-purple-700 hover:bg-purple-50/50 px-3 py-2 rounded-md transition-colors"
           >
-            <span className="text-lg">+</span>
+            <span className="text-base font-medium">+</span>
             <span>Add extra line</span>
           </button>
         </div>

@@ -344,6 +344,187 @@ body {
     @apply transition-all duration-smooth ease-smooth;
   }
 
+  /* ============================================
+     NOTEBOOK PAPER STYLES
+     Creates a physical notebook-like appearance
+     ============================================ */
+
+  /* Main notebook container - uses app semantic colors */
+  .notebook-paper {
+    background-color: rgb(var(--color-surface));
+    position: relative;
+  }
+
+  /* Horizontal ruled lines effect */
+  .notebook-ruled {
+    background-image: 
+      repeating-linear-gradient(
+        transparent,
+        transparent 47px,
+        #e8e4d9 47px,
+        #e8e4d9 48px
+      );
+    background-size: 100% 48px;
+  }
+
+  /* Center spine/fold effect between columns */
+  .notebook-spine {
+    position: relative;
+  }
+
+  .notebook-spine::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: linear-gradient(
+      to bottom,
+      transparent 0%,
+      #d4d0c4 5%,
+      #d4d0c4 95%,
+      transparent 100%
+    );
+    box-shadow: -1px 0 4px rgba(0, 0, 0, 0.03),
+                1px 0 4px rgba(0, 0, 0, 0.03);
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  /* Notebook row styling */
+  .notebook-row {
+    min-height: 48px;
+    transition: background-color 0.15s ease;
+  }
+
+  .notebook-row:hover {
+    background-color: rgb(var(--color-muted) / 0.5);
+  }
+
+  /* Left accent border for selected row (no background - less distracting) */
+  .notebook-row.notebook-row-selected::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background-color: rgb(var(--color-accent));
+  }
+
+  /* Line number styling (margin annotation look) */
+  .notebook-line-number {
+    font-family: 'Courier New', ui-monospace, monospace;
+    font-size: 11px;
+    color: rgb(var(--color-foreground-muted));
+    width: 32px;
+    min-width: 32px;
+    text-align: right;
+    padding-right: 12px;
+    user-select: none;
+    opacity: 0.6;
+    transition: opacity 0.15s ease, color 0.15s ease;
+  }
+
+  .notebook-row:hover .notebook-line-number {
+    opacity: 1;
+    color: rgb(var(--color-foreground-secondary));
+  }
+
+  .notebook-row-selected .notebook-line-number {
+    opacity: 1;
+    color: rgb(var(--color-accent));
+    font-weight: 500;
+  }
+
+  /* Status dot styling */
+  .notebook-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    transition: transform 0.15s ease;
+  }
+
+  .notebook-status-dot.status-pending {
+    background-color: rgb(var(--color-foreground-disabled));
+  }
+
+  .notebook-status-dot.status-draft {
+    background-color: rgb(var(--color-warning));
+  }
+
+  .notebook-status-dot.status-completed {
+    background-color: rgb(var(--color-success));
+  }
+
+  /* Notebook header styling */
+  .notebook-header {
+    background-color: rgb(var(--color-surface));
+    border-bottom: 1px solid rgb(var(--color-border-subtle));
+  }
+
+  .notebook-title {
+    font-family: 'Merriweather', Georgia, serif;
+    font-size: 18px;
+    font-weight: 600;
+    color: rgb(var(--color-foreground));
+    letter-spacing: -0.3px;
+  }
+
+  /* Progress counter badge */
+  .notebook-progress {
+    font-size: 12px;
+    color: rgb(var(--color-foreground-secondary));
+    background: rgb(var(--color-muted));
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-weight: 500;
+  }
+
+  /* Column headers */
+  .notebook-column-header {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: rgb(var(--color-foreground-muted));
+    padding: 10px 16px;
+    border-bottom: 1px solid rgb(var(--color-border-subtle));
+  }
+
+  /* Translation input placeholder styling */
+  .notebook-translation-input::placeholder {
+    color: rgb(var(--color-foreground-disabled));
+    font-style: italic;
+    font-size: 14px;
+  }
+
+  /* Pencil icon for empty cells */
+  .notebook-pending-icon {
+    color: rgb(var(--color-foreground-disabled));
+    font-size: 14px;
+  }
+
+  /* Source text styling */
+  .notebook-source-text {
+    color: rgb(var(--color-foreground-secondary));
+    line-height: 1.6;
+  }
+
+  /* Translation text styling */
+  .notebook-translation-text {
+    color: rgb(var(--color-foreground));
+    line-height: 1.6;
+  }
+
+  /* Empty translation cell subtle styling */
+  .notebook-empty-cell {
+    color: rgb(var(--color-foreground-disabled));
+    font-style: italic;
+  }
+
   /* Focus ring utility */
   .focus-ring {
     @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2;

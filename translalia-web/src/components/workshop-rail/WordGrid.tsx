@@ -923,22 +923,22 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
               size="sm"
               onClick={handlePreviousLine}
               disabled={!canGoPrevious}
-              className="h-8 w-8 p-0"
+              className="h-10 w-10 p-0"
               title="Previous line"
               aria-label="Previous line"
             >
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronLeft className="h-6 w-6" />
             </Button>
             <Button
               variant="outline"
               size="sm"
               onClick={handleNextLine}
               disabled={!canGoNext}
-              className="h-8 w-8 p-0"
+              className="h-10 w-10 p-0"
               title="Next line"
               aria-label="Next line"
             >
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight className="h-6 w-6" />
             </Button>
             {currentLineIndex !== null && (
               <span className="text-sm text-foreground-muted ml-1">

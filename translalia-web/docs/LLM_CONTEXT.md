@@ -455,11 +455,12 @@ merge: (persisted, current) => {
 
 ### Diary APIs (`/api/diary/`)
 
-| Endpoint            | Method | Purpose                                    |
-| ------------------- | ------ | ------------------------------------------ |
-| `/completed-poems`  | GET    | Get paginated list of completed poems      |
+| Endpoint           | Method | Purpose                               |
+| ------------------ | ------ | ------------------------------------- |
+| `/completed-poems` | GET    | Get paginated list of completed poems |
 
 **Details:**
+
 - **Authentication**: Required (uses `requireUser` from `@/lib/apiGuard`)
 - **Query Parameters**:
   - `limit` (optional, default 20): Number of results (1-50)
@@ -1107,8 +1108,8 @@ pnpm start
 | `src/lib/ai/alignmentGenerator.ts`                          | Word-level alignment generation          |
 | `src/lib/ai/stopwords.ts`                                   | Multilingual stopword sets               |
 | `src/app/api/workshop/translate-line-with-recipes/route.ts` | **Method 2 translation endpoint**        |
-| `src/app/api/diary/completed-poems/route.ts`                 | **Diary API endpoint**                   |
-| `src/app/[locale]/(app)/diary/page.tsx`                     | **Diary page component**                  |
+| `src/app/api/diary/completed-poems/route.ts`                | **Diary API endpoint**                   |
+| `src/app/[locale]/(app)/diary/page.tsx`                     | **Diary page component**                 |
 | `src/components/workshop-rail/`                             | Workshop UI components                   |
 | `src/components/guide/`                                     | Guide Rail components                    |
 | `supabase/migrations/20260121_diary_completed_poems.sql`    | **Diary RPC function migration**         |
@@ -1134,9 +1135,9 @@ pnpm start
 ## 20. Method 2 Translation Flow
 
 ```
-┌─────────────────────────────────────────────────────────────┐
+┌─────────────────────────────────────────────────────────────────┐
 │ 1. Request arrives at /api/workshop/translate-line-with-recipes │
-└───────────────────────────┬─────────────────────────────────┘
+└───────────────────────────┬─────────────────────────────────────┘
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ 2. Get or create variant recipes (cached per thread)        │
@@ -1146,7 +1147,7 @@ pnpm start
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ 3. Build translator personality from guide answers          │
-│    - Domain, purpose, literalness, register, sacred terms  │
+│    - Domain, purpose, literalness, register, sacred terms   │
 └───────────────────────────┬─────────────────────────────────┘
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
@@ -1163,7 +1164,7 @@ pnpm start
 └───────────────────────────┬─────────────────────────────────┘
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ 6. Run diversity gate                                        │
+│ 6. Run diversity gate                                       │
 │    - Mode-scaled Jaccard threshold                          │
 │    - Subject opener + opening bigram + comparison checks    │
 │    - Walk-verb bucket check                                 │
@@ -1177,7 +1178,7 @@ pnpm start
           │                                 │
           │                                 ▼
           │                    ┌─────────────────────────┐
-          │                    │ Regenerate worst variant │
+          │                    │ Regenerate worst variant│
           │                    │ (feature-contrastive)   │
           │                    └───────────┬─────────────┘
           │                                │
@@ -1197,13 +1198,113 @@ pnpm start
 
 ---
 
-## 21. Diary Feature
+## 21. Translation Performance (Parallel + Async)
+
+This section explains how the app optimizes translation speed without sacrificing quality. The core idea is to keep the UI responsive while processing work in short, bounded, resumable ticks with safe parallelism.
+
+### 21.1 Queue-Based Background Processing
+
+- Translation jobs are enqueued into a Redis list and de-duped via an "active" set to prevent duplicates.
+- A background worker consumes the queue, runs `runTranslationTick()` with a time budget, and re-enqueues if work remains.
+
+**Key files**:
+
+- `src/lib/workshop/translationQueue.ts`
+- `scripts/translation-worker.ts`
+
+### 21.2 Non-Blocking Tick Trigger (API)
+
+- `/api/workshop/translation-status` can advance work but returns quickly (default 200ms).
+- A tick runs with its own time budget; if it does not finish in time, it continues in the background and the next poll resumes.
+
+**Key files**:
+
+- `src/app/api/workshop/translation-status/route.ts`
+
+### 21.3 Bounded Parallelism
+
+There are two levels of bounded parallelism, both protected by a semaphore-style limiter:
+
+1. **Stanza-level concurrency** (multiple stanzas per tick)
+
+   - Controlled by env flags.
+   - Limits concurrent stanza processing to avoid rate-limit spikes.
+
+2. **Line-level concurrency** (multiple lines inside a stanza)
+   - Also configurable and bounded.
+   - Skips already-translated lines for fast resumptions.
+
+**Key files**:
+
+- `src/lib/workshop/runTranslationTick.ts`
+- `src/lib/workshop/processStanza.ts`
+- `src/lib/workshop/concurrencyLimiter.ts`
+
+### 21.4 Time-Slicing (Budgeted Work)
+
+- Each tick has a strict time budget (default 2.5s for API ticks, 15s for worker).
+- The system checks remaining time before starting new work to ensure partial work does not finalize incorrectly.
+- If the budget is exceeded, the tick pauses cleanly and resumes on the next poll or worker run.
+
+**Key files**:
+
+- `src/lib/workshop/runTranslationTick.ts`
+- `src/lib/workshop/processStanza.ts`
+
+### 21.5 Alignment Work Is Async and Low Priority
+
+- Word alignment is queued separately with a low concurrency cap to avoid starving main translation.
+- Alignments are generated in a single batched LLM call for all variants (reduces 3 calls to 1).
+
+**Key files**:
+
+- `src/lib/workshop/alignmentQueue.ts`
+- `src/lib/ai/alignmentGenerator.ts`
+
+### 21.6 Caching and Rate Limiting
+
+- Redis cache (with dev memory fallback) reduces repeat LLM calls.
+- Stanza processing is rate limited per user with exponential backoff.
+
+**Key files**:
+
+- `src/lib/ai/cache.ts`
+- `src/lib/workshop/rateLimitedPool.ts`
+
+### 21.7 Client Polling Strategy
+
+- The UI polls translation status every 1.5s while a job is in progress.
+- Responses are marked `no-store` to avoid stale state.
+
+**Key files**:
+
+- `src/lib/hooks/useTranslationJob.ts`
+
+### 21.8 Relevant Environment Flags
+
+```
+ENABLE_PARALLEL_STANZAS=1
+MAX_STANZAS_PER_TICK=1..5
+CHUNK_CONCURRENCY=1..3
+MAIN_GEN_PARALLEL_LINES=1
+MAIN_GEN_LINE_CONCURRENCY=1..6
+TICK_TIME_BUDGET_MS=2500
+TRANSLATION_STATUS_TIMEOUT_MS=200
+ENABLE_TICK_TIME_SLICING=1
+UPSTASH_REDIS_REST_URL=...
+UPSTASH_REDIS_REST_TOKEN=...
+```
+
+---
+
+## 22. Diary Feature
 
 The **Diary** feature provides a personal archive of all completed translation work, allowing users to browse their translation history, view completed poems, and access associated notes and journey summaries.
 
 ### What is a "Completed Poem"?
 
 A poem is considered "completed" when:
+
 - `workshop_lines` exists in `chat_threads.state` and is a JSONB array
 - Array length > 0
 - No null elements in the array
@@ -1216,17 +1317,20 @@ This ensures that all lines of the poem have been translated and saved.
 The Diary feature aggregates data from multiple sources:
 
 1. **`chat_threads.raw_poem`** (column)
+
    - **Type**: `text`
    - **Purpose**: Original source poem text
    - **Note**: This is a real column, not stored in `state->'raw_poem'`
 
 2. **`chat_threads.state->'workshop_lines'`** (JSONB array)
+
    - **Type**: `jsonb`
    - **Structure**: Array of `WorkshopLineWithVerification` objects
    - **Purpose**: Completed line-by-line translations
    - **Format**: Each element contains `original`, `translated`, `completedAt`, etc.
 
 3. **`chat_threads.state->'notebook_notes'`** (JSONB object)
+
    - **Type**: `jsonb`
    - **Structure**: `{ thread_note?: string | null, line_notes?: Record<number, string> }`
    - **Purpose**: User's notes about the translation
@@ -1252,11 +1356,13 @@ The Diary feature aggregates data from multiple sources:
 **Security**: `SECURITY INVOKER` (relies on `auth.uid()` for user filtering)
 
 **Arguments**:
+
 - `p_limit` (integer, default 20): Number of results to return (1-50)
 - `p_before_created_at` (timestamptz, optional): Cursor for pagination
 - `p_before_id` (uuid, optional): Cursor for pagination
 
 **Return Shape**:
+
 ```typescript
 {
   thread_id: uuid,
@@ -1275,12 +1381,14 @@ The Diary feature aggregates data from multiple sources:
 ```
 
 **Pagination Strategy**:
+
 - Uses cursor-based pagination with `(created_at, id)` tuple
 - DESC ordering: `order by ct.created_at desc, ct.id desc`
 - Next page filter: `(created_at, id) < (p_before_created_at, p_before_id)`
 - Limit: 1-50 (default 20)
 
 **Performance Considerations**:
+
 - Does NOT select the full `chat_threads.state` column (too large)
 - Only extracts specific JSONB paths: `state->'workshop_lines'` and `state->'notebook_notes'`
 - Uses indexes:
@@ -1292,6 +1400,7 @@ The Diary feature aggregates data from multiple sources:
 **Location**: `src/app/[locale]/(app)/diary/page.tsx`
 
 **Features**:
+
 - Fetches data using React Query
 - Displays poem cards with:
   - Title and completion date
@@ -1304,6 +1413,7 @@ The Diary feature aggregates data from multiple sources:
 - Loading and error states
 
 **Rendering Guidelines**:
+
 - Translations are displayed as line-by-line pairs (original → translated)
 - Line breaks are preserved
 - Long content (original text, journey summaries) uses collapsible accordions
@@ -1315,6 +1425,7 @@ The Diary link is added to the primary navigation in `src/components/auth/AuthNa
 ### Internationalization
 
 Translation keys are defined in `messages/en.json` under the `Diary` namespace:
+
 - `title`, `heading`, `noCompletedPoems`
 - `originalText`, `translatedText`
 - `notes`, `threadNote`, `lineNotes`
