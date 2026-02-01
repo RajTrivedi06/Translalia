@@ -54,6 +54,12 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
     number | null
   >(null);
 
+  // Reset stanza selection when switching workshops to prevent stale UI
+  React.useEffect(() => {
+    setSelectedStanzaIndex(null);
+    console.log('[WorkshopRail] Stanza selection reset for thread:', threadId);
+  }, [threadId]);
+
   // ✅ Re-enabled: Poll for translation job status updates
   const shouldPollTranslations =
     !!threadId && !!poemStanzas && poemStanzas.totalStanzas > 0;

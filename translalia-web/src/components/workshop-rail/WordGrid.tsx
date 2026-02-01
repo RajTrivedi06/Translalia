@@ -27,7 +27,11 @@ import {
 import { TokenSuggestionsPopover } from "@/components/workshop/TokenSuggestionsPopover";
 import { FullTranslationEditor } from "@/components/notebook/FullTranslationEditor";
 import { CongratulationsModal } from "@/components/workshop/CongratulationsModal";
-import { Sparkles } from "lucide-react";
+import { RhymeWorkshopPanel } from "@/components/workshop/RhymeWorkshopPanel";
+import { SoundPatternPanel } from "@/components/workshop/SoundPatternPanel";
+import { RhythmWorkshopPanel } from "@/components/workshop/RhythmWorkshopPanel";
+import { Sparkles, Music } from "lucide-react";
+import type { RhymeWorkshopResponse } from "@/types/rhymeWorkshop";
 
 /**
  * Map all suggestion failure reasons to user-friendly messages
@@ -302,10 +306,54 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
     variantId?: number;
   } | null>(null);
 
+  // Rhyme workshop state
+  const [rhymeWorkshopData, setRhymeWorkshopData] =
+    React.useState<RhymeWorkshopResponse | null>(null);
+  const [isLoadingRhymeWorkshop, setIsLoadingRhymeWorkshop] =
+    React.useState(false);
+  const [rhymeWorkshopError, setRhymeWorkshopError] = React.useState<
+    string | null
+  >(null);
+  const [rhymeWorkshopExpanded, setRhymeWorkshopExpanded] =
+    React.useState(false);
+  const rhymeWorkshopAbortRef = React.useRef<AbortController | null>(null);
+
   // Track in-flight requests to prevent duplicates (React Strict Mode fires effects twice)
   const inFlightRequestRef = React.useRef<string | null>(null);
   const suggestionsAbortRef = React.useRef<AbortController | null>(null);
   const tokenSuggestionsAbortRef = React.useRef<AbortController | null>(null);
+
+  // Reset all suggestions state when switching workshops to prevent data leakage
+  React.useEffect(() => {
+    // Clear suggestions data
+    setAdditionalSuggestions([]);
+    setTokenSuggestions([]);
+    setAdditionalSuggestionsError(null);
+    setTokenSuggestionsError(null);
+
+    // Reset UI states
+    setTokenSuggestionsOpen(false);
+    setTokenFocus(null);
+    setIsLoadingSuggestions(false);
+    setIsLoadingTokenSuggestions(false);
+    setIsRegenerating(false);
+    setShowFullEditor(false);
+    setShowCongratulations(false);
+
+    // Cancel any in-flight requests
+    suggestionsAbortRef.current?.abort();
+    tokenSuggestionsAbortRef.current?.abort();
+    rhymeWorkshopAbortRef.current?.abort();
+    inFlightRequestRef.current = null;
+
+    // Reset rhyme workshop state
+    setRhymeWorkshopData(null);
+    setIsLoadingRhymeWorkshop(false);
+    setRhymeWorkshopError(null);
+    setRhymeWorkshopExpanded(false);
+
+    console.log('[WordGrid] State reset for thread:', thread);
+  }, [thread]);
 
   const {
     mutate: translateLine,
@@ -541,9 +589,14 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
     setAdditionalSuggestionsError(null);
     suggestionsAbortRef.current?.abort();
     tokenSuggestionsAbortRef.current?.abort();
+    rhymeWorkshopAbortRef.current?.abort();
     setTokenSuggestions([]);
     setIsLoadingTokenSuggestions(false);
     setTokenSuggestionsOpen(false);
+    // Reset rhyme workshop when switching lines
+    setRhymeWorkshopData(null);
+    setIsLoadingRhymeWorkshop(false);
+    setRhymeWorkshopError(null);
     // Cancel any in-flight translation request when switching lines
     cancelCurrentRequest();
     inFlightRequestRef.current = null;
@@ -813,6 +866,117 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
     []
   );
 
+  // Fetch rhyme workshop suggestions
+  const generateRhymeWorkshopSuggestions = React.useCallback(async () => {
+    if (!thread || currentLineIndex === null) return;
+
+    const sourceLine = poemLines[currentLineIndex];
+    if (typeof sourceLine !== "string" || !sourceLine.trim()) return;
+
+    const currentDraft = draftLines[currentLineIndex] || "";
+    const selectedVariantData = currentLineTranslation?.translations.find(
+      (v) => v.variant === currentSelectedVariant
+    );
+    const currentTranslation =
+      selectedVariantData?.fullText || currentDraft || "";
+
+    if (!currentTranslation.trim()) {
+      setRhymeWorkshopError(
+        "Select a variant or write a draft first to get rhyme suggestions."
+      );
+      return;
+    }
+
+    rhymeWorkshopAbortRef.current?.abort();
+    const controller = new AbortController();
+    rhymeWorkshopAbortRef.current = controller;
+    setIsLoadingRhymeWorkshop(true);
+    setRhymeWorkshopError(null);
+
+    try {
+      const response = await fetch("/api/workshop/rhyme-workshop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          threadId: thread,
+          lineIndex: currentLineIndex,
+          sourceLine,
+          currentTranslation,
+          previousLine:
+            currentLineIndex > 0 ? poemLines[currentLineIndex - 1] : null,
+          nextLine:
+            currentLineIndex < poemLines.length - 1
+              ? poemLines[currentLineIndex + 1]
+              : null,
+          fullSourcePoem: poemLines.join("\n"),
+          fullTranslation: Object.values(completedLines).join("\n") || currentTranslation,
+          sourceLanguage: "source language", // Would be better to get from thread state
+          targetLanguage: resolvedTargetLanguage,
+        }),
+        signal: controller.signal,
+      });
+
+      const data = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        rhymeWorkshop?: RhymeWorkshopResponse["rhymeWorkshop"];
+        soundWorkshop?: RhymeWorkshopResponse["soundWorkshop"];
+        rhythmWorkshop?: RhymeWorkshopResponse["rhythmWorkshop"];
+        error?: { code?: string; message?: string };
+      };
+
+      if (controller.signal.aborted) return;
+
+      if (!response.ok || !data.ok) {
+        const errorMessage =
+          data.error?.code === "RATE_LIMITED"
+            ? "Daily limit reached. Try again tomorrow."
+            : data.error?.message || "Failed to load rhyme suggestions.";
+        setRhymeWorkshopError(errorMessage);
+        setRhymeWorkshopData(null);
+        return;
+      }
+
+      setRhymeWorkshopData({
+        rhymeWorkshop: data.rhymeWorkshop || [],
+        soundWorkshop: data.soundWorkshop || [],
+        rhythmWorkshop: data.rhythmWorkshop || [],
+      });
+    } catch (error) {
+      if ((error as { name?: string })?.name === "AbortError") {
+        return;
+      }
+      console.error("[WordGrid] Error fetching rhyme workshop:", error);
+      setRhymeWorkshopError(
+        "Couldn't load rhyme suggestions. Check your connection."
+      );
+    } finally {
+      if (!controller.signal.aborted) {
+        setIsLoadingRhymeWorkshop(false);
+      }
+    }
+  }, [
+    thread,
+    currentLineIndex,
+    poemLines,
+    draftLines,
+    currentLineTranslation,
+    currentSelectedVariant,
+    completedLines,
+    resolvedTargetLanguage,
+  ]);
+
+  // Handler to apply a rhyme workshop rewrite to the draft
+  const handleApplyRhymeRewrite = React.useCallback(
+    (lineIndex: number, newText: string) => {
+      const { draftLines, setDraftLines } = useWorkshopStore.getState();
+      setDraftLines({
+        ...draftLines,
+        [lineIndex]: newText,
+      });
+    },
+    []
+  );
+
   const handleAdditionalWordClick = React.useCallback(
     (word: string) => {
       if (currentLineIndex === null) return;
@@ -1009,6 +1173,119 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
           onRegenerate={(guidance) => generateAdditionalSuggestions(guidance)}
           onWordClick={handleAdditionalWordClick}
         />
+
+        {/* Rhyme & Sound Workshop Section */}
+        <div className="border-t border-gray-200 pt-4 mt-4">
+          <button
+            onClick={() => {
+              setRhymeWorkshopExpanded(!rhymeWorkshopExpanded);
+              if (!rhymeWorkshopExpanded && !rhymeWorkshopData && !isLoadingRhymeWorkshop) {
+                generateRhymeWorkshopSuggestions();
+              }
+            }}
+            className="w-full flex items-center justify-between p-3 rounded-lg bg-gradient-to-r from-violet-50 to-purple-50 border border-violet-200 hover:from-violet-100 hover:to-purple-100 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Music className="h-4 w-4 text-violet-600" />
+              <span className="text-sm font-medium text-violet-900">
+                Rhyme & Sound Workshop
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              {isLoadingRhymeWorkshop && (
+                <Loader2 className="h-4 w-4 animate-spin text-violet-600" />
+              )}
+              {rhymeWorkshopExpanded ? (
+                <ChevronLeft className="h-4 w-4 text-violet-600 rotate-90" />
+              ) : (
+                <ChevronRight className="h-4 w-4 text-violet-600 rotate-90" />
+              )}
+            </div>
+          </button>
+
+          {rhymeWorkshopExpanded && (
+            <div className="mt-4 space-y-6">
+              {rhymeWorkshopError && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  {rhymeWorkshopError}
+                </div>
+              )}
+
+              {isLoadingRhymeWorkshop && (
+                <div className="flex items-center justify-center py-8">
+                  <div className="space-y-2 text-center">
+                    <Loader2 className="h-6 w-6 animate-spin mx-auto text-violet-600" />
+                    <p className="text-sm text-muted-foreground">
+                      Analyzing rhyme and sound patterns...
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {rhymeWorkshopData && !isLoadingRhymeWorkshop && (
+                <>
+                  {rhymeWorkshopData.rhymeWorkshop.length === 0 &&
+                    rhymeWorkshopData.soundWorkshop.length === 0 &&
+                    rhymeWorkshopData.rhythmWorkshop.length === 0 && (
+                      <div className="text-center py-6 text-sm text-muted-foreground">
+                        No specific rhyme or sound suggestions for this line.
+                        <br />
+                        <span className="text-xs">
+                          Try a different line or add more translation text.
+                        </span>
+                      </div>
+                    )}
+
+                  <RhymeWorkshopPanel
+                    suggestions={rhymeWorkshopData.rhymeWorkshop}
+                    onApplyRewrite={handleApplyRhymeRewrite}
+                    onDismiss={() => {}}
+                  />
+
+                  <SoundPatternPanel
+                    suggestions={rhymeWorkshopData.soundWorkshop}
+                    onApplyOption={handleApplyRhymeRewrite}
+                    onDismiss={() => {}}
+                  />
+
+                  <RhythmWorkshopPanel
+                    suggestions={rhymeWorkshopData.rhythmWorkshop}
+                    onApplyAlternative={handleApplyRhymeRewrite}
+                    onDismiss={() => {}}
+                  />
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={generateRhymeWorkshopSuggestions}
+                    disabled={isLoadingRhymeWorkshop}
+                    className="w-full text-xs text-violet-700 hover:text-violet-800 hover:bg-violet-50"
+                  >
+                    <RefreshCw
+                      className={cn(
+                        "h-3 w-3 mr-1",
+                        isLoadingRhymeWorkshop && "animate-spin"
+                      )}
+                    />
+                    Refresh Suggestions
+                  </Button>
+                </>
+              )}
+
+              {!rhymeWorkshopData && !isLoadingRhymeWorkshop && !rhymeWorkshopError && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={generateRhymeWorkshopSuggestions}
+                  className="w-full"
+                >
+                  <Music className="h-4 w-4 mr-2" />
+                  Analyze Rhyme & Sound
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
 
         <TokenSuggestionsPopover
           open={tokenSuggestionsOpen}

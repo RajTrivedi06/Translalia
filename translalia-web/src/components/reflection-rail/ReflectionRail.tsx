@@ -67,6 +67,23 @@ export function ReflectionRail({
     !!threadNote ||
     Object.keys(lineNotes).filter((k) => lineNotes[parseInt(k)]).length > 0;
 
+  // Reset all local state when switching workshops to prevent data leakage
+  React.useEffect(() => {
+    // Clear insights data
+    setAISuggestions(null);
+    setJourneyReflection(null);
+
+    // Clear error states
+    setErrorSuggestions(null);
+    setErrorJourney(null);
+
+    // Reset loading states
+    setLoadingSuggestions(false);
+    setLoadingJourney(false);
+
+    console.log('[ReflectionRail] State reset for thread:', threadId);
+  }, [threadId]);
+
   const handleGetAISuggestions = async () => {
     if (!threadId || completedCount === 0) return;
 
