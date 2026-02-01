@@ -179,6 +179,14 @@
   /* Border colors */
   --color-border: 214 211 209;      /* stone-300 #D6D3D1 */
   --color-border-subtle: 231 229 228; /* stone-200 #E7E5E4 */
+
+  /* Notebook-specific colors (Digital Poetry Journal aesthetic) */
+  --notebook-bg: 253 251 247;           /* Warm cream paper #FDFBF7 */
+  --notebook-source-text: 68 64 60;     /* Rich charcoal for source #44403C */
+  --notebook-translation-text: 28 25 23; /* Near-black for translation #1C1917 */
+  --notebook-line-hover: 250 248 244;   /* Subtle warm cream hover #FAF8F4 */
+  --notebook-line-selected: 239 246 255; /* Light blue selected tint #EFF6FF */
+  --notebook-line-number: 156 163 175;  /* Muted gray for margins #9CA3AF */
 }
 
 :root.dark {
@@ -211,6 +219,14 @@
 
   --color-border: 68 64 60;         /* stone-700 */
   --color-border-subtle: 87 83 78;  /* stone-600 */
+
+  /* Notebook-specific colors - dark mode */
+  --notebook-bg: 41 37 36;              /* Warm dark surface */
+  --notebook-source-text: 214 211 209;  /* Light charcoal for source */
+  --notebook-translation-text: 250 250 249; /* Near-white for translation */
+  --notebook-line-hover: 55 51 50;      /* Subtle dark hover */
+  --notebook-line-selected: 30 41 59;   /* Dark blue selected tint */
+  --notebook-line-number: 120 113 108;  /* Muted gray for margins */
 }
 
 /* Use min-height/viewport and prevent accidental horizontal scroll */
@@ -349,9 +365,9 @@ body {
      Creates a physical notebook-like appearance
      ============================================ */
 
-  /* Main notebook container - uses app semantic colors */
+  /* Main notebook container - warm paper-like appearance */
   .notebook-paper {
-    background-color: rgb(var(--color-surface));
+    background-color: rgb(var(--notebook-bg));
     position: relative;
   }
 
@@ -392,53 +408,76 @@ body {
     pointer-events: none;
   }
 
-  /* Notebook row styling */
+  /* Notebook row styling - enhanced with smooth transitions */
   .notebook-row {
-    min-height: 48px;
-    transition: background-color 0.15s ease;
+    min-height: 52px;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
   }
 
   .notebook-row:hover {
-    background-color: rgb(var(--color-muted) / 0.5);
+    background-color: rgb(var(--notebook-line-hover));
   }
 
-  /* Left accent border for selected row (no background - less distracting) */
-  .notebook-row.notebook-row-selected::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 3px;
-    background-color: rgb(var(--color-accent));
+  /* Selected row - light blue tint with accent border */
+  .notebook-row.notebook-row-selected {
+    background-color: rgb(var(--notebook-line-selected) / 0.5);
+    box-shadow: inset 3px 0 0 rgb(var(--color-accent));
+  }
+
+  .notebook-row.notebook-row-selected:hover {
+    background-color: rgb(var(--notebook-line-selected) / 0.7);
   }
 
   /* Line number styling (margin annotation look) */
   .notebook-line-number {
-    font-family: 'Courier New', ui-monospace, monospace;
-    font-size: 11px;
-    color: rgb(var(--color-foreground-muted));
-    width: 32px;
-    min-width: 32px;
+    font-family: 'JetBrains Mono', 'SF Mono', 'Courier New', ui-monospace, monospace;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    color: rgb(var(--notebook-line-number));
+    width: 36px;
+    min-width: 36px;
     text-align: right;
-    padding-right: 12px;
+    padding-right: 14px;
     user-select: none;
-    opacity: 0.6;
-    transition: opacity 0.15s ease, color 0.15s ease;
+    opacity: 0.5;
+    transition: opacity 0.2s ease, color 0.2s ease;
   }
 
   .notebook-row:hover .notebook-line-number {
-    opacity: 1;
+    opacity: 0.8;
     color: rgb(var(--color-foreground-secondary));
   }
 
   .notebook-row-selected .notebook-line-number {
     opacity: 1;
     color: rgb(var(--color-accent));
-    font-weight: 500;
+    font-weight: 600;
   }
 
-  /* Status dot styling */
+  /* Status indicator styling - icon-based (replacing dots) */
+  .notebook-status-indicator {
+    flex-shrink: 0;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+  }
+
+  .notebook-status-indicator.status-pending {
+    color: rgb(var(--color-foreground-disabled));
+  }
+
+  .notebook-status-indicator.status-draft {
+    color: rgb(var(--color-warning));
+  }
+
+  .notebook-status-indicator.status-completed {
+    color: rgb(var(--color-success));
+  }
+
+  /* Pulse animation for draft/unsaved state */
+  .notebook-status-indicator.status-draft {
+    animation: pulse-subtle 2s ease-in-out infinite;
+  }
+
+  /* Legacy status dot styling (for backwards compatibility) */
   .notebook-status-dot {
     width: 8px;
     height: 8px;
@@ -459,39 +498,53 @@ body {
     background-color: rgb(var(--color-success));
   }
 
-  /* Notebook header styling */
+  /* Notebook header styling - refined with subtle shadow */
   .notebook-header {
     background-color: rgb(var(--color-surface));
     border-bottom: 1px solid rgb(var(--color-border-subtle));
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
   }
 
   .notebook-title {
     font-family: 'Merriweather', Georgia, serif;
-    font-size: 18px;
+    font-size: 20px;
     font-weight: 600;
     color: rgb(var(--color-foreground));
-    letter-spacing: -0.3px;
+    letter-spacing: -0.4px;
   }
 
-  /* Progress counter badge */
+  /* Progress counter badge - refined */
   .notebook-progress {
-    font-size: 12px;
+    font-size: 13px;
     color: rgb(var(--color-foreground-secondary));
     background: rgb(var(--color-muted));
-    padding: 4px 12px;
-    border-radius: 12px;
+    padding: 5px 14px;
+    border-radius: 16px;
     font-weight: 500;
+    letter-spacing: -0.01em;
   }
 
-  /* Column headers */
+  /* Column headers - editorial style with underline accent */
   .notebook-column-header {
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 1.5px;
+    letter-spacing: 1.2px;
     color: rgb(var(--color-foreground-muted));
-    padding: 10px 16px;
+    padding: 12px 16px;
     border-bottom: 1px solid rgb(var(--color-border-subtle));
+    background-color: rgb(var(--color-surface));
+    position: relative;
+  }
+
+  .notebook-column-header::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 16px;
+    right: 16px;
+    height: 2px;
+    background: linear-gradient(90deg, rgb(var(--color-accent) / 0.3), transparent);
   }
 
   /* Translation input placeholder styling */
@@ -507,26 +560,65 @@ body {
     font-size: 14px;
   }
 
-  /* Source text styling */
+  /* Source text styling - literary serif font */
   .notebook-source-text {
-    color: rgb(var(--color-foreground-secondary));
-    line-height: 1.6;
+    font-family: 'Merriweather', 'Georgia', serif;
+    font-size: 15px;
+    line-height: 1.7;
+    letter-spacing: -0.01em;
+    color: rgb(var(--notebook-source-text));
   }
 
-  /* Translation text styling */
+  /* Translation text styling - clean modern sans-serif */
   .notebook-translation-text {
-    color: rgb(var(--color-foreground));
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 15px;
     line-height: 1.6;
+    font-weight: 450;
+    color: rgb(var(--notebook-translation-text));
   }
 
-  /* Empty translation cell subtle styling */
+  /* Empty translation cell - subtle invitation to write */
   .notebook-empty-cell {
     color: rgb(var(--color-foreground-disabled));
     font-style: italic;
+    font-size: 14px;
   }
 
   /* Focus ring utility */
   .focus-ring {
     @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2;
+  }
+
+  /* Drop zone active state - pulsing border */
+  .notebook-drop-active {
+    animation: drop-pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes drop-pulse {
+    0%, 100% {
+      border-color: rgb(var(--color-accent));
+      box-shadow: 0 0 0 0 rgb(var(--color-accent) / 0.2);
+    }
+    50% {
+      border-color: rgb(var(--color-accent-dark));
+      box-shadow: 0 0 0 4px rgb(var(--color-accent) / 0);
+    }
+  }
+
+  /* Add line button container */
+  .notebook-add-line {
+    position: relative;
+    padding: 1.5rem 1rem;
+  }
+
+  .notebook-add-line::before {
+    content: '';
+    position: absolute;
+    left: 2rem;
+    right: 2rem;
+    top: 50%;
+    transform: translateY(-50%);
+    border-top: 1px dashed rgb(var(--color-border-subtle));
   }
 }

@@ -6,9 +6,14 @@ import { Badge } from "@/components/ui/badge";
 
 interface WorkshopHeaderProps {
   showTitle?: boolean;
+  /** Hide bottom border when ProcessingProgress is shown below */
+  hideBottomBorder?: boolean;
 }
 
-export function WorkshopHeader({ showTitle = true }: WorkshopHeaderProps) {
+export function WorkshopHeader({
+  showTitle = true,
+  hideBottomBorder = false,
+}: WorkshopHeaderProps) {
   const total = useWorkshopStore((s) => s.poemLines.length);
   const currentLineIndex = useWorkshopStore((s) => s.currentLineIndex);
   const selectedVariant = useWorkshopStore((s) => s.selectedVariant);
@@ -16,7 +21,11 @@ export function WorkshopHeader({ showTitle = true }: WorkshopHeaderProps) {
     currentLineIndex !== null ? selectedVariant[currentLineIndex] : null;
 
   return (
-    <div className="flex items-center justify-between border-b px-3 py-2 bg-white">
+    <div
+      className={`flex items-center justify-between px-3 py-2 bg-white ${
+        hideBottomBorder ? "" : "border-b"
+      }`}
+    >
       <div className="flex items-center gap-2">
         {showTitle && <h2 className="text-sm font-semibold">Workshop</h2>}
         {currentLineIndex !== null ? (

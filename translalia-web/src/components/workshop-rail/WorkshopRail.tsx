@@ -496,7 +496,10 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
   if (selectedStanzaIndex === null) {
     return (
       <div className="h-full flex flex-col">
-        <WorkshopHeader showTitle={showHeaderTitle} />
+        <WorkshopHeader
+          showTitle={showHeaderTitle}
+          hideBottomBorder={!!(shouldPollTranslations && translationProgress)}
+        />
 
         {/* ✅ Re-enabled: Show translation progress */}
         {shouldPollTranslations && translationProgress && (
@@ -586,7 +589,9 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
 
   return (
     <div className="h-full flex flex-col">
-      <WorkshopHeader />
+      <WorkshopHeader
+        hideBottomBorder={!!(shouldPollTranslations && translationProgress)}
+      />
 
       {/* ✅ Re-enabled: Show translation progress */}
       {shouldPollTranslations && translationProgress && (

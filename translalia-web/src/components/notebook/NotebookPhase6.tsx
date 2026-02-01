@@ -2,14 +2,14 @@
 
 import * as React from "react";
 import { useDndMonitor } from "@dnd-kit/core";
-import { FileText, X, Save, Pencil } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { FileText, X, Pencil } from "lucide-react";
 
 import { useWorkshopStore } from "@/store/workshopSlice";
 import { useThreadId } from "@/hooks/useThreadId";
 import { useSaveManualLine, useSaveManualLineWithoutInvalidation } from "@/lib/hooks/useWorkshopFlow";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
 import { NotebookDropZone } from "./NotebookDropZone";
@@ -17,6 +17,8 @@ import { FullTranslationEditor } from "./FullTranslationEditor";
 import { CompletionConfirmationDialog } from "./CompletionConfirmationDialog";
 import { CongratulationsModal } from "@/components/workshop/CongratulationsModal";
 import { NotebookNotesPanel } from "./NotebookNotesPanel";
+import { NotebookStatusIndicator } from "./NotebookStatusIndicator";
+import { NotebookHeader } from "./NotebookHeader";
 import { useNotebookStore } from "@/store/notebookSlice";
 
 interface NotebookPhase6Props {
@@ -378,47 +380,16 @@ export default function NotebookPhase6({
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      {/* Notebook Header - with paper gradient effect */}
-      <div className="notebook-header flex items-center justify-between px-5 py-3">
-        <div className="flex items-center gap-4 min-w-0">
-          {showTitle ? (
-            <h2 className="notebook-title">Notebook</h2>
-          ) : null}
-          {/* Progress counter */}
-          <span className="notebook-progress">
-            {completedCount}/{sourceLineCount} translated
-          </span>
-          {Object.keys(draftLines).length > 0 && (
-            <span className="flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-              {Object.keys(draftLines).length} unsaved
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {Object.keys(draftLines).length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs"
-              onClick={handleSaveAll}
-              disabled={isSaving || isSavingAll}
-            >
-              <Save className="w-3.5 h-3.5 mr-1.5" />
-              {isSavingAll ? "Saving..." : "Save All"}
-            </Button>
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 text-xs"
-            onClick={() => setShowFullEditor(true)}
-          >
-            <FileText className="w-3.5 h-3.5 mr-1.5" />
-            Full comparison
-          </Button>
-        </div>
-      </div>
+      {/* Notebook Header with segmented progress bar */}
+      <NotebookHeader
+        showTitle={showTitle}
+        completedCount={completedCount}
+        draftCount={Object.keys(draftLines).length}
+        totalLines={sourceLineCount}
+        isSaving={isSaving || isSavingAll}
+        onSaveAll={handleSaveAll}
+        onOpenFullEditor={() => setShowFullEditor(true)}
+      />
 
       {/* Column Headers */}
       <div className="grid grid-cols-2 bg-surface sticky top-0 z-10">
@@ -446,8 +417,17 @@ export default function NotebookPhase6({
           const sourceLine = poemLines[idx] ?? "";
 
           return (
-            <div
+            <motion.div
               key={`row-${idx}`}
+              initial={false}
+              animate={{
+                backgroundColor: isActive
+                  ? "rgb(239 246 255 / 0.5)"
+                  : isHovered
+                  ? "rgb(250 248 244)"
+                  : "transparent",
+              }}
+              transition={{ duration: 0.15 }}
               className={[
                 "notebook-row grid grid-cols-2 border-b border-border-subtle relative",
                 isActive ? "notebook-row-selected" : "",
@@ -492,18 +472,11 @@ export default function NotebookPhase6({
                 ].join(" ")}
                 onClick={() => setCurrentLineIndex(idx)}
               >
-                {/* Status indicator - compact dot */}
-                <span
-                  className={[
-                    "notebook-status-dot mt-2 ml-1",
-                    status === "completed"
-                      ? "status-completed"
-                      : status === "draft"
-                      ? "status-draft"
-                      : "status-pending",
-                  ].join(" ")}
-                  aria-hidden="true"
-                  title={status === "completed" ? "Completed" : status === "draft" ? "Draft" : "Pending"}
+                {/* Status indicator - icon-based */}
+                <NotebookStatusIndicator
+                  status={status === "empty" ? "pending" : status}
+                  size="md"
+                  className="mt-1.5 ml-0.5"
                 />
                 <div className="flex-1 min-w-0">
                   <NotebookDropZone
@@ -579,33 +552,52 @@ export default function NotebookPhase6({
                   </NotebookDropZone>
                 </div>
                 {/* Show pencil icon when empty and hovered, clear button when has content */}
-                {!hasContent && isHovered && (
-                  <Pencil className="w-4 h-4 text-stone-300 mt-0.5 flex-shrink-0 notebook-pending-icon" />
-                )}
-                {hasContent && (isHovered || isActive) && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      clearDraft(idx);
-                    }}
-                    className={[
-                      "mt-0.5 flex-shrink-0 rounded p-1 text-stone-400",
-                      "hover:bg-stone-100 hover:text-stone-600",
-                      "transition-colors",
-                    ].join(" ")}
-                    aria-label="Clear line"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
+                <AnimatePresence mode="wait">
+                  {!hasContent && isHovered && (
+                    <motion.div
+                      key="pencil"
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.8 }}
+                      transition={{ duration: 0.15 }}
+                    >
+                      <Pencil className="w-4 h-4 text-foreground-disabled mt-0.5 flex-shrink-0" />
+                    </motion.div>
+                  )}
+                  {hasContent && (isHovered || isActive) && (
+                    <motion.button
+                      key="clear"
+                      type="button"
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.8 }}
+                      transition={{ duration: 0.15 }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        clearDraft(idx);
+                      }}
+                      className={[
+                        "mt-0.5 flex-shrink-0 rounded p-1 text-foreground-muted",
+                        "hover:bg-muted hover:text-foreground-secondary",
+                        "transition-colors",
+                      ].join(" ")}
+                      aria-label="Clear line"
+                    >
+                      <X className="w-4 h-4" />
+                    </motion.button>
+                  )}
+                </AnimatePresence>
               </div>
-            </div>
+            </motion.div>
           );
         })}
 
-        {/* Add Line button */}
-        <div className="px-3 py-3 bg-muted/30">
+        {/* Add Line button - decorative design with separator */}
+        <div className="relative py-6 px-4">
+          {/* Decorative dashed separator */}
+          <div className="absolute inset-x-8 top-1/2 -translate-y-1/2 border-t border-dashed border-border-subtle" />
+
+          {/* Centered pill button */}
           <button
             type="button"
             onClick={() => {
@@ -621,10 +613,16 @@ export default function NotebookPhase6({
                 }
               }, 100);
             }}
-            className="flex items-center gap-2 text-sm text-purple-600 hover:text-purple-700 hover:bg-purple-50/50 px-3 py-2 rounded-md transition-colors"
+            className="relative mx-auto flex items-center gap-2 px-4 py-2
+              bg-surface border border-border-subtle rounded-full
+              text-sm text-foreground-secondary
+              hover:border-accent hover:text-accent hover:bg-accent/5
+              active:scale-[0.98]
+              transition-all duration-200 ease-out
+              shadow-sm hover:shadow"
           >
-            <span className="text-base font-medium">+</span>
-            <span>Add extra line</span>
+            <span className="text-lg font-light leading-none">+</span>
+            <span>Add line</span>
           </button>
         </div>
       </div>
