@@ -625,6 +625,7 @@ export default function NotebookPhase6({
             <span>Add line</span>
           </button>
         </div>
+
       </div>
 
       {/* Save error display */}

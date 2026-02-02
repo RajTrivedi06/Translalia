@@ -7,11 +7,13 @@ import { ReflectionHeader } from "@/components/reflection-rail/ReflectionHeader"
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, Loader2, BookOpen, Lightbulb, CheckCircle2 } from "lucide-react";
+import { Sparkles, Loader2, BookOpen, Lightbulb, CheckCircle2, Music2, ChevronDown, ChevronUp } from "lucide-react";
 import { useWorkshopStore } from "@/store/workshopSlice";
 import { useGuideStore } from "@/store/guideSlice";
 import { useNotebookStore } from "@/store/notebookSlice";
 import { CongratulationsModal } from "@/components/workshop/CongratulationsModal";
+import { NotebookAISuggestions } from "@/components/notebook/NotebookAISuggestions";
+import { useNotebookNotes } from "@/lib/hooks/useNotebookNotes";
 
 interface ReflectionRailProps {
   showHeaderTitle?: boolean;
@@ -46,9 +48,13 @@ export function ReflectionRail({
 
   const poemLines = useWorkshopStore((s) => s.poemLines);
   const completedLines = useWorkshopStore((s) => s.completedLines);
+  const draftLines = useWorkshopStore((s) => s.draftLines);
+  const setDraft = useWorkshopStore((s) => s.setDraft);
+  const setCurrentLineIndex = useWorkshopStore((s) => s.setCurrentLineIndex);
   const guideAnswers = useGuideStore((s) => s.answers);
   const threadNote = useNotebookStore((s) => s.threadNote);
   const lineNotes = useNotebookStore((s) => s.lineNotes);
+  const { data: notebookNotes } = useNotebookNotes();
 
   const [aiSuggestions, setAISuggestions] =
     React.useState<AIAssistStepCResponse | null>(null);
@@ -61,6 +67,7 @@ export function ReflectionRail({
   );
   const [errorJourney, setErrorJourney] = React.useState<string | null>(null);
   const [showCongratulations, setShowCongratulations] = React.useState(false);
+  const [showRefineRhyme, setShowRefineRhyme] = React.useState(false);
   const completedCount = Object.keys(completedLines).length;
   const allLinesCompleted = completedCount === poemLines.length && poemLines.length > 0;
   const hasNotes =
@@ -81,8 +88,20 @@ export function ReflectionRail({
     setLoadingSuggestions(false);
     setLoadingJourney(false);
 
+    // Reset Refine & Rhyme state
+    setShowRefineRhyme(false);
+
     console.log('[ReflectionRail] State reset for thread:', threadId);
   }, [threadId]);
+
+  // Handler for applying AI suggestion adjustments
+  const handleApplyAdjustment = React.useCallback(
+    (lineIndex: number, newText: string) => {
+      setDraft(lineIndex, newText);
+      setCurrentLineIndex(lineIndex);
+    },
+    [setDraft, setCurrentLineIndex]
+  );
 
   const handleGetAISuggestions = async () => {
     if (!threadId || completedCount === 0) return;
@@ -166,20 +185,57 @@ export function ReflectionRail({
     <div className="h-full flex flex-col">
       {showHeaderTitle && <ReflectionHeader showTitle={showHeaderTitle} />}
 
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-4 pt-2">
         <div className="space-y-6">
-          {/* Introduction */}
-          <div className="space-y-2">
-            <p className="text-slate-600 text-sm leading-relaxed">
-              {t("reflectionDescription")}
+          {completedCount === 0 && (
+            <p className="text-amber-600 text-sm">
+              Complete at least one translation line to unlock reflection
+              features.
             </p>
-            {completedCount === 0 && (
-              <p className="text-amber-600 text-sm">
-                Complete at least one translation line to unlock reflection
-                features.
+          )}
+
+          {/* Refine & Rhyme - Rhyme Workshop */}
+          <Card className="p-4 border-teal-200 bg-teal-50/30">
+            <div className="space-y-3">
+              <button
+                onClick={() => setShowRefineRhyme(!showRefineRhyme)}
+                className="w-full flex items-center justify-between"
+              >
+                <div className="flex items-center gap-2">
+                  <Music2 className="h-5 w-5 text-teal-600" />
+                  <h3 className="font-semibold text-slate-900">
+                    Refine & Rhyme
+                  </h3>
+                </div>
+                {showRefineRhyme ? (
+                  <ChevronUp className="h-4 w-4 text-teal-600" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-teal-600" />
+                )}
+              </button>
+
+              <p className="text-sm text-slate-600">
+                Get help making your translation rhyme
               </p>
-            )}
-          </div>
+
+              {showRefineRhyme && completedCount > 0 && (
+                <div className="mt-4 pt-4 border-t border-teal-200">
+                  <NotebookAISuggestions
+                    translationDiary={notebookNotes?.threadNote || undefined}
+                    lineNotes={notebookNotes?.lineNotes}
+                    onApplyAdjustment={handleApplyAdjustment}
+                    hideHeader
+                  />
+                </div>
+              )}
+
+              {showRefineRhyme && completedCount === 0 && (
+                <p className="text-sm text-amber-600 mt-2">
+                  Complete at least one translation line to use this feature.
+                </p>
+              )}
+            </div>
+          </Card>
 
           {/* AI Assist Step C: Contextual Suggestions */}
           <Card className="p-4 border-blue-200 bg-blue-50/30">

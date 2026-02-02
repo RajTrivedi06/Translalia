@@ -116,7 +116,7 @@
     "workshopDescription": "Generate options, compare them, choose, or ask for more",
     "workshopNote": "(NB: Translalia may make mistakes, as its ability with different kinds of language depends on the dataset of the LLM it is using)",
     "notebook": "Notebook",
-    "notebookDescription": "Compile and edit your version line by line",
+    "notebookDescription": "Assemble your full poem, edit line by line, and view source and translation side by side",
     "reflection": "EDITING",
     "reflectionDescription": "Edit and refine your translation.",
     "translationComplete": "Translation Complete",

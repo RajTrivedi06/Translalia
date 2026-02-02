@@ -648,6 +648,9 @@ export default function ThreadPageClient({
                           <h2 className="text-xl font-semibold tracking-tight text-foreground">
                             {t("notebook")}
                           </h2>
+                          <p className="text-sm text-foreground-muted">
+                            {t("notebookDescription")}
+                          </p>
                         </div>
                         <div className="flex-1 min-h-0 overflow-hidden">
                           <NotebookViewContainer
