@@ -326,14 +326,21 @@ export default function NotebookPhase6({
         `[Notebook] Save All completed: ${successCount} succeeded, ${failCount} failed`
       );
 
-      // NOW invalidate and refetch once
-      // This will trigger WorkshopRail effect to update Zustand store
+      // Update Workshop store immediately so progress bar updates
+      // (WorkshopRail may be collapsed/unmounted when Editing is open, so its
+      // sync effect won't run—we must update the store ourselves)
+      for (let i = 0; i < linesToSave.length; i++) {
+        if (saveResults[i].success) {
+          const { lineIndex, text } = linesToSave[i];
+          setCompletedLine(lineIndex, text);
+          clearDraft(lineIndex);
+        }
+      }
+
+      // Invalidate for consistency when Workshop is opened
       await queryClient.invalidateQueries({
         queryKey: ["workshop-state", threadId],
       });
-
-      // Wait a bit for the effect to run
-      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Report errors if any
       if (failCount > 0) {

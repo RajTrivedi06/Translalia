@@ -22,6 +22,8 @@ export function FullTranslationEditor({
   const poemLines = useWorkshopStore((s) => s.poemLines);
   const draftLines = useWorkshopStore((s) => s.draftLines);
   const setDraftLines = useWorkshopStore((s) => s.setDraftLines);
+  const setCompletedLine = useWorkshopStore((s) => s.setCompletedLine);
+  const clearDraft = useWorkshopStore((s) => s.clearDraft);
 
   const threadId = useThreadId() || undefined;
   const { data: savedWorkshopLines } = useWorkshopState(threadId);
@@ -166,7 +168,7 @@ export function FullTranslationEditor({
       }
 
       // Save all lines to the database sequentially
-      let successCount = 0;
+      const saveResults: Array<{ lineIndex: number; text: string; success: boolean }> = [];
       for (const { lineIndex, text } of linesToSave) {
         try {
           await saveManualLineBatch.mutateAsync({
@@ -176,20 +178,32 @@ export function FullTranslationEditor({
             originalLine: poemLines[lineIndex] ?? "",
             translatedLine: text,
           });
-          successCount++;
+          saveResults.push({ lineIndex, text, success: true });
         } catch (lineError) {
           console.error(
             `[FullTranslationEditor] Failed to save line ${lineIndex}:`,
             lineError
           );
+          saveResults.push({ lineIndex, text, success: false });
         }
       }
 
-      // Clear all drafts since we've saved to DB
+      const successCount = saveResults.filter((r) => r.success).length;
+
+      // Update Zustand store immediately so the Notebook progress bar updates
+      // (WorkshopRail may be collapsed when Editing is open, so its sync effect
+      // won't run—we must update the store ourselves)
+      for (const { lineIndex, text, success } of saveResults) {
+        if (success) {
+          setCompletedLine(lineIndex, text);
+          clearDraft(lineIndex);
+        }
+      }
+
+      // Clear any remaining drafts (e.g. lines that weren't in linesToSave)
       setDraftLines({});
 
-      // Invalidate and refetch to trigger WorkshopRail sync
-      // This will update completedLines from DB and show green ticks
+      // Invalidate for consistency when Workshop is opened
       await queryClient.invalidateQueries({
         queryKey: ["workshop-state", threadId],
       });
@@ -214,6 +228,8 @@ export function FullTranslationEditor({
     saveManualLineBatch,
     queryClient,
     setDraftLines,
+    setCompletedLine,
+    clearDraft,
   ]);
 
   // Keyboard shortcuts
