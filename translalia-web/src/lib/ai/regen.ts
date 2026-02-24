@@ -42,6 +42,7 @@ import {
   type OpenerType,
 } from "./structureSignature";
 import { normalizeForContainment, tokenize } from "./textNormalize";
+import { SIMPLIFIED_VARIANT_DESCRIPTIONS } from "./simplifiedPrompts";
 
 // =============================================================================
 // Types
@@ -1328,7 +1329,16 @@ function buildRegenPrompt(params: RegenPromptParams): string {
     gateReason,
     desiredOpenerType,
   } = params;
-  
+
+  // ─── SIMPLIFIED PROMPTS (default since v6, client direction from Matthew) ───
+  // Uses SIMPLIFIED_VARIANT_DESCRIPTIONS instead of archetype directives/lens.
+  // Preserves anti-copy rules and contrastive constraints.
+  // The old archetype regen prompt (below) is preserved for rollback
+  // via USE_SIMPLIFIED_PROMPTS=0.
+  if (process.env.USE_SIMPLIFIED_PROMPTS === "1") {
+    return buildSimplifiedRegenPromptForSalvage(params);
+  }
+
   // Parse gate reason into targeted constraints
   const { constraints, mustAvoid } = parseGateReason(gateReason, lineText);
 
@@ -1459,12 +1469,8 @@ TARGET LANGUAGE: ${targetLanguage}
 ${prevLine ? `PREVIOUS LINE: "${prevLine}"` : ""}
 ${nextLine ? `NEXT LINE: "${nextLine}"` : ""}
 
-RECIPE FOR VARIANT ${label}:
-- Archetype: ${recipe.archetype}
-- Directive: ${recipe.directive}
-- Lens: imagery=${recipe.lens.imagery}, voice=${recipe.lens.voice}, sound=${
-    recipe.lens.sound
-  }, syntax=${recipe.lens.syntax}
+RECIPE FOR VARIANT ${label}:${recipe.archetype ? `\n- Archetype: ${recipe.archetype}` : ""}
+- Directive: ${recipe.directive}${recipe.lens ? `\n- Lens: imagery=${recipe.lens.imagery}, voice=${recipe.lens.voice}, sound=${recipe.lens.sound}, syntax=${recipe.lens.syntax}` : ""}
 ${stancePlanText}
 
 EXISTING VARIANTS (DO NOT COPY):
@@ -1489,6 +1495,142 @@ ${structuralTargets}
 ${semanticAnchorsSection}
 
 ${archetypeRules}
+
+OUTPUT FORMAT (JSON only, no markdown):
+{
+  "text": "your translation here"
+}
+
+CRITICAL: Return ONLY the translation text in the "text" field. No labels (Variant A:), no explanations, no meta-commentary, no multi-line paragraphs.
+Return ONLY valid JSON. No markdown, no explanations.`;
+}
+
+// =============================================================================
+// Simplified Regen Prompt Builder (USE_SIMPLIFIED_PROMPTS=1)
+// =============================================================================
+
+/**
+ * Builds a regen prompt for simplified mode.
+ *
+ * Preserves:
+ *  - Anti-copy rules (banned tokens, opener avoidance)
+ *  - Targeted constraints (from gate failure reason)
+ *  - Structural targets (desired opener type)
+ *  - Source text and language context
+ *
+ * Removes:
+ *  - Archetype name, lens config, unusualness budget, stance plan
+ *  - Archetype rules for B/C (prismatic_reimagining, world_voice_transposition)
+ *  - Semantic anchors section
+ *
+ * Replaces:
+ *  - recipe.directive → SIMPLIFIED_VARIANT_DESCRIPTIONS[mode][label]
+ */
+function buildSimplifiedRegenPromptForSalvage(params: RegenPromptParams): string {
+  const {
+    lineText,
+    sourceLanguage,
+    targetLanguage,
+    mode,
+    prevLine,
+    nextLine,
+    label,
+    recipe,
+    fixedVariants,
+    gateReason,
+    desiredOpenerType,
+  } = params;
+
+  // Parse gate reason into targeted constraints (same as archetype path)
+  const { constraints, mustAvoid } = parseGateReason(gateReason, lineText);
+
+  // Extract banned tokens from fixed variants (same as archetype path)
+  const stopwords = pickStopwords(targetLanguage);
+  const bannedFirstTokens = new Set<string>();
+  if (fixedVariants.length > 0) {
+    const firstVariantTokens = tokenize(fixedVariants[0].text);
+    const contentTokens = firstVariantTokens.filter(
+      (t) => !stopwords.has(t.toLowerCase())
+    );
+    contentTokens
+      .slice(0, 3)
+      .forEach((t) => bannedFirstTokens.add(t.toLowerCase()));
+  }
+  const bannedTokensList = Array.from(bannedFirstTokens);
+
+  // Get simplified variant description (replaces recipe.directive + archetype)
+  const modeKey = mode as "focused" | "balanced" | "adventurous";
+  const descriptions = SIMPLIFIED_VARIANT_DESCRIPTIONS[modeKey];
+  const variantDescription =
+    (descriptions && descriptions[label]) || recipe.directive;
+
+  // Structural targets (same as archetype path)
+  const structuralTargets = desiredOpenerType
+    ? `
+STRUCTURAL TARGET:
+- Try to start with opener type: ${desiredOpenerType}
+- ${desiredOpenerType === "PREP" ? "Begin with a preposition (on, in, at, through, etc.)" : ""}
+- ${desiredOpenerType === "NOUN_PHRASE" ? "Begin with an article + noun (the X, a Y, etc.)" : ""}
+- ${desiredOpenerType === "PRON" ? "Begin with a pronoun" : ""}
+- ${desiredOpenerType === "OTHER" ? "Use a creative opening (verb, adjective, fragment, etc.)" : ""}`
+    : "";
+
+  // Build targeted constraints section (same as archetype path)
+  const targetedConstraintsSection =
+    constraints.length > 0 || mustAvoid.length > 0
+      ? `
+═══════════════════════════════════════════════════════════════
+TARGETED FIXES (based on failure reason)
+═══════════════════════════════════════════════════════════════
+${
+  mustAvoid.length > 0
+    ? `DO NOT USE:\n${mustAvoid.map((item) => `✗ ${item}`).join("\n")}\n`
+    : ""
+}
+${
+  constraints.length > 0
+    ? `MUST DO:\n${constraints.map((item) => `✓ ${item}`).join("\n")}`
+    : ""
+}
+`
+      : `
+═══════════════════════════════════════════════════════════════
+FAILURE CONTEXT
+═══════════════════════════════════════════════════════════════
+Original failure reason: ${gateReason}
+`;
+
+  return `You are regenerating variant ${label} for a poetry translation line.
+${targetedConstraintsSection}
+
+SOURCE LINE: "${lineText}"
+SOURCE LANGUAGE: ${sourceLanguage}
+TARGET LANGUAGE: ${targetLanguage}
+${prevLine ? `PREVIOUS LINE: "${prevLine}"` : ""}
+${nextLine ? `NEXT LINE: "${nextLine}"` : ""}
+
+GOAL FOR VARIANT ${label}:
+${variantDescription}
+
+EXISTING VARIANTS (DO NOT COPY):
+${fixedVariants
+  .map(
+    (v, i) =>
+      `- Variant ${
+        ["A", "B", "C"].filter((_, idx) => idx !== label.charCodeAt(0) - 65)[i]
+      }: "${v.text}"\n  (opener: ${v.openerType}, signature: ${v.signature})`
+  )
+  .join("\n")}
+
+═══════════════════════════════════════════════════════════════
+ANTI-COPY RULES (MANDATORY)
+═══════════════════════════════════════════════════════════════
+- DO NOT reuse these content tokens in your first 8 tokens: ${bannedTokensList.join(
+    ", "
+  )}
+- DO NOT start with the same first 2 tokens as any existing variant
+- MUST be STRUCTURALLY DIFFERENT (not just synonym swaps)
+${structuralTargets}
 
 OUTPUT FORMAT (JSON only, no markdown):
 {
