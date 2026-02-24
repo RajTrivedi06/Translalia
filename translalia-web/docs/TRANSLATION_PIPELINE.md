@@ -514,7 +514,7 @@ function computeRecipeContextHash(
 
 ### 8.6 Why No Streaming?
 
-**Decision:** JSON-first outputs, no streaming (ADR-011 in `docs/LLM_CONTEXT.md`)
+**Decision:** JSON-first outputs, no streaming (see root LLM docs in `docs/05-llm/DOC_MAP.md`)
 
 **Rationale:**
 - Structured JSON is easier to validate
@@ -572,5 +572,6 @@ function computeRecipeContextHash(
 ## Related Documentation
 
 - [PROMPTS.md](./PROMPTS.md) - All AI prompts with exact content and explanations
-- [LLM_CONTEXT.md](./LLM_CONTEXT.md) - LLM-specific architectural decisions
+- [LLM_CONTEXT.md](./LLM_CONTEXT.md) - Legacy deep reference (deprecated as primary source)
+- [../../docs/05-llm/DOC_MAP.md](../../docs/05-llm/DOC_MAP.md) - Primary routing for current LLM docs
 - Source files in `src/lib/ai/` and `src/lib/workshop/` for implementation details

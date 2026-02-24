@@ -13,7 +13,7 @@ Primary project documentation lives at:
 - `docs/05-llm/DOC_MAP.md`
 
 ## Local Working Docs Kept Here
-- `LLM_CONTEXT.md`
+- `LLM_CONTEXT.md` (legacy deep reference, deprecated as primary source)
 - `PROMPTS.md`
 - `TRANSLATION_PIPELINE.md`
 

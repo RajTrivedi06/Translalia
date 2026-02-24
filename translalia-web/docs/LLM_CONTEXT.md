@@ -1,5 +1,13 @@
 # Translalia — LLM Context Document
 
+> **Status**: Deprecated as primary source. Use root docs first:
+> - `docs/05-llm/DOC_MAP.md`
+> - `docs/05-llm/context-packs/frontend-pack.md`
+> - `docs/05-llm/context-packs/backend-pack.md`
+> - `docs/05-llm/context-packs/db-pack.md`
+>
+> This file is retained as a legacy deep-reference document.
+
 > **Purpose**: This document provides comprehensive context about the Translalia application for LLM-assisted development sessions. It captures the architecture, key features, state management patterns, and codebase structure.
 
 ---
