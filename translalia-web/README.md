@@ -125,7 +125,7 @@ export const openai = new OpenAI({
 
 ### Troubleshooting
 
-- See `docs/context/CURRENT_ISSUES.md` for known issues and workarounds.
+- See root docs `../docs/03-guides/troubleshooting.md` for known issues and standard fixes.
 
 ```17:22:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/layout.tsx
 export const metadata: Metadata = {
