@@ -1,0 +1,30 @@
+---
+description: Core rules for all files
+globs: ["**/*"]
+alwaysApply: true
+---
+
+# Core Rules
+
+## What this file is for
+Repository-wide coding and collaboration rules that apply to all files.
+
+## When to read/use this
+Use these rules for every change in this repository.
+
+## Core Principles
+- Prefer small, focused changes.
+- Keep behavior explicit and readable.
+- Preserve existing patterns unless a documented refactor is planned.
+
+## Code Style
+- Follow existing style in each area of the repo.
+- Use clear naming and avoid unnecessary abstraction.
+
+## File Organization
+- Keep files in their appropriate domain directories.
+- Place long-term docs under `docs/` and temporary notes under `temp-doc/`.
+
+## Naming Conventions
+- Use descriptive names for files, folders, and symbols.
+- Keep naming consistent with nearby code.

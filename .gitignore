@@ -7,3 +7,7 @@ build/
 .env.*
 .DS_Store
 .Rhistory
+# DB audit artifacts (big / sensitive)
+docs/db/audit/jsonb-largest-state.json
+docs/db/audit/*.csv
+docs/db/audit/raw-*

@@ -1,0 +1,30 @@
+---
+description: Rules specific to frontend code
+globs: ["translalia-web/**/*"]
+alwaysApply: false
+---
+
+# Frontend Rules
+
+## What this file is for
+Rules and conventions for frontend development in `translalia-web/`.
+
+## When to read/use this
+Use this when working on UI, client state, routes, or frontend APIs.
+
+## Frontend Stack
+- Framework: Next.js App Router.
+- UI: React components in `translalia-web/src/components/`.
+- State/data: Placeholder for state and query conventions.
+
+## Component Conventions
+- Keep components focused and reusable.
+- Prefer composition over deep prop chains.
+
+## File Structure
+- Keep route code in `src/app/`.
+- Keep shared utilities in `src/lib/`.
+
+## Best Practices
+- Keep async/error states explicit in UI.
+- Add tests or verification steps for non-trivial behavior.

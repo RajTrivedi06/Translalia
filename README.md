@@ -130,12 +130,11 @@ const supabase = createServerClient(
 ### Links to documentation
 
 - App README: `translalia-web/README.md`
-- Docs index: `docs/README.md`
-- Architecture and codebase overview: `docs/context/CODEBASE_OVERVIEW.md`
-- API routes: `docs/context/API_ROUTES.md`, `docs/api/flow-api.md`, `docs/api/llm-api.md`
-- Deployment guide: `docs/context/DEPLOYMENT_GUIDE.md`
-- Policies: `docs/policies/moderation-policy.md`, `docs/policies/spend-and-cache-policy.md`
-- Style guide: `docs/STYLE.md`
+- Docs index: `docs/INDEX.md`
+- Quick start: `docs/00-start-here/quickstart.md`
+- Architecture overview: `docs/01-architecture/system-overview.md`
+- API reference: `docs/02-reference/api.md`
+- LLM documentation map: `docs/05-llm/DOC_MAP.md`
 
 ### Notes
 

@@ -1,0 +1,30 @@
+---
+description: Security rules and safeguards
+globs: ["**/*"]
+alwaysApply: false
+---
+
+# Security Rules
+
+## What this file is for
+Security expectations for code, configuration, and data handling.
+
+## When to read/use this
+Use when working with auth, secrets, user data, or external integrations.
+
+## Security Principles
+- Minimize sensitive data exposure.
+- Validate and sanitize untrusted input.
+- Follow least-privilege access patterns.
+
+## Authentication and Authorization
+- Enforce auth checks server-side.
+- Keep role/permission decisions explicit and testable.
+
+## Data Handling
+- Never commit credentials or private tokens.
+- Avoid logging sensitive user content.
+
+## Common Vulnerabilities
+- Guard against injection and XSS vectors.
+- Ensure secure defaults for CORS and headers.

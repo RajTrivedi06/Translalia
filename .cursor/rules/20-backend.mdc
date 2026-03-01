@@ -1,0 +1,27 @@
+---
+description: Rules specific to backend code
+globs: ["backend/**/*", "api/**/*", "server/**/*"]
+alwaysApply: false
+---
+
+# Backend Rules
+
+## What this file is for
+Rules for backend services, API handlers, and server-side logic.
+
+## When to read/use this
+Use when editing backend endpoints, services, or integrations.
+
+## Backend Stack
+- Placeholder for backend framework and runtime standards.
+
+## Code Organization
+- Keep transport, domain logic, and data access separated where practical.
+
+## API Conventions
+- Define request/response contracts clearly.
+- Document auth and error behavior.
+
+## Error Handling
+- Return consistent error structures.
+- Avoid leaking internal details in responses.

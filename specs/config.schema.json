@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Placeholder Configuration Schema",
+  "type": "object",
+  "description": "Placeholder schema for documenting project configuration structure.",
+  "properties": {},
+  "additionalProperties": true
+}
