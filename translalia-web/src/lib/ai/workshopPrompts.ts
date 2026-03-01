@@ -6,6 +6,10 @@ import {
   buildDomainExamples,
   type TranslatorPersonality,
 } from "./translatorPersonality";
+import {
+  buildSimplifiedSystemPrompt,
+  buildSimplifiedUserPrompt,
+} from "./simplifiedPrompts";
 
 const LINE_CLOSENESS_DESCRIPTIONS = {
   close: "Stay as close as possible to the literal meaning",
@@ -1059,10 +1063,12 @@ export function buildRecipePromptBlock(
     // Compressed recipe descriptions (high-signal shorthand)
     const compressedRecipes = recipes
       .map((r) => {
-        const archetypeName = getArchetypeDisplayName(r.archetype);
+        // Old archetype path — preserved for USE_SIMPLIFIED_PROMPTS=0 rollback.
+        // v5 recipes always have these fields; v6 static recipes bypass this code.
+        const archetypeName = getArchetypeDisplayName(r.archetype ?? "essence_cut");
         let shorthand = "";
-        
-        switch (r.archetype) {
+
+        switch (r.archetype ?? "essence_cut") {
           case "essence_cut":
             shorthand = "Compress to emotional core; tight, punchy voice; keep meaning; minimal fluff.";
             break;
@@ -1088,7 +1094,7 @@ MODE: ${effectiveMode.toUpperCase()}
 ${compressedRecipes}
 
 Lens configs:
-${recipes.map((r) => `${r.label}: imagery=${r.lens.imagery}, voice=${r.lens.voice}, syntax=${r.lens.syntax}`).join("\n")}
+${recipes.map((r) => `${r.label}: imagery=${r.lens?.imagery ?? "retain"}, voice=${r.lens?.voice ?? "retain"}, syntax=${r.lens?.syntax ?? "retain"}`).join("\n")}
 
 DIVERGENCE: Ensure A/B/C are meaningfully different in tone/style (not just wording).${comparisonRule}
 
@@ -1099,23 +1105,25 @@ ANCHORS: Follow ANCHOR RULES from system instructions above. Do not restate anch
   // Full recipe format (original) - build full blocks
   const recipeBlocks = recipes
     .map((r) => {
-      const archetypeName = getArchetypeDisplayName(r.archetype);
+      // Old archetype path — preserved for USE_SIMPLIFIED_PROMPTS=0 rollback.
+      const archetypeName = getArchetypeDisplayName(r.archetype ?? "essence_cut");
       return `
 ───────────────────────────────────────────────────────────────
 VARIANT ${r.label}: ${archetypeName}
 ───────────────────────────────────────────────────────────────
 Directive: ${r.directive}
-Lens: imagery=${r.lens.imagery}, voice=${r.lens.voice}, sound=${r.lens.sound}, syntax=${r.lens.syntax}, cultural=${r.lens.cultural}
-Unusualness budget: ${r.unusualnessBudget}`;
+Lens: imagery=${r.lens?.imagery ?? "retain"}, voice=${r.lens?.voice ?? "retain"}, sound=${r.lens?.sound ?? "retain"}, syntax=${r.lens?.syntax ?? "retain"}, cultural=${r.lens?.cultural ?? "retain"}
+Unusualness budget: ${r.unusualnessBudget ?? "moderate"}`;
     })
     .join("\n");
 
   // Build archetype-specific MUST rules
   const archetypeMustRules = recipes
     .map((r) => {
-      const archetypeRules = getArchetypeMustRules(r.archetype, effectiveMode);
+      // Old archetype path — preserved for USE_SIMPLIFIED_PROMPTS=0 rollback.
+      const archetypeRules = getArchetypeMustRules(r.archetype ?? "essence_cut", effectiveMode);
       return `VARIANT ${r.label} (${getArchetypeDisplayName(
-        r.archetype
+        r.archetype ?? "essence_cut"
       )}) MUST RULES:
 ${archetypeRules.map((rule) => `  • ${rule}`).join("\n")}`;
     })
@@ -1126,28 +1134,32 @@ ${archetypeRules.map((rule) => `  • ${rule}`).join("\n")}`;
     .map((r) => {
       const rules: string[] = [];
 
+      // Old archetype path — preserved for USE_SIMPLIFIED_PROMPTS=0 rollback.
+      // v5 recipes always have lens populated; v6 static recipes bypass this code.
+      const lens = r.lens ?? { imagery: "retain", voice: "retain", sound: "retain", syntax: "retain", cultural: "retain" } as const;
+
       // Voice-driven structural constraints
-      if (r.lens.voice === "collective") {
+      if (lens.voice === "collective") {
         rules.push("Use collective subject (we/our/us).");
-      } else if (r.lens.voice === "intimate") {
+      } else if (lens.voice === "intimate") {
         rules.push("Use intimate address (you/your).");
-      } else if (r.lens.voice === "shift") {
+      } else if (lens.voice === "shift") {
         rules.push("Shift grammatical perspective vs other variants.");
       }
 
       // Syntax-driven structural constraints
-      if (r.lens.syntax === "fragment") {
+      if (lens.syntax === "fragment") {
         rules.push("Use fragmented syntax (fragments, dashes).");
-      } else if (r.lens.syntax === "invert") {
+      } else if (lens.syntax === "invert") {
         rules.push("Use inversion (prepositional phrase/object first).");
-      } else if (r.lens.syntax === "adapt") {
+      } else if (lens.syntax === "adapt") {
         rules.push("Vary clause structure vs other variants.");
       }
 
       // Imagery constraints
-      if (r.lens.imagery === "transform") {
+      if (lens.imagery === "transform") {
         rules.push("Transform imagery; don't keep same comparison template.");
-      } else if (r.lens.imagery === "substitute") {
+      } else if (lens.imagery === "substitute") {
         rules.push(
           "Substitute central image with culturally resonant analogue."
         );
@@ -1210,6 +1222,26 @@ export function buildRecipeAwarePrismaticPrompt(params: {
   currentTranslation?: string;
   context?: string;
 }): { system: string; user: string } {
+  // ─── SIMPLIFIED PROMPTS (default since v6, client direction from Matthew) ───
+  // Source-text-centered prompts using Matthew's mode-specific variant instructions.
+  // The old archetype-heavy prompt builder (below) is preserved for rollback
+  // via USE_SIMPLIFIED_PROMPTS=0.
+  if (process.env.USE_SIMPLIFIED_PROMPTS === "1") {
+    const { sourceText, recipes, personality, currentTranslation, context } =
+      params;
+    return {
+      system: buildSimplifiedSystemPrompt(),
+      user: buildSimplifiedUserPrompt({
+        sourceText,
+        mode: recipes.mode,
+        personality,
+        currentTranslation,
+        context,
+      }),
+    };
+  }
+  // ─── End simplified prompts branch ───
+
   const { sourceText, recipes, personality, currentTranslation, context } =
     params;
 

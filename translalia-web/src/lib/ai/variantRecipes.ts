@@ -13,8 +13,15 @@
  * Schema version: v2 introduces archetypes for distinct artistic variants
  */
 
-/** Schema version - increment when recipe structure changes */
-export const RECIPE_SCHEMA_VERSION = "v5"; // Phase 1: Added stance plan for variant C
+/**
+ * Schema version for recipe cache invalidation.
+ *
+ * v5 → v6: Simplified prompts (client request). Archetype fields now optional.
+ * Static recipes replace LLM-generated recipes when USE_SIMPLIFIED_PROMPTS=1.
+ * Bumping the version invalidates all cached v5 recipes, forcing fresh generation
+ * (or static return) on next request.
+ */
+export const RECIPE_SCHEMA_VERSION = "v6";
 
 import { z } from "zod";
 import { stableHash } from "./cache";
@@ -104,19 +111,27 @@ export const StancePlanSchema = z.object({
 export type StancePlan = z.infer<typeof StancePlanSchema>;
 
 /**
- * A single variant recipe - defines one of the A/B/C viewpoints
+ * A single variant recipe - defines one of the A/B/C viewpoints.
+ *
+ * Fields marked .optional() are archetype-machinery fields that were required
+ * in the v5 recipe system (Essence Cut / Prismatic Reimagining / World & Voice
+ * Transposition). They are optional as of v6 to support the simplified prompt
+ * system requested by the client.
+ *
+ * Existing v5 cached recipes still have these fields populated and will
+ * continue to parse successfully. New v6 static recipes may omit them.
  */
 export const VariantRecipeSchema = z.object({
   /** Variant label (A, B, or C) */
   label: z.enum(["A", "B", "C"]),
-  /** Archetype - fixed artistic identity */
-  archetype: ArchetypeSchema,
-  /** Lens configuration for this variant */
-  lens: LensSchema,
+  /** Archetype - fixed artistic identity (optional as of v6) */
+  archetype: ArchetypeSchema.optional(),
+  /** Lens configuration for this variant (optional as of v6) */
+  lens: LensSchema.optional(),
   /** Short imperative directive (1-2 lines) - truncated to 200 chars if LLM returns longer */
   directive: z.string().transform((s) => s.slice(0, 200)),
-  /** How unusual/creative this variant is allowed to be */
-  unusualnessBudget: UnusualnessBudgetSchema,
+  /** How unusual/creative this variant is allowed to be (optional as of v6) */
+  unusualnessBudget: UnusualnessBudgetSchema.optional(),
   /** Which mode created this recipe */
   mode: TranslationRangeModeSchema,
   /** Phase 1: Stance plan (only for variant C / world_voice_transposition) */
@@ -625,8 +640,13 @@ export function validateRecipes(
     issues.push("Recipes must have labels A, B, and C");
   }
 
-  // Check archetype assignments (must match label mapping)
+  // Check archetype assignments (must match label mapping).
+  // v6 simplified recipes have no archetype/lens — skip validation for those.
   for (const recipe of recipes) {
+    if (!recipe.archetype || !recipe.lens) {
+      // v6 simplified recipe — skip archetype/lens validation
+      continue;
+    }
     const expectedArchetype = LABEL_TO_ARCHETYPE[recipe.label];
     if (recipe.archetype !== expectedArchetype) {
       issues.push(
@@ -689,11 +709,15 @@ export function validateRecipes(
     // Sound is more flexible, skip strict validation
   }
 
-  // Check lens diversity (at least N lens values differ between each pair)
+  // Check lens diversity (at least N lens values differ between each pair).
+  // v6 simplified recipes have no lens — skip when absent.
   const constraints = getModeConstraints(mode);
   for (let i = 0; i < recipes.length; i++) {
     for (let j = i + 1; j < recipes.length; j++) {
-      const diffs = countLensDiffs(recipes[i].lens, recipes[j].lens);
+      const lensI = recipes[i].lens;
+      const lensJ = recipes[j].lens;
+      if (!lensI || !lensJ) continue; // v6: no lens to compare
+      const diffs = countLensDiffs(lensI, lensJ);
       if (diffs < constraints.minLensDiffs) {
         issues.push(
           `Recipes ${recipes[i].label} and ${recipes[j].label} have only ${diffs} lens differences (need ${constraints.minLensDiffs})`
@@ -1133,6 +1157,31 @@ export async function getOrCreateVariantRecipes(
   mode: TranslationRangeMode,
   instrumentation?: TickInstrumentation
 ): Promise<VariantRecipesBundle> {
+  // ─── SIMPLIFIED PROMPTS (default since v6, client direction from Matthew) ───
+  // Static recipes: no LLM call, no cache, no lock. Instant return.
+  // The old archetype-based LLM recipe generation (below) is preserved for
+  // rollback via USE_SIMPLIFIED_PROMPTS=0.
+  if (process.env.USE_SIMPLIFIED_PROMPTS === "1") {
+    const poemHash = stableHash(poemContext.fullPoem);
+    const contextHash = computeRecipeContextHash(
+      guideAnswers,
+      poemContext.sourceLanguage,
+      poemContext.targetLanguage,
+      poemHash
+    );
+    const { buildStaticRecipeBundle } = await import('./simplifiedRecipes');
+    const staticBundle = buildStaticRecipeBundle({ threadId, mode, contextHash });
+
+    if (process.env.DEBUG_RECIPES === "1") {
+      console.log(
+        `[getOrCreateVariantRecipes] ⚡ SIMPLIFIED MODE: Returning static recipes for ${mode} (thread=${threadId.slice(0, 8)})`
+      );
+    }
+
+    return staticBundle;
+  }
+  // ─── End simplified prompts bypass ───
+
   // Compute context hash for cache invalidation
   const poemHash = stableHash(poemContext.fullPoem);
   const contextHash = computeRecipeContextHash(

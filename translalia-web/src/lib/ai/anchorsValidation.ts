@@ -339,6 +339,13 @@ export function validateSelfReportMetadata(
   mode: "focused" | "balanced" | "adventurous",
   stancePlanSubjectForm?: string
 ): AnchorValidationResult {
+  // When simplified prompts are active, the model is not instructed to produce
+  // archetype self-report metadata (b_image_shift_summary, c_world_shift_summary).
+  // Skip validation to avoid false failures.
+  if (process.env.USE_SIMPLIFIED_PROMPTS === "1") {
+    return { valid: true };
+  }
+
   // Variant A: no self-report metadata required
   if (label === "A") {
     return { valid: true };

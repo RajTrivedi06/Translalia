@@ -1,0 +1,28 @@
+---
+description: Rules for database, migrations, and schema updates
+globs: ["**/migrations/**/*", "**/models/**/*", "**/schema/**/*", "**/db/**/*"]
+alwaysApply: false
+---
+
+# Database Rules
+
+## What this file is for
+Conventions for schema design, migrations, and data model changes.
+
+## When to read/use this
+Use when touching DB schema, migration scripts, or data mappings.
+
+## Database Stack
+- Placeholder for database engine and tooling conventions.
+
+## Schema Conventions
+- Keep naming consistent and predictable.
+- Document major schema entities in reference docs.
+
+## Migration Guidelines
+- Prefer reversible migrations when possible.
+- Include rollback and data safety considerations.
+
+## Naming Conventions
+- Use singular/plural patterns consistently.
+- Keep key/index naming standardized.

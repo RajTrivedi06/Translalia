@@ -99,6 +99,13 @@ function getLengthAwareThreshold(
   }
 
   if (mode === "balanced") {
+    // Simplified mode: raise balanced thresholds (variants are intentionally closer)
+    if (process.env.USE_SIMPLIFIED_PROMPTS === "1") {
+      if (contentTokenCount <= 6) return 0.90;
+      if (contentTokenCount <= 10) return 0.75;
+      if (contentTokenCount <= 16) return 0.65;
+      return 0.60;
+    }
     // Balanced: moderate enforcement
     if (contentTokenCount <= 6) return 0.80; // Almost always pass
     if (contentTokenCount <= 10) return 0.65;
@@ -106,6 +113,14 @@ function getLengthAwareThreshold(
     return 0.50;
   }
 
+  // Focused mode
+  if (process.env.USE_SIMPLIFIED_PROMPTS === "1") {
+    // Simplified mode: length-aware thresholds (focused variants are intentionally close)
+    if (contentTokenCount <= 6) return 1.0;
+    if (contentTokenCount <= 10) return 0.90;
+    if (contentTokenCount <= 16) return 0.85;
+    return 0.80;
+  }
   // Focused: lenient (existing behavior)
   return 0.75;
 }
@@ -504,11 +519,14 @@ export function checkDistinctness(
     }
 
     // SHAPE CHECK 2: Opening content bigram (all modes)
+    // Simplified focused mode: skip this check — focused variants intentionally share vocabulary
+    const skipOpeningBigram =
+      process.env.USE_SIMPLIFIED_PROMPTS === "1" && mode === "focused";
     const openings = variants.map((v) =>
       openingContentBigram(v.text, stopwords)
     );
     const nonNullOpenings = openings.filter((o): o is string => !!o);
-    if (nonNullOpenings.length === 3) {
+    if (!skipOpeningBigram && nonNullOpenings.length === 3) {
       const uniq = new Set(nonNullOpenings);
       if (uniq.size < 3) {
         // Regenerate one of the duplicates (prefer last duplicate)
@@ -552,8 +570,10 @@ export function checkDistinctness(
           };
         }
       } else {
-        // Focused mode: allow up to 2, but warn if all 3
-        if (markerCount === 3) {
+        // Focused mode: simplified mode allows unlimited (close variants may all use same marker)
+        const focusedMarkerLimit =
+          process.env.USE_SIMPLIFIED_PROMPTS === "1" ? Infinity : 3;
+        if (markerCount >= focusedMarkerLimit) {
           return {
             pass: false,
             worstIndex: 2,
@@ -637,12 +657,17 @@ export function checkDistinctness(
         const union = new Set([...trigrams1, ...trigrams2]);
         const charSimilarity = union.size > 0 ? intersection.size / union.size : 0;
         
-        // Fail if character similarity > 80%
-        if (charSimilarity > 0.80) {
+        // Fail if character similarity exceeds threshold
+        // Simplified focused mode: raise to 92% (variants are intentionally close)
+        const charSimThreshold =
+          process.env.USE_SIMPLIFIED_PROMPTS === "1" && mode === "focused"
+            ? 0.92
+            : 0.80;
+        if (charSimilarity > charSimThreshold) {
           return {
             pass: false,
             worstIndex: j, // Prefer regenerating higher index variant
-            reason: `short_line_char_similarity: Variants ${i} and ${j} have ${(charSimilarity * 100).toFixed(0)}% character similarity (threshold: 80%)`,
+            reason: `short_line_char_similarity: Variants ${i} and ${j} have ${(charSimilarity * 100).toFixed(0)}% character similarity (threshold: ${(charSimThreshold * 100).toFixed(0)}%)`,
             details: {
               jaccardScores,
               maxOverlap,
@@ -656,10 +681,13 @@ export function checkDistinctness(
         }
         
         // Check 2: Opening substring check (first 10-15 chars must differ)
+        // Simplified focused mode: skip — close variants may legitimately share openings
+        const skipShortLineOpening =
+          process.env.USE_SIMPLIFIED_PROMPTS === "1" && mode === "focused";
         const opening1 = text1.slice(0, 15).trim();
         const opening2 = text2.slice(0, 15).trim();
-        
-        if (opening1.length >= 10 && opening2.length >= 10 && opening1 === opening2) {
+
+        if (!skipShortLineOpening && opening1.length >= 10 && opening2.length >= 10 && opening1 === opening2) {
           return {
             pass: false,
             worstIndex: j,
@@ -985,7 +1013,16 @@ export async function regenerateVariant(
   const features = extractOverusedFeatures(otherVariants);
   const constraints = buildContrastiveConstraints(features);
 
-  const systemPrompt = `You are a translation variant generator. You must generate a STRUCTURALLY DIFFERENT translation variant.
+  const systemPrompt = process.env.USE_SIMPLIFIED_PROMPTS === "1"
+    ? `You are a translation variant generator. You must generate a STRUCTURALLY DIFFERENT translation variant.
+
+CRITICAL RULES:
+- Return ONLY valid JSON
+- The new translation must be OBSERVABLY DIFFERENT in structure and wording from the other variants
+- Do NOT reuse sentence templates, comparison patterns, or subject openers from other variants
+- Follow the variant goal closely
+- Preserve core meaning but use DIFFERENT surface realizations`
+    : `You are a translation variant generator. You must generate a STRUCTURALLY DIFFERENT translation variant.
 
 CRITICAL RULES:
 - Return ONLY valid JSON
@@ -1018,6 +1055,13 @@ ${constraints.mustDo.map((c) => `✓ ${c}`).join("\n")}`
 `
       : "";
 
+  // ─── SIMPLIFIED PROMPTS: Use directive only, strip archetype/lens/unusualness ───
+  const recipeBlock =
+    process.env.USE_SIMPLIFIED_PROMPTS === "1"
+      ? `GOAL FOR VARIANT ${failedLabel}:\n${recipe.directive}`
+      : `RECIPE FOR VARIANT ${failedLabel}:\n- Directive: ${recipe.directive}${recipe.lens ? `\n- Lens: imagery=${recipe.lens.imagery}, voice=${recipe.lens.voice}, sound=${recipe.lens.sound}, syntax=${recipe.lens.syntax}, cultural=${recipe.lens.cultural}` : ""}${recipe.unusualnessBudget ? `\n- Unusualness: ${recipe.unusualnessBudget}` : ""}`;
+  // ─── End simplified branch ───
+
   const userPrompt = `
 SOURCE TEXT: "${context.sourceText}"
 SOURCE LANGUAGE: ${context.sourceLanguage}
@@ -1028,15 +1072,10 @@ ${context.nextLine ? `NEXT LINE: "${context.nextLine}"` : ""}
 EXISTING VARIANTS (DO NOT COPY THESE):
 ${otherVariants.map((v) => `- Variant ${v.label}: "${v.text}"`).join("\n")}
 ${contrastiveSection}
-RECIPE FOR VARIANT ${failedLabel}:
-- Directive: ${recipe.directive}
-- Lens: imagery=${recipe.lens.imagery}, voice=${recipe.lens.voice}, sound=${
-    recipe.lens.sound
-  }, syntax=${recipe.lens.syntax}, cultural=${recipe.lens.cultural}
-- Unusualness: ${recipe.unusualnessBudget}
+${recipeBlock}
 
 Generate a NEW translation for variant ${failedLabel} that:
-1. Follows the recipe directive
+1. Follows the ${process.env.USE_SIMPLIFIED_PROMPTS === "1" ? "goal" : "recipe directive"}
 2. Honors the contrastive constraints above (if present)
 3. Is STRUCTURALLY DIFFERENT from the existing variants (not just synonym swaps)
 4. Preserves semantic meaning anchors with different surface wording
@@ -1115,6 +1154,9 @@ export function checkLensCompliance(
   recipe: VariantRecipe
 ): { compliant: boolean; issues: string[] } {
   const issues: string[] = [];
+  // Lens compliance is N/A for v6 simplified recipes (no lens config).
+  // Preserved for USE_SIMPLIFIED_PROMPTS=0 rollback with v5 archetype recipes.
+  if (!recipe.lens) return { compliant: true, issues };
   const text = variant.text.toLowerCase();
 
   // Voice: collective should use plural pronouns
