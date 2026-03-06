@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { requireUser } from "@/lib/auth/requireUser";
-import { supabaseServer } from "@/lib/supabaseServer";
 import { getTranslationJob } from "@/lib/workshop/jobState";
 import { runTranslationTick } from "@/lib/workshop/runTranslationTick";
 import { summarizeTranslationJob } from "@/lib/workshop/translationProgress";
@@ -21,7 +20,7 @@ export async function GET(req: NextRequest) {
   const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
   
   console.log(`[translation-status] ${requestId} start`);
-  const { user, response } = await requireUser();
+  const { user, response, sb } = await requireUser();
   if (!user) return response;
 
   const params = Object.fromEntries(req.nextUrl.searchParams.entries());
@@ -41,8 +40,7 @@ export async function GET(req: NextRequest) {
 
   const { threadId, advance } = query;
 
-  const supabase = await supabaseServer();
-  const { data: thread, error: threadError } = await supabase
+  const { data: thread, error: threadError } = await sb
     .from("chat_threads")
     .select("id, created_by")
     .eq("id", threadId)

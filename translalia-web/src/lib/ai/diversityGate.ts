@@ -91,11 +91,12 @@ function getLengthAwareThreshold(
   contentTokenCount: number
 ): number {
   if (mode === "adventurous") {
-    // Adventurous: strictest enforcement
+    // Adventurous: strict enforcement, but relaxed slightly to reduce regen overhead
+    // (was 0.55/0.45/0.40 — raised by 0.05 at each tier to cut avoidable regens)
     if (contentTokenCount <= 6) return 1.0; // Don't fail on Jaccard alone (structure handles these)
-    if (contentTokenCount <= 10) return 0.55;
-    if (contentTokenCount <= 16) return 0.45;
-    return 0.40;
+    if (contentTokenCount <= 10) return 0.60;
+    if (contentTokenCount <= 16) return 0.50;
+    return 0.45;
   }
 
   if (mode === "balanced") {

@@ -910,7 +910,7 @@ export async function translateLineWithRecipesInternal({
         // ✅ D) Escape hatch: Enforce max regen time (60-90s) and max rounds (1-2)
         console.time(`[TIMING][line=${lineIndex}] regen`);
         const regenStartTime = Date.now();
-        const maxRegenTimeMs = Number(process.env.MAX_REGEN_TIME_MS) || 75000; // Default 75s
+        const maxRegenTimeMs = Number(process.env.MAX_REGEN_TIME_MS) || 30000; // Default 30s (matches regen.ts)
         const maxRegenRounds = Number(process.env.MAX_REGEN_ROUNDS) || 1; // Default 1 round
         
         const regenResult = await regenerateVariantWithSalvage(
