@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { requireUser } from "@/lib/auth/requireUser";
-import { supabaseServer } from "@/lib/supabaseServer";
 import {
   createTranslationJob,
   getTranslationJob,
@@ -18,7 +17,7 @@ const RequestSchema = z.object({
 
 export async function POST(req: Request) {
   console.log("[HIT] initialize-translations");
-  const { user, response } = await requireUser();
+  const { user, response, sb } = await requireUser();
   if (!user) return response;
 
   let body: z.infer<typeof RequestSchema>;
@@ -37,8 +36,7 @@ export async function POST(req: Request) {
 
   const { threadId, runInitialTick } = body;
 
-  const supabase = await supabaseServer();
-  const { data: thread, error: threadError } = await supabase
+  const { data: thread, error: threadError } = await sb
     .from("chat_threads")
     .select("id, created_by")
     .eq("id", threadId)

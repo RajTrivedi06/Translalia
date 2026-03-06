@@ -23,6 +23,7 @@ import {
   useSavePoemState,
 } from "@/lib/hooks/useGuideFlow";
 import { useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabaseClient";
 
 import { ConfirmationDialog } from "@/components/guide/ConfirmationDialog";
 import { GuideSteps } from "@/components/guide/GuideSteps";
@@ -772,70 +773,75 @@ export function GuideRail({
     setShowConfirmDialog(false);
     setValidationError(null);
 
-    // Trigger auto-collapse callback first to update section states
+    // Phase 1: Save critical data (must succeed before we unlock)
+    try {
+      await saveMultipleAnswers.mutateAsync({
+        threadId,
+        updates: useGuideStore.getState().answers,
+      });
+
+      await savePoemState.mutateAsync({
+        threadId,
+        rawPoem: poem.text,
+        stanzas: poem.stanzas,
+      });
+    } catch (error) {
+      console.error("Error saving workshop data:", error);
+      setValidationError(
+        "Failed to save your settings. Please try again."
+      );
+      return;
+    }
+
+    // Phase 2: Saves succeeded — unlock workshop and navigate
     const hasExistingWork = Object.keys(completedLines || {}).length > 0;
     if (!hasExistingWork) {
       onAutoCollapse?.();
     }
-
-    // Unlock workshop after state updates
     unlockWorkshop();
-
-    // Small delay to ensure state updates propagate before navigation
-    // The navigation is to the same route, so it's mainly for state refresh
     setTimeout(() => {
       router.push(`/workspaces/${projectId}/threads/${threadId}`);
     }, 0);
 
+    // Phase 3: Initialize translations (fire-and-forget, polling handles the rest)
     (async () => {
       try {
-        if (!poem.stanzas) {
-          console.error("Poem stanzas missing - this should not happen");
-          return;
-        }
+        const { data: sessionData } = await supabase.auth.getSession();
+        const accessToken = sessionData?.session?.access_token;
 
-        // Persist the latest guide answers (including model + method + translation range mode)
-        // before background translations start, so the backend doesn't fall back to
-        // env defaults (e.g. TRANSLATOR_MODEL=gpt-4o).
-        await saveMultipleAnswers.mutateAsync({
-          threadId,
-          updates: useGuideStore.getState().answers,
-        });
+        const initResponse = await fetch(
+          "/api/workshop/initialize-translations",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(accessToken
+                ? { Authorization: `Bearer ${accessToken}` }
+                : {}),
+            },
+            body: JSON.stringify({ threadId }),
+            cache: "no-store",
+          }
+        );
 
-        await savePoemState.mutateAsync({
-          threadId,
-          rawPoem: poem.text,
-          stanzas: poem.stanzas,
-        });
-
-        const response = await fetch("/api/workshop/initialize-translations", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            threadId,
-            // runInitialTick omitted - defaults to false for fast response
-            // Worker handles processing in background
-          }),
-          cache: "no-store", // Ensure no caching
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json();
+        if (!initResponse.ok) {
+          const errorData = await initResponse
+            .json()
+            .catch(() => ({ error: "Unknown error" }));
           console.error(
             "Failed to initialize translations:",
             errorData.error || "Unknown error"
           );
-        } else {
-          // Immediately invalidate translation status query to trigger refetch
-          queryClient.invalidateQueries({
-            queryKey: ["translation-job", threadId],
-          });
         }
       } catch (error) {
         console.error(
           "Error starting background translation processing:",
           error
         );
+      } finally {
+        queryClient.invalidateQueries({
+          queryKey: ["translation-job", threadId],
+        });
       }
     })();
   };

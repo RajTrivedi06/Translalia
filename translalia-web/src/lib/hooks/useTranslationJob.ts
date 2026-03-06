@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { supabase } from "@/lib/supabaseClient";
 import type {
   TranslationJobProgressSummary,
   TranslationJobState,
@@ -35,13 +36,16 @@ async function fetchJSON<T>(
   input: RequestInfo,
   init?: RequestInit
 ): Promise<T> {
-  // Ensure no caching for translation status
+  const { data: sessionData } = await supabase.auth.getSession();
+  const accessToken = sessionData?.session?.access_token;
+
   const noCacheInit: RequestInit = {
     ...init,
     cache: "no-store",
     headers: {
       ...init?.headers,
       "Cache-Control": "no-store",
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
     },
   };
   const response = await fetch(input, noCacheInit);
@@ -85,7 +89,11 @@ export function useTranslationJob(
   threadId: string | undefined,
   options: UseTranslationJobOptions = {}
 ) {
-  const { advanceOnPoll = true, enabled = true } = options;
+  const {
+    advanceOnPoll = true,
+    enabled = true,
+    pollIntervalMs = 1500,
+  } = options;
 
   return useQuery({
     queryKey: ["translation-job", threadId, advanceOnPoll],
@@ -105,17 +113,23 @@ export function useTranslationJob(
     staleTime: 0, // Always consider data stale
     refetchInterval: (query) => {
       const data = query.state.data;
-      // Stop polling when job is done
+
+      // Only stop polling on terminal statuses.
+      // IMPORTANT: Do NOT stop when job is null — the backend may not have
+      // queued the job yet (race between init and first poll). Keep polling
+      // so the UI picks up the job once it appears.
       if (
-        !data?.job ||
-        data.job.status === "completed" ||
-        data.job.status === "failed"
+        data?.job?.status === "completed" ||
+        data?.job?.status === "failed"
       ) {
         return false;
       }
-      // Poll every 1.5s while processing (faster updates)
-      return 1500;
+
+      return pollIntervalMs;
     },
+    // Retry on transient fetch errors instead of giving up
+    retry: 3,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
     refetchOnWindowFocus: true, // Refetch when user returns to tab
     refetchIntervalInBackground: true, // Keep polling even when tab is in background
   });
