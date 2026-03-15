@@ -100,6 +100,44 @@ export async function deactivateAlignmentJob(
 }
 
 /**
+ * Get the current size and members of the alignment active set.
+ * Used by the worker for startup cleanup and periodic GC.
+ */
+export async function getAlignmentActiveSetInfo(): Promise<{
+  size: number;
+  members: string[];
+}> {
+  const redis = await getUpstashRedis();
+  if (!redis) return { size: 0, members: [] };
+
+  const members = await (
+    redis as { smembers: (key: string) => Promise<string[]> }
+  ).smembers(ALIGNMENT_ACTIVE_KEY);
+
+  return { size: members?.length ?? 0, members: members ?? [] };
+}
+
+/**
+ * Remove specific members from the alignment active set.
+ * Used by worker GC to clear stale entries.
+ */
+export async function removeFromAlignmentActiveSet(
+  keys: string[]
+): Promise<number> {
+  if (keys.length === 0) return 0;
+  const redis = await getUpstashRedis();
+  if (!redis) return 0;
+
+  let removed = 0;
+  for (const k of keys) {
+    removed += await (
+      redis as { srem: (key: string, member: string) => Promise<number> }
+    ).srem(ALIGNMENT_ACTIVE_KEY, k);
+  }
+  return removed;
+}
+
+/**
  * Get Redis client for alignment worker
  */
 export async function getAlignmentQueueRedis() {

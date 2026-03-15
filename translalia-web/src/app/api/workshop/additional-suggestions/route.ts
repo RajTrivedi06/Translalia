@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/requireUser";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { tokenize } from "@/lib/ai/textNormalize";
+import { checkRateLimit } from "@/lib/ratelimit/redis";
 import {
   LineSuggestionsRequestSchema,
   type LineSuggestionsRequest,
@@ -41,6 +42,26 @@ export async function POST(req: Request) {
     }
 
     const parsed = validation.data;
+
+    const today = new Date().toISOString().split("T")[0];
+    const rateLimit = await checkRateLimit(
+      `workshop:additional-suggestions:${user.id}:${today}`,
+      parseInt(process.env.SUGGESTIONS_RATE_LIMIT || "200", 10),
+      86400
+    );
+    if (!rateLimit.success) {
+      return NextResponse.json(
+        {
+          ok: false,
+          reason: "rate_limited",
+          limit: rateLimit.limit,
+          remaining: rateLimit.remaining,
+          resetAt: rateLimit.reset,
+        },
+        { status: 429 }
+      );
+    }
+
     if (!parsed.targetLanguage?.trim()) {
       return NextResponse.json(
         { ok: false, reason: "target_language_missing" },

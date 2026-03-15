@@ -4,6 +4,7 @@ import { z } from "zod";
 import OpenAI from "openai";
 import { createServerClient } from "@supabase/ssr";
 import { buildJourneyFeedbackPrompt } from "@/lib/ai/workshopPrompts";
+import { checkRateLimit } from "@/lib/ratelimit/redis";
 import {
   getSystemPrompt,
   getLanguageInstruction,
@@ -75,6 +76,27 @@ export async function POST(req: NextRequest) {
     if (authErr || !user) {
       log("unauthenticated", authErr?.message);
       return err(401, "UNAUTHENTICATED", "Please sign in to generate feedback.");
+    }
+
+    const today = new Date().toISOString().split("T")[0];
+    const rateLimit = await checkRateLimit(
+      `journey:generate-brief-feedback:${user.id}:${today}`,
+      parseInt(
+        process.env.JOURNEY_GENERATE_BRIEF_FEEDBACK_RATE_LIMIT || "80",
+        10
+      ),
+      86400
+    );
+    if (!rateLimit.success) {
+      log("rate_limited", {
+        limit: rateLimit.limit,
+        remaining: rateLimit.remaining,
+      });
+      return err(429, "RATE_LIMITED", "Daily limit exceeded", {
+        limit: rateLimit.limit,
+        remaining: rateLimit.remaining,
+        resetAt: rateLimit.reset,
+      });
     }
 
     // 3) Verify journey reflection ownership

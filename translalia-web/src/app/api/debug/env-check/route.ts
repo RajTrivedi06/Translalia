@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireUser } from "@/lib/auth/requireUser";
 
 /**
  * Debug endpoint to check environment variable configuration.
@@ -7,34 +8,31 @@ import { NextResponse } from "next/server";
  * Usage: GET /api/debug/env-check
  */
 export async function GET() {
-  // Only allow in preview/development
-  if (process.env.VERCEL_ENV === "production") {
+  const explicitlyEnabled = process.env.DEBUG_API_ENABLED === "1";
+  const productionLike =
+    process.env.NODE_ENV === "production" ||
+    process.env.VERCEL_ENV === "production";
+  if (productionLike && !explicitlyEnabled) {
     return NextResponse.json(
-      { error: "Not available in production" },
-      { status: 403 },
+      { error: "Not available" },
+      { status: 404 },
     );
   }
+
+  const { user, response } = await requireUser();
+  if (!user) return response;
 
   return NextResponse.json({
     // OpenAI
     hasOpenAI: !!process.env.OPENAI_API_KEY,
-    openAIKeyPrefix: process.env.OPENAI_API_KEY
-      ? `${process.env.OPENAI_API_KEY.slice(0, 7)}...`
-      : null,
 
     // Redis
     hasRedisUrl: !!process.env.UPSTASH_REDIS_REST_URL,
     hasRedisToken: !!process.env.UPSTASH_REDIS_REST_TOKEN,
-    redisUrlHost: process.env.UPSTASH_REDIS_REST_URL
-      ? new URL(process.env.UPSTASH_REDIS_REST_URL).hostname
-      : null,
 
     // Supabase
     hasSupabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
     hasSupabaseKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-    supabaseUrlHost: process.env.NEXT_PUBLIC_SUPABASE_URL
-      ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname
-      : null,
 
     // Lock configuration
     useRedisLock: process.env.USE_REDIS_LOCK,

@@ -58,6 +58,24 @@ export async function POST(req: Request) {
 
   const context = await loadThreadContext(threadId);
 
+  // Safety limit: reject poems that are too large for translation
+  const MAX_POEM_LINES = parseInt(
+    process.env.MAX_POEM_LINES_FOR_TRANSLATION || "200",
+    10
+  );
+  const totalLines = context.stanzaResult.stanzas.reduce(
+    (sum: number, s: { lines: unknown[] }) => sum + (s.lines?.length ?? 0),
+    0
+  );
+  if (totalLines > MAX_POEM_LINES) {
+    return NextResponse.json(
+      {
+        error: `Poem too large for translation (${totalLines} lines, max ${MAX_POEM_LINES})`,
+      },
+      { status: 400 }
+    );
+  }
+
   const job = await createTranslationJob(
     {
       threadId,
@@ -73,10 +91,18 @@ export async function POST(req: Request) {
   );
 
   // Enqueue translation job for background processing
-  await enqueueTranslationJob(threadId).catch((error) => {
+  const enqueueResult = await enqueueTranslationJob(threadId, {
+    userId: user.id,
+  }).catch((error) => {
     console.error("[initialize-translations] Failed to enqueue job:", error);
-    // Continue anyway - worker will pick it up via polling if queue fails
+    return { enqueued: false, reason: "error" } as const;
   });
+
+  if (!enqueueResult.enqueued) {
+    console.warn(
+      `[initialize-translations] Enqueue rejected: ${enqueueResult.reason}`
+    );
+  }
 
   // Optional: run a tiny "warm start" tick if explicitly requested (debug only)
   // Default is false - worker handles processing in background
@@ -94,8 +120,13 @@ export async function POST(req: Request) {
     });
   }
 
-  const latestJob = await getTranslationJob(threadId);
-  const progress = summarizeTranslationJob(latestJob);
+  let latestJob: Awaited<ReturnType<typeof getTranslationJob>> = null;
+  try {
+    latestJob = await getTranslationJob(threadId);
+  } catch (err) {
+    console.error("[initialize-translations] Failed to fetch job after creation:", err);
+  }
+  const progress = latestJob ? summarizeTranslationJob(latestJob) : null;
 
   return NextResponse.json(
     {

@@ -4,6 +4,7 @@ import { z } from "zod";
 import OpenAI from "openai";
 import { createServerClient } from "@supabase/ssr";
 import { ENHANCER_MODEL } from "@/lib/models";
+import { checkRateLimit } from "@/lib/ratelimit/redis";
 import { maskPrompts } from "@/server/audit/mask";
 import { insertPromptAudit } from "@/server/audit/insertPromptAudit";
 import {
@@ -82,6 +83,24 @@ export async function POST(req: NextRequest) {
         "UNAUTHENTICATED",
         "Please sign in to generate journey summary."
       );
+    }
+
+    const today = new Date().toISOString().split("T")[0];
+    const rateLimit = await checkRateLimit(
+      `journey:generate-reflection:${user.id}:${today}`,
+      parseInt(process.env.JOURNEY_GENERATE_REFLECTION_RATE_LIMIT || "60", 10),
+      86400
+    );
+    if (!rateLimit.success) {
+      log("rate_limited", {
+        limit: rateLimit.limit,
+        remaining: rateLimit.remaining,
+      });
+      return err(429, "RATE_LIMITED", "Daily limit exceeded", {
+        limit: rateLimit.limit,
+        remaining: rateLimit.remaining,
+        resetAt: rateLimit.reset,
+      });
     }
 
     // 3) Thread ownership and fetch state (including notes)

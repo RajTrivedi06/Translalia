@@ -46,9 +46,10 @@ export async function POST(req: Request) {
       nextLine,
     } = validation.data;
 
+    const today = new Date().toISOString().split("T")[0];
     const rateCheck = await checkDailyLimit(
       user.id,
-      `workshop:translate-line:${threadId}`,
+      `workshop:translate-line:${user.id}:${today}`,
       10 * 60
     );
 

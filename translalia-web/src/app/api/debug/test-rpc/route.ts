@@ -2,6 +2,7 @@
 // DELETE AFTER VERIFYING RPC IS WORKING
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { requireUser } from "@/lib/auth/requireUser";
 
 type TestResult = {
   available: boolean;
@@ -24,20 +25,23 @@ type Results = {
 };
 
 export async function GET() {
-  const supabase = await supabaseServer();
-  
-  // Try to get user (optional for debug endpoint)
-  let userId: string | null = null;
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    userId = user?.id ?? null;
-  } catch {
-    // No auth required for this debug endpoint
+  const explicitlyEnabled = process.env.DEBUG_API_ENABLED === "1";
+  const productionLike =
+    process.env.NODE_ENV === "production" ||
+    process.env.VERCEL_ENV === "production";
+  if (productionLike && !explicitlyEnabled) {
+    return NextResponse.json({ error: "Not available" }, { status: 404 });
   }
+
+  const { user, response } = await requireUser();
+  if (!user) return response;
+
+  const supabase = await supabaseServer();
+  const userId = user.id;
 
   const results: Results = {
     timestamp: new Date().toISOString(),
-    userId: userId ?? "unauthenticated",
+    userId,
   };
 
   // Test 1: exec_sql RPC (simple SELECT)
@@ -70,40 +74,31 @@ export async function GET() {
 
   // Test 2: patch_thread_state_field RPC (if it exists)
   try {
-    // Skip this test if no user (can't test with fake thread/user)
-    if (!userId) {
-      results.patch_thread_state_field_test = {
-        available: false,
-        error: "Skipped: No authenticated user",
-        data: null,
-      };
-    } else {
-      // Use a test path that won't affect real data
-      const testThreadId = "00000000-0000-0000-0000-000000000000";
-      const testPath = ["_debug_test"];
-      const testValue = { test: true, timestamp: Date.now() };
+    // Use a test path that won't affect real data
+    const testThreadId = "00000000-0000-0000-0000-000000000000";
+    const testPath = ["_debug_test"];
+    const testValue = { test: true, timestamp: Date.now() };
 
-      const { data: patchData, error: patchError } = await supabase.rpc(
-        "patch_thread_state_field",
-        {
-          p_thread_id: testThreadId,
-          p_user_id: userId,
-          p_path: testPath,
-          p_value: testValue,
-        }
-      );
+    const { data: patchData, error: patchError } = await supabase.rpc(
+      "patch_thread_state_field",
+      {
+        p_thread_id: testThreadId,
+        p_user_id: userId,
+        p_path: testPath,
+        p_value: testValue,
+      }
+    );
 
-      results.patch_thread_state_field_test = {
-        available: !patchError,
-        error: patchError
-          ? {
-              code: patchError.code,
-              message: patchError.message,
-            }
-          : null,
-        data: patchData,
-      };
-    }
+    results.patch_thread_state_field_test = {
+      available: !patchError,
+      error: patchError
+        ? {
+            code: patchError.code,
+            message: patchError.message,
+          }
+        : null,
+      data: patchData,
+    };
   } catch (err) {
     results.patch_thread_state_field_test = {
       available: false,

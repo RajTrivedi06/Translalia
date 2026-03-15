@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/requireUser";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { checkRateLimit } from "@/lib/ratelimit/redis";
 import { z } from "zod";
 import { responsesCall } from "@/lib/ai/openai";
 import { TRANSLATOR_MODEL } from "@/lib/models";
@@ -72,6 +73,24 @@ export async function POST(req: NextRequest) {
       log("bad body", errorMessage);
       return err(400, "BAD_BODY", "Invalid request body", {
         details: errorMessage,
+      });
+    }
+
+    const today = new Date().toISOString().split("T")[0];
+    const rateLimit = await checkRateLimit(
+      `notebook:poem-suggestions:${user.id}:${today}`,
+      parseInt(process.env.NOTEBOOK_POEM_SUGGESTIONS_RATE_LIMIT || "80", 10),
+      86400
+    );
+    if (!rateLimit.success) {
+      log("rate_limited", {
+        limit: rateLimit.limit,
+        remaining: rateLimit.remaining,
+      });
+      return err(429, "RATE_LIMITED", "Daily limit exceeded", {
+        limit: rateLimit.limit,
+        remaining: rateLimit.remaining,
+        resetAt: rateLimit.reset,
       });
     }
 
