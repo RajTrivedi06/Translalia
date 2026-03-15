@@ -23,11 +23,18 @@ import {
 import {
   getQueueRedis,
   deactivateTranslationJob,
+  getTranslationActiveSetInfo,
+  removeFromTranslationActiveSet,
+  parseQueueMessage,
+  reenqueueWithRetry,
+  type StructuredQueueMessage,
 } from "../src/lib/workshop/translationQueue";
 import {
   getAlignmentQueueRedis,
   deactivateAlignmentJob,
   getAlignmentQueueConfig,
+  getAlignmentActiveSetInfo,
+  removeFromAlignmentActiveSet,
   type AlignmentJob,
 } from "../src/lib/workshop/alignmentQueue";
 import { generateAlignmentsBatched } from "../src/lib/ai/alignmentGenerator";
@@ -35,16 +42,28 @@ import { generateAlignmentsBatched } from "../src/lib/ai/alignmentGenerator";
 const QUEUE_KEY = "translation:queue";
 const TICK_BUDGET_MS = 15000; // 15 seconds per tick (quality-safe, won't finalize partial lines)
 const POLL_INTERVAL_MS = 2000; // 2 seconds between polls when queue is empty
+const GC_INTERVAL_TICKS = 50; // Run active-set GC every N main-loop iterations
+const STALE_THRESHOLD_MS = parseInt(
+  process.env.WORKER_STALE_THRESHOLD_MS || String(30 * 60 * 1000),
+  10
+); // 30 min default
+const ENABLE_GC = process.env.ENABLE_WORKER_ACTIVE_SET_GC !== "0";
 
 // Alignment processing state
 let activeAlignments = 0;
 const alignmentConfig = getAlignmentQueueConfig();
 
-async function processJob(threadId: string): Promise<void> {
-  console.log(`[translation-worker] Processing job: ${threadId}`);
+// Track in-flight jobs for periodic GC (member -> dequeue timestamp)
+const inFlightTranslation = new Map<string, number>();
+const inFlightAlignment = new Map<string, number>();
+
+async function processJob(msg: StructuredQueueMessage): Promise<void> {
+  const { threadId } = msg;
+  console.log(
+    `[translation-worker] Processing job: ${threadId} (attempt ${msg.attempt})`
+  );
 
   try {
-    // Run one tick with budget
     const tickResult = await runTranslationTick(threadId, {
       maxProcessingTimeMs: TICK_BUDGET_MS,
     });
@@ -54,14 +73,15 @@ async function processJob(threadId: string): Promise<void> {
         `[translation-worker] No tick result for ${threadId}, job may not exist`
       );
       await deactivateTranslationJob(threadId);
+      inFlightTranslation.delete(threadId);
       return;
     }
 
-    // Check if job is complete
     const job = await getTranslationJob(threadId);
     if (!job) {
       console.log(`[translation-worker] Job not found: ${threadId}`);
       await deactivateTranslationJob(threadId);
+      inFlightTranslation.delete(threadId);
       return;
     }
 
@@ -70,54 +90,37 @@ async function processJob(threadId: string): Promise<void> {
         `[translation-worker] Job ${threadId} finished with status: ${job.status}`
       );
       await deactivateTranslationJob(threadId);
+      inFlightTranslation.delete(threadId);
       return;
     }
 
-    // Job still has work, re-enqueue for next tick
-    // Small delay to prevent tight loop if job is stuck
-    const delay = 1000; // 1 second
+    // Job made progress — reset attempt count for re-enqueue
+    const delay = 1000;
     console.log(
       `[translation-worker] Job ${threadId} still processing, re-enqueuing after ${delay}ms`
     );
 
     setTimeout(async () => {
-      const redis = await getQueueRedis();
-      if (redis) {
-        try {
-          await (
-            redis as {
-              lpush: (key: string, ...values: string[]) => Promise<number>;
-            }
-          ).lpush(QUEUE_KEY, threadId);
-        } catch (error) {
-          console.error(
-            `[translation-worker] Failed to re-enqueue ${threadId}:`,
-            error
-          );
-        }
-      }
+      await reenqueueWithRetry({
+        ...msg,
+        attempt: 0, // Reset: progress was made this tick
+      }).catch((err) =>
+        console.error(`[translation-worker] Re-enqueue failed:`, err)
+      );
     }, delay);
   } catch (error) {
     console.error(`[translation-worker] Error processing ${threadId}:`, error);
-    // Don't deactivate on error - let it retry via re-enqueue logic above
-    // But add a longer delay for errors
-    const errorDelay = 5000; // 5 seconds
+    const failureClass =
+      error instanceof Error ? error.constructor.name : "UnknownError";
+
+    const errorDelay = 5000;
     setTimeout(async () => {
-      const redis = await getQueueRedis();
-      if (redis) {
-        try {
-          await (
-            redis as {
-              lpush: (key: string, ...values: string[]) => Promise<number>;
-            }
-          ).lpush(QUEUE_KEY, threadId);
-        } catch (error) {
-          console.error(
-            `[translation-worker] Failed to re-enqueue after error:`,
-            error
-          );
-        }
-      }
+      await reenqueueWithRetry({
+        ...msg,
+        failureClass,
+      }).catch((err) =>
+        console.error(`[translation-worker] Re-enqueue after error failed:`, err)
+      );
     }, errorDelay);
   }
 }
@@ -188,6 +191,99 @@ async function processAlignmentJob(job: AlignmentJob): Promise<void> {
   } finally {
     activeAlignments--;
     await deactivateAlignmentJob(job.threadId, job.lineIndex);
+    inFlightAlignment.delete(`${job.threadId}:${job.lineIndex}`);
+  }
+}
+
+/**
+ * Startup self-heal: clear ALL entries from active sets.
+ *
+ * ASSUMPTION: This worker is the sole consumer. On restart, nothing from
+ * a previous run is genuinely in-progress. Items still in the queue list
+ * will be re-processed naturally.
+ *
+ * WARNING: If you ever run multiple worker instances, this function must
+ * be changed to use age-based filtering (like periodicActiveSetGC does)
+ * instead of blanket removal. Otherwise it will evict entries that another
+ * instance is actively processing.
+ */
+async function startupActiveSetCleanup(): Promise<void> {
+  if (!ENABLE_GC) {
+    console.log(
+      "[translation-worker] Active-set GC disabled (ENABLE_WORKER_ACTIVE_SET_GC=0)"
+    );
+    return;
+  }
+
+  console.log(
+    "[translation-worker] Running startup active-set cleanup..."
+  );
+
+  const translationInfo = await getTranslationActiveSetInfo();
+  const alignmentInfo = await getAlignmentActiveSetInfo();
+
+  console.log(
+    `[translation-worker] Active sets before cleanup: ` +
+      `translation=${translationInfo.size}, alignment=${alignmentInfo.size}`
+  );
+
+  if (translationInfo.members.length > 0) {
+    const removed = await removeFromTranslationActiveSet(
+      translationInfo.members
+    );
+    console.log(
+      `[translation-worker] Cleared ${removed} stale translation active-set entries`
+    );
+  }
+
+  if (alignmentInfo.members.length > 0) {
+    const removed = await removeFromAlignmentActiveSet(
+      alignmentInfo.members
+    );
+    console.log(
+      `[translation-worker] Cleared ${removed} stale alignment active-set entries`
+    );
+  }
+
+  console.log("[translation-worker] Startup cleanup complete");
+}
+
+/**
+ * Periodic GC: remove active-set entries that this worker instance
+ * hasn't touched within STALE_THRESHOLD_MS. Protects against
+ * re-enqueue failures leaving phantom entries.
+ */
+async function periodicActiveSetGC(): Promise<void> {
+  if (!ENABLE_GC) return;
+
+  const now = Date.now();
+
+  const translationInfo = await getTranslationActiveSetInfo();
+  const staleTranslation = translationInfo.members.filter((id) => {
+    const seen = inFlightTranslation.get(id);
+    return !seen || now - seen > STALE_THRESHOLD_MS;
+  });
+
+  if (staleTranslation.length > 0) {
+    const removed = await removeFromTranslationActiveSet(staleTranslation);
+    for (const id of staleTranslation) inFlightTranslation.delete(id);
+    console.log(
+      `[translation-worker] GC removed ${removed} stale translation entries`
+    );
+  }
+
+  const alignmentInfo = await getAlignmentActiveSetInfo();
+  const staleAlignment = alignmentInfo.members.filter((id) => {
+    const seen = inFlightAlignment.get(id);
+    return !seen || now - seen > STALE_THRESHOLD_MS;
+  });
+
+  if (staleAlignment.length > 0) {
+    const removed = await removeFromAlignmentActiveSet(staleAlignment);
+    for (const id of staleAlignment) inFlightAlignment.delete(id);
+    console.log(
+      `[translation-worker] GC removed ${removed} stale alignment entries`
+    );
   }
 }
 
@@ -197,6 +293,9 @@ async function main() {
   console.log(`[translation-worker] Poll interval: ${POLL_INTERVAL_MS}ms`);
   console.log(
     `[translation-worker] Max concurrent alignments: ${alignmentConfig.maxConcurrent}`
+  );
+  console.log(
+    `[translation-worker] GC: enabled=${ENABLE_GC}, interval=${GC_INTERVAL_TICKS} ticks, stale=${STALE_THRESHOLD_MS}ms`
   );
 
   const redis = await getQueueRedis();
@@ -216,10 +315,24 @@ async function main() {
     return;
   }
 
+  // Startup self-heal: flush stale active-set entries
+  await startupActiveSetCleanup();
+
   console.log("[translation-worker] Connected to Redis, polling for jobs...");
+
+  let tickCount = 0;
 
   // Process both translation and alignment queues
   while (true) {
+    tickCount++;
+
+    // Periodic GC runs regardless of queue state
+    if (tickCount % GC_INTERVAL_TICKS === 0) {
+      await periodicActiveSetGC().catch((err) =>
+        console.error("[translation-worker] GC error:", err)
+      );
+    }
+
     try {
       // Priority 1: Process alignment jobs (if under concurrency cap)
       if (activeAlignments < alignmentConfig.maxConcurrent) {
@@ -232,6 +345,8 @@ async function main() {
         if (alignmentJobData) {
           try {
             const alignmentJob: AlignmentJob = JSON.parse(alignmentJobData);
+            const alignKey = `${alignmentJob.threadId}:${alignmentJob.lineIndex}`;
+            inFlightAlignment.set(alignKey, Date.now());
             // Process alignment asynchronously (don't await - allows processing multiple)
             processAlignmentJob(alignmentJob).catch((error) => {
               console.error(
@@ -250,14 +365,16 @@ async function main() {
       }
 
       // Priority 2: Process translation jobs
-      const threadId = await (
+      const rawMsg = await (
         redis as {
           rpop: (key: string) => Promise<string | null>;
         }
       ).rpop(QUEUE_KEY);
 
-      if (threadId) {
-        await processJob(threadId);
+      if (rawMsg) {
+        const msg = parseQueueMessage(rawMsg);
+        inFlightTranslation.set(msg.threadId, Date.now());
+        await processJob(msg);
         continue; // Process next job immediately
       }
 

@@ -61,10 +61,11 @@ export async function POST(req: NextRequest) {
 
     const { threadId } = validation.data;
 
-    // Rate limiting: 20 requests per day per thread
+    // Rate limiting: per-user daily budget (shared across threads)
+    const today = new Date().toISOString().split("T")[0];
     const rateCheck = await checkDailyLimit(
       user.id,
-      `reflection:ai-assist-step-c:${threadId}`,
+      `reflection:ai-assist-step-c:${user.id}:${today}`,
       20
     );
 

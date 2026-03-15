@@ -4,6 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 import { z } from "zod";
 import OpenAI from "openai";
 import { TRANSLATOR_MODEL } from "@/lib/models";
+import { checkRateLimit } from "@/lib/ratelimit/redis";
 import {
   getOrCreateVariantRecipes,
   type TranslationRangeMode,
@@ -95,6 +96,24 @@ export async function POST(req: NextRequest) {
     if (authErr || !user) {
       log("unauthenticated", authErr?.message);
       return err(401, "UNAUTHENTICATED", "Please sign in.");
+    }
+
+    const today = new Date().toISOString().split("T")[0];
+    const rateLimit = await checkRateLimit(
+      `notebook:prismatic:${user.id}:${today}`,
+      parseInt(process.env.NOTEBOOK_PRISMATIC_RATE_LIMIT || "150", 10),
+      86400
+    );
+    if (!rateLimit.success) {
+      log("rate_limited", {
+        limit: rateLimit.limit,
+        remaining: rateLimit.remaining,
+      });
+      return err(429, "RATE_LIMITED", "Daily limit exceeded", {
+        limit: rateLimit.limit,
+        remaining: rateLimit.remaining,
+        resetAt: rateLimit.reset,
+      });
     }
 
     // 3) Fetch thread and context

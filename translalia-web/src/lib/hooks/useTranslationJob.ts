@@ -24,6 +24,8 @@ interface TranslationStatusResponse {
   job: TranslationJobState | null;
   tick: TranslationTickResult | null;
   progress: TranslationJobProgressSummary | null;
+  readyLines?: unknown[];
+  edgeState?: "no-job" | "in-progress" | "completed" | "failed";
 }
 
 interface UseTranslationJobOptions {
@@ -31,6 +33,10 @@ interface UseTranslationJobOptions {
   advanceOnPoll?: boolean;
   enabled?: boolean;
 }
+
+const FAST_POLL_MS = 1500;
+const SLOW_POLL_MS = 4000;
+const POLLS_BEFORE_SLOWDOWN = 5;
 
 async function fetchJSON<T>(
   input: RequestInfo,
@@ -90,9 +96,9 @@ export function useTranslationJob(
   options: UseTranslationJobOptions = {}
 ) {
   const {
-    advanceOnPoll = true,
+    advanceOnPoll = false,
     enabled = true,
-    pollIntervalMs = 1500,
+    pollIntervalMs,
   } = options;
 
   return useQuery({
@@ -110,14 +116,10 @@ export function useTranslationJob(
       );
     },
     enabled: Boolean(threadId) && enabled,
-    staleTime: 0, // Always consider data stale
+    staleTime: 0,
     refetchInterval: (query) => {
       const data = query.state.data;
 
-      // Only stop polling on terminal statuses.
-      // IMPORTANT: Do NOT stop when job is null — the backend may not have
-      // queued the job yet (race between init and first poll). Keep polling
-      // so the UI picks up the job once it appears.
       if (
         data?.job?.status === "completed" ||
         data?.job?.status === "failed"
@@ -125,12 +127,22 @@ export function useTranslationJob(
         return false;
       }
 
-      return pollIntervalMs;
+      // If caller specified a fixed interval, use it.
+      if (pollIntervalMs !== undefined) {
+        return pollIntervalMs;
+      }
+
+      // Adaptive backoff: fast for first N polls, then slow down.
+      // dataUpdateCount approximates how many successful fetches have occurred.
+      const fetchCount = query.state.dataUpdateCount;
+      if (fetchCount < POLLS_BEFORE_SLOWDOWN) {
+        return FAST_POLL_MS;
+      }
+      return SLOW_POLL_MS;
     },
-    // Retry on transient fetch errors instead of giving up
     retry: 3,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
-    refetchOnWindowFocus: true, // Refetch when user returns to tab
-    refetchIntervalInBackground: true, // Keep polling even when tab is in background
+    refetchOnWindowFocus: true,
+    refetchIntervalInBackground: true,
   });
 }

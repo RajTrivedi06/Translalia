@@ -10,6 +10,9 @@ import { summarizeTranslationJob } from "@/lib/workshop/translationProgress";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+const ADVANCE_SPLIT_ENABLED =
+  process.env.ENABLE_STATUS_READ_ADVANCE_SPLIT === "1";
+
 const QuerySchema = z.object({
   threadId: z.string().uuid(),
   advance: z.enum(["true", "false"]).optional().default("true"),
@@ -38,7 +41,10 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const { threadId, advance } = query;
+  const { threadId } = query;
+  // When read/advance split is enabled, force advance=false so the worker
+  // is the primary advancement owner and polling is read-only.
+  const advance = ADVANCE_SPLIT_ENABLED ? "false" : query.advance;
 
   const { data: thread, error: threadError } = await sb
     .from("chat_threads")
@@ -145,12 +151,34 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const job = await getTranslationJob(threadId);
+  let job: Awaited<ReturnType<typeof getTranslationJob>> = null;
+  try {
+    job = await getTranslationJob(threadId);
+  } catch (err) {
+    console.error(
+      `[translation-status] ${requestId} getTranslationJob error:`,
+      err instanceof Error ? err.message : String(err)
+    );
+  }
+
   const progress = summarizeTranslationJob(job);
 
-  // Extract ready lines from job state (same source of truth as writer)
-  // Return lines with translationStatus="translated" so UI can render them immediately
-  // This avoids "jobState says X but UI says nothing" inconsistencies
+  // Well-defined response for every edge state:
+  // - no job:    { ok: true, job: null, progress: null, readyLines: [], edgeState: "no-job" }
+  // - completed: { ok: true, job, progress, readyLines, edgeState: "completed" }
+  // - failed:    { ok: true, job, progress, readyLines, edgeState: "failed" }
+  // - partial:   { ok: true, job, progress, readyLines, edgeState: "in-progress" }
+  let edgeState: "no-job" | "in-progress" | "completed" | "failed";
+  if (!job) {
+    edgeState = "no-job";
+  } else if (job.status === "completed") {
+    edgeState = "completed";
+  } else if (job.status === "failed") {
+    edgeState = "failed";
+  } else {
+    edgeState = "in-progress";
+  }
+
   const readyLines: Array<{
     line_number: number;
     original_text: string;
@@ -172,7 +200,6 @@ export async function GET(req: NextRequest) {
     Object.values(chunkOrStanzaStates).forEach((stanza) => {
       const lines = stanza.lines || [];
       lines.forEach((line) => {
-        // Include lines with translationStatus="translated" (ready to show)
         if (line.translationStatus === "translated") {
           readyLines.push({
             line_number: line.line_number,
@@ -205,18 +232,17 @@ export async function GET(req: NextRequest) {
     ? "skipped" 
     : "none";
   console.log(
-    `[translation-status] ${requestId} returning: duration=${routeDuration}ms, tick=${tickStatus}`
+    `[translation-status] ${requestId} returning: duration=${routeDuration}ms, tick=${tickStatus}, edgeState=${edgeState}`
   );
 
   return NextResponse.json(
     {
       ok: true,
       job,
-      // ISS-002: Maintain backwards compatibility - tick field always present
-      // If tick completed quickly, return result; otherwise return null (tick continues in background)
       tick: tickResult,
       progress,
-      readyLines, // Lines with translationStatus="translated"
+      readyLines,
+      edgeState,
     },
     {
       headers: {

@@ -54,9 +54,10 @@ export async function POST(req: Request) {
       modelOverride,
     } = validation.data;
 
+    const today = new Date().toISOString().split("T")[0];
     const rateCheck = await checkDailyLimit(
       user.id,
-      `workshop:translate-line-recipes:${threadId}`,
+      `workshop:translate-line-recipes:${user.id}:${today}`,
       10 * 60
     );
 

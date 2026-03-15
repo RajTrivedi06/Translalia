@@ -82,10 +82,11 @@ export async function POST(req: Request) {
       );
     }
 
-    // Rate limiting: 10 requests per minute per thread
+    // Rate limiting: per-user daily budget (shared across threads)
+    const today = new Date().toISOString().split("T")[0];
     const rateCheck = await checkDailyLimit(
       user.id,
-      `notebook:ai-assist:${threadId}`,
+      `notebook:ai-assist:${user.id}:${today}`,
       10 * 60 // 10 per minute = 600 per day
     );
 

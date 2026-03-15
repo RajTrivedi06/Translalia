@@ -11,6 +11,7 @@ import { z } from "zod";
 
 import { requireUser } from "@/lib/auth/requireUser";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { checkRateLimit } from "@/lib/ratelimit/redis";
 import {
   getTranslationJob,
   updateStanzaStatus,
@@ -64,6 +65,24 @@ export async function POST(req: Request) {
     }
 
     const { threadId, stanzaIndex, lineNumber } = validation.data;
+
+    const today = new Date().toISOString().split("T")[0];
+    const rateLimit = await checkRateLimit(
+      `workshop:retry-line:${user.id}:${today}`,
+      parseInt(process.env.WORKSHOP_RETRY_LINE_RATE_LIMIT || "120", 10),
+      86400
+    );
+    if (!rateLimit.success) {
+      return NextResponse.json(
+        {
+          error: "Rate limit exceeded",
+          limit: rateLimit.limit,
+          remaining: rateLimit.remaining,
+          resetAt: rateLimit.reset,
+        } as ErrorResponse,
+        { status: 429 }
+      );
+    }
 
     // Verify thread ownership and load context
     const supabase = await supabaseServer();

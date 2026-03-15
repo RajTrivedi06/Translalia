@@ -1,10 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { requireUser } from "@/lib/auth/requireUser";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+  const explicitlyEnabled = process.env.DEBUG_API_ENABLED === "1";
+  const productionLike =
+    process.env.NODE_ENV === "production" ||
+    process.env.VERCEL_ENV === "production";
+  if (productionLike && !explicitlyEnabled) {
+    return NextResponse.json({ error: "Not available" }, { status: 404 });
+  }
+
+  const { user, response } = await requireUser();
+  if (!user) return response;
+
   const cookieStore = await cookies();
   const allCookies = cookieStore.getAll();
 
@@ -24,6 +36,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     ok: true,
+    userId: user.id,
     cookies: {
       total: allCookies.length,
       supabase: sbCookies.map((c) => ({
