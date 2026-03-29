@@ -1,17 +1,16 @@
 # Reference Directory Notes
 
-## What this file is for
-Clarifies how category-style reference docs relate to canonical numbered reference docs.
+`docs/reference/` is the detail layer for the canonical numbered reference docs in `docs/02-reference/`.
 
-## When to read/use this
-- Read when browsing `docs/reference/`.
-- Use when deciding where to add or update reference information.
+Use this directory for:
+- deeper contract notes
+- auth and ownership details
+- domain/entity mapping
+- integration-specific details
+- observability and SEO notes that would otherwise bloat the canonical pages
 
-## Canonical First
-- Start with `docs/02-reference/` for primary reference documentation.
-- Use `docs/reference/` for domain-specific expansions and categorized views.
-
-## Mapping
-- API: `docs/02-reference/api.md` -> `docs/reference/api-contracts.md`
-- Database: `docs/02-reference/database.md` -> `docs/reference/db-mapping.md`
-- Observability: `docs/02-reference/observability.md` -> `docs/reference/observability.md`
+Canonical parents:
+- API -> `docs/02-reference/api.md`
+- Database -> `docs/02-reference/database.md`
+- Config -> `docs/02-reference/config-and-env.md`
+- Observability -> `docs/02-reference/observability.md`

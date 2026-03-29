@@ -1,20 +1,46 @@
 # Add Migration Guide
 
 ## What this file is for
-Step-by-step guide for adding and applying database migrations.
+Pattern for adding a Supabase migration or RPC in `translalia-web/supabase/migrations`.
 
-## When to read/use this
-- Read before changing schema or persistent data models.
-- Use while planning and executing safe migration steps.
+## Current Repo Reality
+- This repo already contains SQL migrations for atomic JSONB RPCs and the diary archive RPC.
+- Migration filenames use a timestamp-style prefix.
 
-## Prerequisites
-Placeholder for database tooling and environment requirements.
+## Workflow
+1. Add a new SQL file under `translalia-web/supabase/migrations/`.
+2. Prefer additive changes.
+3. If you add a new RPC, include:
+   - function definition
+   - grants
+   - a short SQL comment explaining why the RPC exists
+4. If the migration changes `chat_threads.state` update strategy, verify it does not reintroduce clobber-prone writes.
 
-## Steps
-1. Placeholder: create migration file.
-2. Placeholder: write forward/rollback logic.
-3. Placeholder: apply and verify locally.
-4. Placeholder: update docs and rollout notes.
+## RPC Guidance
+- Use dedicated RPCs when application code needs atomic JSONB updates or carefully scoped database-side logic.
+- Existing patterns to study:
+  - `exec_sql`
+  - `patch_thread_state_field`
+  - `append_method2_audit`
+  - `diary_completed_poems`
 
-## Checklist
-- Placeholder checklist for migration readiness.
+## Rollout Rules
+- Keep migrations reversible in spirit, even if exact rollback SQL is not committed alongside them.
+- Never assume production Redis, queues, or jobs can compensate for a broken schema change.
+- If an API route depends on the migration, update the docs in the same change.
+
+## Documentation Update Checklist
+- Update `docs/02-reference/database.md`.
+- Update `docs/reference/db-mapping.md` if the change affects entity relationships or JSONB paths.
+- Update `docs/reference/integrations.md` if the migration changes service boundaries.
+- Update `specs/openapi.yaml` if API behavior depends on the new schema/RPC.
+
+## Validation Checklist
+- Migration is syntactically valid SQL.
+- Grants are present where authenticated callers need the function.
+- New RPC names are reflected in permanent docs.
+- Any JSONB update helper still preserves concurrent writes safely.
+
+## Read Next
+- `docs/02-reference/database.md`
+- `docs/reference/db-mapping.md`

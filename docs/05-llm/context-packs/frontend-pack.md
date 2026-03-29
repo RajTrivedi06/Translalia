@@ -1,38 +1,37 @@
 # Frontend Context Pack
 
-## What this file is for
-Dense context for frontend routes, UI flow, and client-state behavior.
+## Load This For
+- UI work in `translalia-web/src/app/[locale]`
+- domain components in `translalia-web/src/components`
+- thread-scoped client state and query hooks
 
-## When to read/use this
-- Use for tasks in `translalia-web/src/app`, `translalia-web/src/components`, `translalia-web/src/hooks`, and `translalia-web/src/store`.
+## Open These Files First
+- `translalia-web/src/app/[locale]/(app)/workspace/[projectId]/page.tsx`
+- `translalia-web/src/app/[locale]/(app)/workspaces/[projectId]/threads/[threadId]/ThreadPageClient.tsx`
+- `translalia-web/src/store/guideSlice.ts`
+- `translalia-web/src/store/workshopSlice.ts`
+- `translalia-web/src/store/notebookSlice.ts`
+- `translalia-web/src/lib/hooks/useTranslateLine.ts`
+- `translalia-web/src/lib/hooks/useTranslationJob.ts`
 
-## Frontend Stack Snapshot
-- Framework: Next.js App Router + React + TypeScript.
-- Styling: Tailwind CSS.
-- Server state: TanStack Query.
-- Client state: Zustand with thread-scoped persistence.
-- i18n: `next-intl` with locale routes under `src/app/[locale]/`.
+## Frontend Invariants
+- State is thread-scoped. Do not introduce localStorage keys or persistence outside the existing thread-aware stores.
+- `useGuideStore` holds translation intent, model, range mode, and method selection.
+- `useWorkshopStore` is the source of truth for draft lines, completed lines, and variant selection in the workshop UI.
+- `useNotebookStore` owns note-panel and notebook session UI state; persisted notes themselves live in Supabase.
+- `useTranslateLine()` decides between `method-1` and `method-2` endpoints.
+- `useTranslationJob()` keeps polling until the backend job reaches a terminal status.
 
-## Primary UX Flow
-1. Guide Rail setup (source poem, intent, translation settings).
-2. Workshop translation flow (line-by-line/stanza-by-stanza variants).
-3. Notebook assembly/editing flow.
-4. Diary archive browsing for completed poems.
+## Page and Component Shape
+- Route group: `src/app/[locale]/(app)` contains authenticated app pages.
+- Domain folders under `src/components` are meaningful; prefer adding to an existing domain folder rather than inventing a new top-level folder.
+- `src/components/ui` is the primitive layer.
 
-## Key Frontend Directories
-- `translalia-web/src/app/[locale]/(app)/workshop` - main translation workspace UI.
-- `translalia-web/src/app/[locale]/(app)/notebook` - assembly and refinement UI.
-- `translalia-web/src/app/[locale]/(app)/diary` - completed-poem views.
-- `translalia-web/src/components/workshop` and `translalia-web/src/components/notebook` - domain components.
-- `translalia-web/src/store` - guide, workshop, notebook, and workspace state slices.
+## What Usually Breaks
+- Thread hydration mismatches after URL/thread changes
+- Duplicate or conflicting sources of truth for draft/completed translations
+- Components bypassing existing hooks and writing fetch logic ad hoc
 
-## State and Data Patterns
-- Keep long-lived UI state thread-scoped to avoid cross-thread leakage.
-- Use TanStack Query for server reads/writes and cache invalidation.
-- Keep AI-request lifecycle states explicit (pending/success/error).
-- Preserve method-specific behavior toggles through feature flags and env switches.
-
-## Translation UI Expectations
-- Method 2 is primary and returns 3 variants (A/B/C) for user selection.
-- Word-level alignment is displayed with generated suggestions and metadata.
-- Distinctness/regeneration logic should preserve clear stylistic separation between variants.
+## Read Next
+- `docs/03-guides/add-component.md`
+- `docs/01-architecture/data-flow.md`

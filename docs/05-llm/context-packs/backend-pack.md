@@ -1,35 +1,37 @@
 # Backend Context Pack
 
-## What this file is for
-Dense context for translation APIs, LLM orchestration, and backend conventions.
+## Load This For
+- API route work under `translalia-web/src/app/api`
+- translation pipeline changes
+- auth, rate limiting, and backend persistence behavior
 
-## When to read/use this
-- Use for tasks in `translalia-web/src/app/api` and server/LLM utility code.
+## Open These Files First
+- `translalia-web/src/lib/auth/requireUser.ts`
+- `translalia-web/src/lib/apiGuard.ts`
+- `translalia-web/src/app/api/workshop/translate-line-with-recipes/route.ts`
+- `translalia-web/src/app/api/workshop/initialize-translations/route.ts`
+- `translalia-web/src/app/api/workshop/translation-status/route.ts`
+- `translalia-web/src/lib/translation/method2/translateLineWithRecipesInternal.ts`
+- `translalia-web/src/lib/workshop/runTranslationTick.ts`
 
-## Backend Stack Snapshot
-- Runtime: Next.js route handlers (Node/Edge as configured per route).
-- Data/Auth: Supabase (Postgres + auth integration).
-- LLM: OpenAI SDK with JSON-first structured responses.
-- Reliability controls: rate limiting, caching, lock-based recipe generation, retry/regeneration gates.
+## Backend Invariants
+- Every non-debug route should make auth and ownership boundaries explicit.
+- OpenAI-backed routes should be rate-limited.
+- Method-2 is the operationally preferred translation path; method-1 remains only for legacy/rollback compatibility.
+- `USE_SIMPLIFIED_PROMPTS=1` is the intended simplified-prompt operating mode; the code path is explicitly env-controlled.
+- Translation jobs depend on bounded work, per-thread locks, and queue reconciliation.
 
-## Key API Domains
-- `workshop` APIs: line translation, initialization jobs, suggestions, persistence.
-- `notebook` APIs: prismatic and notebook-side AI assist flows.
-- `journey` APIs: reflection/feedback generation.
-- `verification` APIs: grading and analysis.
-- `diary` APIs: completed poem archive and retrieval.
+## Persistence and Safety
+- `chat_threads` is the central entity for translation state.
+- Atomic JSONB patching matters; avoid new read-modify-write helpers for single-path state updates.
+- Redis is optional in some dev paths but significant for production-like queue and lock behavior.
 
-## Translation Method Context
-- Method 1 exists as legacy literalness-spectrum generation.
-- Method 2 is primary: recipe-aware prismatic generation with A/B/C archetypes.
-- Method 2 pipeline includes recipe fetch/generate, main generation, diversity gate, and alignment pass.
+## Supporting Deep References
+- `translalia-web/docs/TRANSLATION_PIPELINE.md`
+- `translalia-web/docs/PROMPTS.md`
+- `docs/01-architecture/adr/0002-simplified-prompts.md`
 
-## API and Error Patterns
-- Keep auth and input validation at API boundaries.
-- Prefer consistent JSON response shapes and explicit error messages.
-- Preserve non-blocking/background job behavior for batch translation flows.
-
-## Performance and Safety Guardrails
-- Use bounded parallelism and budgeted work/ticks for large translation workloads.
-- Keep caching/rate-limit settings explicit and controllable via env flags.
-- Preserve distinctness checks and contrastive regeneration to avoid near-duplicate variants.
+## Read Next
+- `docs/02-reference/api.md`
+- `docs/02-reference/config-and-env.md`
+- `docs/03-guides/add-endpoint.md`

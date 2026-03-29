@@ -1,8 +1,473 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Placeholder Configuration Schema",
+  "title": "Translalia Environment Schema",
+  "description": "Current-code-first environment and config surface for the Translalia workspace.",
   "type": "object",
-  "description": "Placeholder schema for documenting project configuration structure.",
-  "properties": {},
-  "additionalProperties": true
+  "additionalProperties": true,
+  "required": [
+    "OPENAI_API_KEY",
+    "NEXT_PUBLIC_SUPABASE_URL",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY"
+  ],
+  "$defs": {
+    "non_empty": {
+      "type": "string",
+      "minLength": 1
+    },
+    "flag01": {
+      "type": "string",
+      "enum": ["0", "1"]
+    },
+    "flagTrueFalse": {
+      "type": "string",
+      "enum": ["true", "false"]
+    },
+    "intString": {
+      "type": "string",
+      "pattern": "^[0-9]+$"
+    },
+    "rate01String": {
+      "type": "string",
+      "pattern": "^(0(\\.\\d+)?|1(\\.0+)?)$"
+    }
+  },
+  "properties": {
+    "OPENAI_API_KEY": {
+      "$ref": "#/$defs/non_empty",
+      "description": "Required OpenAI API key used by translation, notebook, journey, and verification routes."
+    },
+    "NEXT_PUBLIC_SUPABASE_URL": {
+      "$ref": "#/$defs/non_empty",
+      "description": "Required Supabase project URL used by browser, server, auth, and middleware code."
+    },
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY": {
+      "$ref": "#/$defs/non_empty",
+      "description": "Required Supabase anon key used by browser, server, auth, and middleware code."
+    },
+    "SUPABASE_SERVICE_ROLE_KEY": {
+      "type": "string",
+      "description": "Optional server-side privileged key."
+    },
+    "UPSTASH_REDIS_REST_URL": {
+      "type": "string",
+      "description": "Optional Redis REST URL. Required when production queue/lock features rely on Redis."
+    },
+    "UPSTASH_REDIS_REST_TOKEN": {
+      "type": "string",
+      "description": "Optional Redis REST token paired with UPSTASH_REDIS_REST_URL."
+    },
+    "SENTRY_DSN": {
+      "type": "string",
+      "description": "Optional Sentry DSN used by verification error reporting."
+    },
+    "TRANSLATOR_MODEL": {
+      "type": "string",
+      "default": "gpt-4o",
+      "description": "Default translation model."
+    },
+    "ENHANCER_MODEL": {
+      "type": "string",
+      "default": "gpt-5-mini",
+      "description": "Default enhancer model."
+    },
+    "ROUTER_MODEL": {
+      "type": "string",
+      "default": "gpt-5-nano-2025-08-07",
+      "description": "Default routing/model-selection helper model."
+    },
+    "EMBEDDINGS_MODEL": {
+      "type": "string",
+      "default": "text-embedding-3-large",
+      "description": "Default embeddings model."
+    },
+    "VERIFICATION_MODEL": {
+      "type": "string",
+      "default": "gpt-5",
+      "description": "Default verification grading model."
+    },
+    "CONTEXT_MODEL": {
+      "type": "string",
+      "default": "gpt-5-mini",
+      "description": "Default context-note model."
+    },
+    "NEXT_PUBLIC_FEATURE_ENHANCER": {
+      "$ref": "#/$defs/flag01",
+      "description": "Set to \"1\" to enable enhancer-related UI or route behavior."
+    },
+    "NEXT_PUBLIC_FEATURE_TRANSLATOR": {
+      "$ref": "#/$defs/flag01",
+      "description": "Set to \"1\" to enable translator-facing UI or route behavior."
+    },
+    "NEXT_PUBLIC_FEATURE_SIDEBAR_LAYOUT": {
+      "$ref": "#/$defs/flag01",
+      "description": "Set to \"1\" to enable the sidebar-layout variant."
+    },
+    "NEXT_PUBLIC_FEATURE_VERIFICATION_INTERNAL": {
+      "$ref": "#/$defs/flagTrueFalse",
+      "description": "Set to \"true\" to enable Track A verification."
+    },
+    "NEXT_PUBLIC_FEATURE_VERIFICATION_CONTEXT": {
+      "$ref": "#/$defs/flagTrueFalse",
+      "description": "Set to \"true\" to enable Track B context-note generation."
+    },
+    "USE_SIMPLIFIED_PROMPTS": {
+      "$ref": "#/$defs/flag01",
+      "description": "Set to \"1\" to use the simplified prompt path documented in ADR 0002."
+    },
+    "NEXT_PUBLIC_APP_URL": {
+      "type": "string",
+      "default": "http://localhost:3000",
+      "description": "Base URL used by routes that call back into the app."
+    },
+    "NEXT_PUBLIC_UI_LANG_DEFAULT": {
+      "type": "string",
+      "default": "en",
+      "description": "Fallback UI locale."
+    },
+    "NODE_ENV": {
+      "type": "string",
+      "description": "Platform-provided runtime environment."
+    },
+    "VERCEL_ENV": {
+      "type": "string",
+      "description": "Platform-provided Vercel environment value."
+    },
+    "VERCEL_REGION": {
+      "type": "string",
+      "description": "Platform-provided Vercel region."
+    },
+    "USE_REDIS_LOCK": {
+      "type": "string",
+      "enum": ["true", "false"],
+      "description": "When \"true\", Redis locking is required and missing Redis becomes a hard failure."
+    },
+    "SUGGESTIONS_RATE_LIMIT": {
+      "$ref": "#/$defs/intString",
+      "default": "200",
+      "description": "Numeric per-day limit for suggestion routes."
+    },
+    "VERIFICATION_RATE_LIMIT": {
+      "$ref": "#/$defs/intString",
+      "default": "50",
+      "description": "Numeric per-day limit for verification grading."
+    },
+    "CONTEXT_RATE_LIMIT": {
+      "$ref": "#/$defs/intString",
+      "default": "200",
+      "description": "Numeric per-day limit for context-note generation."
+    },
+    "WORKSHOP_RETRY_LINE_RATE_LIMIT": {
+      "$ref": "#/$defs/intString",
+      "default": "120",
+      "description": "Numeric per-day limit for workshop retry-line requests."
+    },
+    "NOTEBOOK_POEM_SUGGESTIONS_RATE_LIMIT": {
+      "$ref": "#/$defs/intString",
+      "default": "80",
+      "description": "Numeric per-day limit for notebook whole-poem suggestions."
+    },
+    "NOTEBOOK_PRISMATIC_RATE_LIMIT": {
+      "$ref": "#/$defs/intString",
+      "default": "150",
+      "description": "Numeric per-day limit for notebook prismatic generation."
+    },
+    "JOURNEY_GENERATE_REFLECTION_RATE_LIMIT": {
+      "$ref": "#/$defs/intString",
+      "default": "60",
+      "description": "Numeric per-day limit for journey reflection generation."
+    },
+    "JOURNEY_GENERATE_BRIEF_FEEDBACK_RATE_LIMIT": {
+      "$ref": "#/$defs/intString",
+      "default": "80",
+      "description": "Numeric per-day limit for journey brief-feedback generation."
+    },
+    "TRANSLATION_STATUS_TIMEOUT_MS": {
+      "$ref": "#/$defs/intString",
+      "default": "300",
+      "description": "HTTP timeout budget for translation-status polling."
+    },
+    "TICK_TIME_BUDGET_MS": {
+      "$ref": "#/$defs/intString",
+      "default": "2500",
+      "description": "Main translation tick budget in milliseconds."
+    },
+    "ENABLE_STATUS_READ_ADVANCE_SPLIT": {
+      "$ref": "#/$defs/flag01",
+      "description": "When \"1\", translation-status ignores the advance query param and serves read-only responses."
+    },
+    "ENABLE_WORKER_ACTIVE_SET_GC": {
+      "$ref": "#/$defs/flag01",
+      "default": "1",
+      "description": "Set to \"0\" to disable translation-worker startup cleanup and periodic active-set GC."
+    },
+    "WORKER_STALE_THRESHOLD_MS": {
+      "$ref": "#/$defs/intString",
+      "default": "1800000",
+      "description": "Age threshold in milliseconds for translation-worker active-set GC."
+    },
+    "TRANSLATION_MAX_QUEUE_DEPTH": {
+      "$ref": "#/$defs/intString",
+      "default": "100",
+      "description": "Maximum jobs admitted to the translation queue before enqueue requests are rejected."
+    },
+    "MAX_POEM_LINES_FOR_TRANSLATION": {
+      "$ref": "#/$defs/intString",
+      "default": "200",
+      "description": "Maximum poem line count accepted by initialize-translations."
+    },
+    "ENABLE_SCALABILITY_METRICS": {
+      "$ref": "#/$defs/flag01",
+      "description": "Set to \"1\" to enable aggregated scalability telemetry collection."
+    },
+    "METRICS_FLUSH_INTERVAL_MS": {
+      "$ref": "#/$defs/intString",
+      "default": "60000",
+      "description": "Telemetry batch flush interval in milliseconds."
+    },
+    "METRICS_SAMPLE_RATE": {
+      "$ref": "#/$defs/rate01String",
+      "default": "0.1",
+      "description": "Sampling rate for high-cardinality telemetry events."
+    },
+    "ENABLE_PARALLEL_STANZAS": {
+      "$ref": "#/$defs/flag01",
+      "default": "1",
+      "description": "Kill switch for parallel stanza processing."
+    },
+    "MAX_STANZAS_PER_TICK": {
+      "$ref": "#/$defs/intString",
+      "description": "Maximum stanzas/chunks per translation tick."
+    },
+    "CHUNK_CONCURRENCY": {
+      "$ref": "#/$defs/intString",
+      "description": "Chunk/stanza concurrency limit."
+    },
+    "MAIN_GEN_PARALLEL_LINES": {
+      "$ref": "#/$defs/flag01",
+      "default": "1",
+      "description": "Enable per-line parallelism within a stanza."
+    },
+    "MAIN_GEN_LINE_CONCURRENCY": {
+      "$ref": "#/$defs/intString",
+      "description": "Per-stanza line concurrency cap."
+    },
+    "ENABLE_TICK_TIME_SLICING": {
+      "$ref": "#/$defs/flag01",
+      "default": "1",
+      "description": "Enable interruptible time-sliced chunk processing."
+    },
+    "MAX_REGEN_TIME_MS": {
+      "$ref": "#/$defs/intString",
+      "default": "30000",
+      "description": "Maximum regen time per line in milliseconds."
+    },
+    "MAX_REGEN_ROUNDS": {
+      "$ref": "#/$defs/intString",
+      "default": "1",
+      "description": "Maximum regen rounds per line."
+    },
+    "ENABLE_GPT5_REGEN_PARALLEL": {
+      "$ref": "#/$defs/flag01",
+      "default": "1",
+      "description": "Enable GPT-5 parallel regen strategy."
+    },
+    "GPT5_REGEN_K": {
+      "$ref": "#/$defs/intString",
+      "description": "Candidate count for GPT-5 regen."
+    },
+    "GPT5_REGEN_CONCURRENCY": {
+      "$ref": "#/$defs/intString",
+      "description": "Concurrency cap for GPT-5 regen requests."
+    },
+    "DEFAULT_REGEN_CONCURRENCY": {
+      "$ref": "#/$defs/intString",
+      "description": "Concurrency cap for non-GPT-5 regen requests."
+    },
+    "MAIN_GEN_MAX_OUTPUT_TOKENS": {
+      "$ref": "#/$defs/intString",
+      "description": "Output token cap for main generation."
+    },
+    "REGEN_MAX_OUTPUT_TOKENS": {
+      "$ref": "#/$defs/intString",
+      "description": "Output token cap for regeneration."
+    },
+    "ENABLE_STRICT_JSON_SCHEMA": {
+      "$ref": "#/$defs/flag01",
+      "default": "1",
+      "description": "Enable strict JSON schema for models that support it."
+    },
+    "STRICT_JSON_SCHEMA_MODELS": {
+      "type": "string",
+      "default": "gpt-5,gpt-5-mini,gpt-5-turbo",
+      "description": "Comma-separated model prefixes allowed to use strict schema."
+    },
+    "STRICT_SCHEMA_FALLBACK_TO_JSON_OBJECT": {
+      "$ref": "#/$defs/flag01",
+      "default": "1",
+      "description": "Fallback to json_object if strict schema is unsupported."
+    },
+    "ENABLE_COMPRESSED_RECIPES": {
+      "$ref": "#/$defs/flag01",
+      "default": "0",
+      "description": "Enable compressed recipe prompts."
+    },
+    "ENABLE_LOCAL_ANCHOR_REALIZATIONS": {
+      "$ref": "#/$defs/flag01",
+      "default": "0",
+      "description": "Compute anchor realizations locally instead of asking the model."
+    },
+    "ALLOW_STOPWORD_ONLY_ANCHORS": {
+      "$ref": "#/$defs/flag01",
+      "default": "0",
+      "description": "Allow stopword-only anchors for allowlisted anchor ids."
+    },
+    "STOPWORD_ALLOWED_ANCHORS": {
+      "type": "string",
+      "description": "Comma-separated allowlist of anchor ids for stopword-only realization."
+    },
+    "ENABLE_GPT5_SAMPLING_TUNING": {
+      "$ref": "#/$defs/flag01",
+      "default": "0",
+      "description": "Enable GPT-5-specific sampling tuning."
+    },
+    "ENABLE_STOP_SEQUENCES": {
+      "$ref": "#/$defs/flag01",
+      "default": "0",
+      "description": "Enable stop sequences for completion cleanup."
+    },
+    "OMIT_SUBJECT_FORM_FROM_PROMPT": {
+      "$ref": "#/$defs/flag01",
+      "default": "0",
+      "description": "Remove subject-form field from prompt/schema and compute it locally."
+    },
+    "FIDELITY_GATE_BLOCKING": {
+      "$ref": "#/$defs/flag01",
+      "description": "If enabled, fidelity-gate failures can block output instead of only logging."
+    },
+    "PERSIST_METHOD2_AUDIT": {
+      "$ref": "#/$defs/flag01",
+      "description": "Persist method-2 audit entries."
+    },
+    "PERSIST_SYNTHETIC_PERSONA": {
+      "$ref": "#/$defs/flag01",
+      "description": "Persist synthetic persona data."
+    },
+    "LOG_CONTEXT_GENERATION": {
+      "$ref": "#/$defs/flagTrueFalse",
+      "description": "Enable additional logging for context-note generation."
+    },
+    "ENABLE_DIAGNOSTICS": {
+      "type": "string",
+      "description": "Global diagnostics toggle used by `src/lib/diagnostics.ts`."
+    },
+    "DEBUG_API_ENABLED": {
+      "$ref": "#/$defs/flag01",
+      "description": "Set to \"1\" to enable authenticated debug endpoints outside local development."
+    },
+    "DEBUG_AUDIT": {
+      "$ref": "#/$defs/flag01",
+      "description": "Log audit activity."
+    },
+    "DEBUG_ANCHOR_REALIZATIONS": {
+      "$ref": "#/$defs/flag01",
+      "description": "Log local vs model anchor realizations."
+    },
+    "DEBUG_ANCHOR_VALIDATION": {
+      "$ref": "#/$defs/flag01",
+      "description": "Log anchor validation failures."
+    },
+    "DEBUG_GATE": {
+      "$ref": "#/$defs/flag01",
+      "description": "Log diversity/fidelity gate behavior."
+    },
+    "DEBUG_INVARIANTS": {
+      "$ref": "#/$defs/flag01",
+      "description": "Log invariant checks in translation job orchestration."
+    },
+    "DEBUG_LOCK": {
+      "$ref": "#/$defs/flag01",
+      "description": "Log Redis and in-memory lock behavior."
+    },
+    "DEBUG_MAIN_GEN_OUTPUT": {
+      "$ref": "#/$defs/flag01",
+      "description": "Log raw main-generation JSON output."
+    },
+    "DEBUG_MONOTONICITY": {
+      "$ref": "#/$defs/flag01",
+      "description": "Log monotonicity checks in job-state updates."
+    },
+    "DEBUG_OAI_RAW_OUTPUT": {
+      "$ref": "#/$defs/flag01",
+      "description": "Log raw OpenAI output on failure paths."
+    },
+    "DEBUG_OUTPUT_MAX_CHARS": {
+      "$ref": "#/$defs/intString",
+      "default": "8000",
+      "description": "Maximum characters to include in raw-output logs."
+    },
+    "DEBUG_OUTPUT_ON_PARSE_FAIL": {
+      "$ref": "#/$defs/flag01",
+      "description": "Log raw output when parsing fails."
+    },
+    "DEBUG_PHASE1": {
+      "$ref": "#/$defs/flag01",
+      "description": "Log Phase 1 validation details."
+    },
+    "DEBUG_PROMPT_SIZES": {
+      "$ref": "#/$defs/flag01",
+      "description": "Log prompt-size breakdowns."
+    },
+    "DEBUG_RAW_COMPLETION": {
+      "$ref": "#/$defs/flag01",
+      "description": "Log raw completion text before parsing."
+    },
+    "DEBUG_RECIPES": {
+      "$ref": "#/$defs/flag01",
+      "description": "Log recipe generation/cache details."
+    },
+    "DEBUG_REGEN": {
+      "$ref": "#/$defs/flag01",
+      "description": "Log regeneration steps."
+    },
+    "DEBUG_REGEN_OUTPUT": {
+      "$ref": "#/$defs/flag01",
+      "description": "Log raw regeneration JSON output."
+    },
+    "DEBUG_RETRY": {
+      "$ref": "#/$defs/flag01",
+      "description": "Log retry layers across the pipeline."
+    },
+    "DEBUG_SAMPLING": {
+      "$ref": "#/$defs/flag01",
+      "description": "Log sampling parameters and fallbacks."
+    },
+    "DEBUG_SCHEMA": {
+      "$ref": "#/$defs/flag01",
+      "description": "Log strict-schema attempts and fallbacks."
+    },
+    "DEBUG_STOP_SEQUENCES": {
+      "$ref": "#/$defs/flag01",
+      "description": "Log stop-sequence behavior."
+    },
+    "DEBUG_SUBJECT_FORM": {
+      "$ref": "#/$defs/flag01",
+      "description": "Log locally computed subject-form comparisons."
+    },
+    "DEBUG_SUGGESTIONS": {
+      "$ref": "#/$defs/flag01",
+      "description": "Log suggestion-route behavior."
+    },
+    "DEBUG_TRANSLATION_STAGES": {
+      "$ref": "#/$defs/flag01",
+      "description": "Log translation stage transitions."
+    },
+    "DEBUG_VARIANTS": {
+      "$ref": "#/$defs/flag01",
+      "description": "Log variant generation and recipe-cache behavior."
+    },
+    "TEST_THREAD_ID": {
+      "type": "string",
+      "description": "Test-only thread id used by concurrent audit testing helpers."
+    }
+  }
 }

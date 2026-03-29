@@ -1,17 +1,32 @@
 ---
 title: Developer Setup
-tags: [area:guides, audience:developers, status:stub]
-owner: TBD
-last_updated: 2026-02-24
+tags: [area:guides, audience:developers, status:current]
+owner: repo-maintainers
+last_updated: 2026-03-12
 ---
 
 # Developer Setup
 
-## What this file is for
-Detailed local development environment setup instructions.
+## Use This When
+- quickstart is not enough
+- you need optional local infrastructure, worker flows, or validation commands
 
-## When to read/use this
-- Read during first-time local setup.
-- Use when troubleshooting environment issues.
+## Standard Local Stack
+- Node.js 18+; Node.js 20+ recommended
+- `npm`
+- Supabase project credentials
+- OpenAI API key
 
-Placeholder for environment bootstrapping details.
+## Optional Local Extras
+- Redis credentials if you want queue and lock behavior closer to production
+- `NEXT_PUBLIC_APP_URL` if local callbacks should not assume `http://localhost:3000`
+
+## First Validation Pass
+1. `npm install`
+2. `npm run typecheck`
+3. `npm run build`
+4. `GET /api/health`
+
+## Read Next
+- `docs/00-start-here/quickstart.md`
+- `docs/guides/testing.md`
