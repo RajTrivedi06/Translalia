@@ -496,17 +496,27 @@ export const useGuideStore = create<GuideState>()(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const p = persisted as any;
 
-        // No persisted data - return current
+        // Get thread ID from URL (source of truth)
+        const tid = getActiveThreadId();
+
+        // No persisted data — return current with the active thread ID
+        // so that isStoreReady can become true and DB hydration can run.
+        // NOTE: tid relies on getActiveThreadId() parsing the URL. If this
+        // merge runs before the URL contains a /threads/ segment (SSR,
+        // background tab, non-thread page), tid will be null and
+        // isStoreReady will remain false until the next rehydration.
         if (!p) {
+          if (!tid) {
+            console.warn(
+              "[guideSlice] merge: no persisted data AND getActiveThreadId() returned null — DB hydration will be blocked until threadId is available"
+            );
+          }
           return {
             ...current,
             hydrated: true,
-            meta: { threadId: null }, // ✅ Safe default
+            meta: { threadId: tid ?? null },
           };
         }
-
-        // Get thread ID from URL (source of truth)
-        const tid = getActiveThreadId();
 
         // CRITICAL: If thread IDs don't match, return fresh state
         // This prevents state leakage between threads

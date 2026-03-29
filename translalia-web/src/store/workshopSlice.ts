@@ -231,16 +231,27 @@ export const useWorkshopStore = create<WorkshopState>()(
       merge: (persisted, current) => {
         const p = persisted as Partial<WorkshopState> | undefined;
 
+        // Get thread ID from URL (source of truth)
+        const tid = getActiveThreadId();
+
+        // No persisted data — return current with the active thread ID
+        // so that isStoreReady can become true and DB hydration can run.
+        // NOTE: tid relies on getActiveThreadId() parsing the URL. If this
+        // merge runs before the URL contains a /threads/ segment (SSR,
+        // background tab, non-thread page), tid will be null and
+        // isStoreReady will remain false until the next rehydration.
         if (!p) {
+          if (!tid) {
+            console.warn(
+              "[workshopSlice] merge: no persisted data AND getActiveThreadId() returned null — DB hydration will be blocked until threadId is available"
+            );
+          }
           return {
             ...current,
             hydrated: true,
-            meta: { threadId: null }, // ✅ Safe default
+            meta: { threadId: tid ?? null },
           };
         }
-
-        // Get thread ID from URL (source of truth)
-        const tid = getActiveThreadId();
 
         // Thread switch detection
         if (tid && p.meta?.threadId && p.meta.threadId !== tid) {

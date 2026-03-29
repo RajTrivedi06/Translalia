@@ -390,6 +390,83 @@ export async function savePoemState({
   }
 }
 
+/**
+ * Retrieves the full thread state needed to hydrate client stores.
+ * Called from ThreadPageClient when localStorage is empty (new device, cleared cache).
+ * Returns guide answers, poem data, and workshop progress.
+ */
+export async function getFullThreadState(
+  threadId: string
+): Promise<
+  | {
+      success: true;
+      answers: GuideAnswers;
+      rawPoem: string | null;
+      poemStanzas: StanzaDetectionResult | null;
+      workshopLines: Array<{ original: string; translated: string } | null> | null;
+    }
+  | { success: false; error: string }
+> {
+  try {
+    if (!threadId || typeof threadId !== "string") {
+      return { success: false, error: "Invalid threadId" };
+    }
+
+    const supabase = await supabaseServer();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return { success: false, error: "Unauthenticated" };
+    }
+
+    const { data: thread, error: fetchError } = await supabase
+      .from("chat_threads")
+      .select(
+        "state, raw_poem, translation_model, translation_method, translation_intent, translation_zone, source_language_variety"
+      )
+      .eq("id", threadId)
+      .eq("created_by", user.id)
+      .single();
+
+    if (fetchError || !thread) {
+      return { success: false, error: "Thread not found or unauthorized" };
+    }
+
+    const currentState = (thread.state as Record<string, unknown>) || {};
+
+    // Build guide answers from columns (with JSONB fallback)
+    const legacyAnswers = (currentState.guide_answers as Record<string, unknown>) || {};
+    const answers: GuideAnswers = {
+      translationModel: thread.translation_model ?? (legacyAnswers.translationModel as string) ?? null,
+      translationMethod: (thread.translation_method ?? (legacyAnswers.translationMethod as string) ?? "method-2") as GuideAnswers["translationMethod"],
+      translationIntent: thread.translation_intent ?? (legacyAnswers.translationIntent as string) ?? null,
+      translationZone: thread.translation_zone ?? (legacyAnswers.translationZone as string) ?? null,
+      sourceLanguageVariety: thread.source_language_variety ?? (legacyAnswers.sourceLanguageVariety as string) ?? null,
+      ...legacyAnswers,
+    };
+
+    // Extract poem stanzas from JSONB state
+    const poemStanzas = (currentState.poem_stanzas as StanzaDetectionResult) ?? null;
+
+    // Extract workshop lines (completed translations)
+    const workshopLines = (currentState.workshop_lines as Array<{ original: string; translated: string } | null>) ?? null;
+
+    return {
+      success: true,
+      answers,
+      rawPoem: thread.raw_poem ?? null,
+      poemStanzas,
+      workshopLines,
+    };
+  } catch (error) {
+    console.error("[getFullThreadState] Unexpected error:", error);
+    return { success: false, error: "Internal server error" };
+  }
+}
+
 // =============================================================================
 // JSONB Patch-Safe Updates
 // =============================================================================

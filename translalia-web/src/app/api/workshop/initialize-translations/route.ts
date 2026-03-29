@@ -76,6 +76,33 @@ export async function POST(req: Request) {
     );
   }
 
+  // Check if an existing job uses a different model — if so, clear stale
+  // workshop_lines from DB state before creating the new job.
+  const existingJob = await getTranslationJob(threadId);
+  const requestedModel = (context.guideAnswers as Record<string, unknown>)?.translationModel;
+  const existingModel = (existingJob?.guide_preferences as Record<string, unknown> | undefined)?.translationModel;
+
+  if (existingJob && requestedModel && requestedModel !== existingModel) {
+    console.log(
+      `[initialize-translations] Model changed (${existingModel} → ${requestedModel}). Clearing stale workshop_lines.`
+    );
+    // Clear workshop_lines so stale translations from the old model don't persist
+    const { data: threadData } = await sb
+      .from("chat_threads")
+      .select("state")
+      .eq("id", threadId)
+      .single();
+
+    if (threadData?.state && typeof threadData.state === "object") {
+      const currentState = threadData.state as Record<string, unknown>;
+      delete currentState.workshop_lines;
+      await sb
+        .from("chat_threads")
+        .update({ state: currentState })
+        .eq("id", threadId);
+    }
+  }
+
   const job = await createTranslationJob(
     {
       threadId,

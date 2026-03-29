@@ -793,6 +793,16 @@ export function GuideRail({
       return;
     }
 
+    // Phase 1.5: If the workshop was already started (re-start scenario),
+    // reset workshop client-side state so stale translations from a
+    // previous model don't conflict with the new job.
+    if (isWorkshopUnlocked) {
+      console.log(
+        "[GuideRail] Workshop re-start detected. Resetting workshop state for fresh initialization."
+      );
+      workshopReset();
+    }
+
     // Phase 2: Saves succeeded — unlock workshop and navigate
     const hasExistingWork = Object.keys(completedLines || {}).length > 0;
     if (!hasExistingWork) {

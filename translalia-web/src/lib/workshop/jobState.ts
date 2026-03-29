@@ -167,6 +167,23 @@ export async function getTranslationJob(
   return state.translation_job ?? null;
 }
 
+/**
+ * Clear an existing translation job from thread state.
+ * Used when the user changes model/preferences and needs a fresh job.
+ */
+export async function clearTranslationJob(
+  threadId: string
+): Promise<void> {
+  const state = await fetchThreadState(threadId);
+  if (state.translation_job) {
+    console.log(
+      `[jobState] Clearing existing translation job for thread ${threadId} (jobId=${state.translation_job.jobId})`
+    );
+    delete state.translation_job;
+    await writeThreadState(threadId, state);
+  }
+}
+
 export async function createTranslationJob(
   context: TranslationJobContext,
   options?: {
@@ -179,7 +196,22 @@ export async function createTranslationJob(
   const state = await fetchThreadState(threadId);
 
   if (state.translation_job) {
-    return state.translation_job;
+    // Check if the model/preferences have changed since the job was created.
+    // If so, the old job is stale and must be replaced to avoid a freeze.
+    const existingModel = (state.translation_job.guide_preferences as Record<string, unknown> | undefined)?.translationModel;
+    const requestedModel = options?.guidePreferences?.translationModel;
+
+    // Recreate when a model is requested and it either differs from the
+    // existing one or the existing model is unknown (first-run edge case).
+    if (requestedModel && requestedModel !== existingModel) {
+      console.log(
+        `[jobState] Model changed (${existingModel ?? "unknown"} → ${requestedModel}). Clearing stale job and recreating.`
+      );
+      delete state.translation_job;
+      // Fall through to create a new job below
+    } else {
+      return state.translation_job;
+    }
   }
 
   const now = Date.now();

@@ -33,6 +33,8 @@ import { useWorkshopStore } from "@/store/workshopSlice";
 import { routes } from "@/lib/routers";
 import { Link } from "@/i18n/routing";
 import { Button } from "@/components/ui/button";
+import { getFullThreadState } from "@/server/guide/updateGuideState";
+import { splitPoemIntoStanzas } from "@/lib/utils/stanzaUtils";
 
 interface ThreadPageClientProps {
   projectId: string;
@@ -207,6 +209,106 @@ export default function ThreadPageClient({
     workshopState.meta.threadId,
     notebookState.meta.threadId,
   ]);
+
+  // ============================================================
+  // BUG-002 FIX: Hydrate stores from Supabase when localStorage is empty.
+  // This handles new devices, cleared caches, and cross-browser sessions.
+  // ============================================================
+  const [dbHydrationAttempted, setDbHydrationAttempted] = useState(false);
+
+  useEffect(() => {
+    if (!isStoreReady || dbHydrationAttempted) return;
+
+    // Check if stores are empty (no poem and no completed lines)
+    const guideStore = useGuideStore.getState();
+    const workshopStore = useWorkshopStore.getState();
+    const hasLocalPoem = guideStore.poem.text.trim().length > 0;
+    const hasLocalWork = Object.keys(workshopStore.completedLines).length > 0;
+
+    if (hasLocalPoem || hasLocalWork) {
+      // localStorage has data — no need to fetch from DB
+      setDbHydrationAttempted(true);
+      return;
+    }
+
+    // localStorage is empty — try to hydrate from Supabase
+    setDbHydrationAttempted(true);
+    (async () => {
+      try {
+        const result = await getFullThreadState(threadId);
+        if (!result.success) return;
+
+        const { answers, rawPoem, poemStanzas, workshopLines } = result;
+
+        // Only hydrate if we actually got data back
+        const hasDbPoem = rawPoem && rawPoem.trim().length > 0;
+        const hasDbWork = workshopLines && workshopLines.some((l) => l !== null);
+
+        if (!hasDbPoem && !hasDbWork) return;
+
+        console.log(
+          `[ThreadPageClient] Hydrating stores from Supabase for thread ${threadId}`
+        );
+
+        // Hydrate guide store
+        if (hasDbPoem) {
+          const gs = useGuideStore.getState();
+          gs.setPoem(rawPoem);
+          gs.submitPoem();
+
+          if (answers.translationIntent) {
+            gs.setTranslationIntent(answers.translationIntent);
+            gs.submitTranslationIntent();
+          }
+          if (answers.translationZone) {
+            gs.setTranslationZone(answers.translationZone);
+            gs.submitTranslationZone();
+          }
+          if (answers.sourceLanguageVariety) {
+            gs.setSourceLanguageVariety(answers.sourceLanguageVariety);
+            gs.submitSourceLanguageVariety();
+          }
+          if (answers.translationModel) {
+            gs.setTranslationModel(answers.translationModel);
+          }
+          if (answers.translationRangeMode) {
+            gs.setTranslationRangeMode(answers.translationRangeMode);
+          }
+          if (answers.translationMethod) {
+            gs.setTranslationMethod(answers.translationMethod);
+          }
+        }
+
+        // Hydrate workshop store
+        if (hasDbPoem) {
+          const poemLines = rawPoem
+            .split("\n")
+            .map((l: string) => l.trim())
+            .filter((l: string) => l.length > 0);
+          useWorkshopStore.getState().setPoemLines(poemLines);
+        }
+
+        if (hasDbWork && workshopLines) {
+          const completedFromDb: Record<number, string> = {};
+          workshopLines.forEach((line, index) => {
+            if (line && line.translated) {
+              completedFromDb[index] = line.translated;
+            }
+          });
+          if (Object.keys(completedFromDb).length > 0) {
+            useWorkshopStore.getState().setCompletedLines(completedFromDb);
+          }
+        }
+
+        // If we had a poem + any answers, the workshop was likely unlocked
+        if (hasDbPoem && (hasDbWork || answers.translationIntent)) {
+          useGuideStore.getState().unlockWorkshop();
+        }
+      } catch (error) {
+        console.error("[ThreadPageClient] DB hydration failed:", error);
+      }
+    })();
+  }, [isStoreReady, dbHydrationAttempted, threadId]);
 
   const handleDragStart = (event: DragStartEvent) => {
     const dragData = event.active.data.current as DragData;
