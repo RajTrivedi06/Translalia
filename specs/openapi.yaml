@@ -1,9 +1,1308 @@
 openapi: 3.1.0
 info:
-  title: Placeholder API Specification
-  version: 0.1.0
-  description: Placeholder OpenAPI file for repository documentation structure.
+  title: Translalia API
+  version: 2026-03-12
+  description: >
+    Current-code-first catalog of the Next.js API routes in `translalia-web/src/app/api`.
+    Stable/high-use routes have fuller request and response schemas; lower-signal internal
+    routes are cataloged with generic object shapes so they remain discoverable.
 servers:
-  - url: http://localhost:8000
-paths: {}
-components: {}
+  - url: http://localhost:3000
+tags:
+  - name: auth
+  - name: debug
+  - name: health
+  - name: projects
+  - name: threads
+  - name: workshop
+  - name: notebook
+  - name: journey
+  - name: reflection
+  - name: verification
+  - name: diary
+  - name: eval
+paths:
+  /api/health:
+    get:
+      tags: [health]
+      summary: Basic process health check
+      x-classification: public
+      responses:
+        "200":
+          description: Health check response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /api/auth:
+    post:
+      tags: [auth]
+      summary: Sync Supabase auth events into SSR cookies
+      x-classification: public
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthSyncRequest"
+      responses:
+        "200":
+          description: Auth sync acknowledged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+  /api/auth/whoami:
+    get:
+      tags: [auth]
+      summary: Return the authenticated user id
+      x-classification: public
+      responses:
+        "200":
+          description: Authenticated user info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhoAmIResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/auth/debug-cookies:
+    get:
+      tags: [auth, debug]
+      summary: Inspect auth cookies
+      x-classification: debug
+      responses:
+        "200":
+          description: Debug cookie inspection payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
+  /api/debug/env-check:
+    get:
+      tags: [debug]
+      summary: Show sanitized env and flag state
+      x-classification: debug
+      responses:
+        "200":
+          description: Sanitized environment inspection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/debug/test-rpc:
+    get:
+      tags: [debug]
+      summary: Check Supabase RPC availability
+      x-classification: debug
+      responses:
+        "200":
+          description: RPC debug result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
+  /api/debug/whoami:
+    get:
+      tags: [debug]
+      summary: Minimal debug auth check
+      x-classification: debug
+      responses:
+        "200":
+          description: Debug auth result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
+  /api/projects:
+    post:
+      tags: [projects]
+      summary: Create a project/workspace
+      x-classification: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectCreateRequest"
+      responses:
+        "201":
+          description: Project created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectCreateResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    delete:
+      tags: [projects]
+      summary: Delete a project/workspace
+      x-classification: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteByIdRequest"
+      responses:
+        "200":
+          description: Project deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/threads:
+    post:
+      tags: [threads]
+      summary: Create a thread under a project
+      x-classification: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ThreadCreateRequest"
+      responses:
+        "201":
+          description: Thread created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThreadCreateResponse"
+    delete:
+      tags: [threads]
+      summary: Delete a thread
+      x-classification: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteByIdRequest"
+      responses:
+        "200":
+          description: Thread deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+  /api/threads/list:
+    get:
+      tags: [threads]
+      summary: List threads for a project
+      x-classification: public
+      parameters:
+        - in: query
+          name: projectId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Thread list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThreadListResponse"
+  /api/workshop/translate-line:
+    post:
+      tags: [workshop]
+      summary: Translate one line using legacy method-1
+      x-classification: internal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkshopTranslateLineRequest"
+      responses:
+        "200":
+          description: Three translation variants and alignments
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LineTranslationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/workshop/translate-line-with-recipes:
+    post:
+      tags: [workshop]
+      summary: Translate one line using the default method-2 flow
+      x-classification: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/WorkshopTranslateLineRequest"
+                - type: object
+                  properties:
+                    modelOverride:
+                      type: string
+      responses:
+        "200":
+          description: Three translation variants and alignments
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LineTranslationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          description: Retryable contention or generation-in-progress response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
+  /api/workshop/initialize-translations:
+    post:
+      tags: [workshop]
+      summary: Create a translation job and enqueue work
+      x-classification: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InitializeTranslationsRequest"
+      responses:
+        "200":
+          description: Translation job created or resumed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranslationStatusResponse"
+  /api/workshop/translation-status:
+    get:
+      tags: [workshop]
+      summary: Poll translation job status and optionally advance work
+      x-classification: public
+      parameters:
+        - in: query
+          name: threadId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: advance
+          required: false
+          schema:
+            type: string
+            enum: ["true", "false"]
+      responses:
+        "200":
+          description: Current job state plus ready lines
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranslationStatusResponse"
+  /api/workshop/save-line:
+    post:
+      tags: [workshop]
+      summary: Save a chosen line variant
+      x-classification: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenericObject"
+      responses:
+        "200":
+          description: Save result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
+  /api/workshop/save-manual-line:
+    post:
+      tags: [workshop]
+      summary: Save a manual line edit
+      x-classification: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenericObject"
+      responses:
+        "200":
+          description: Save result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
+  /api/workshop/retry-line:
+    post:
+      tags: [workshop]
+      summary: Retry a single line
+      x-classification: internal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenericObject"
+      responses:
+        "200":
+          description: Retry result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
+  /api/workshop/retry-stanza:
+    post:
+      tags: [workshop]
+      summary: Reset one stanza/chunk for retry
+      x-classification: internal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenericObject"
+      responses:
+        "200":
+          description: Retry result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
+  /api/workshop/requeue-stanza:
+    post:
+      tags: [workshop]
+      summary: Force one stanza/chunk back into the queue
+      x-classification: internal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenericObject"
+      responses:
+        "200":
+          description: Requeue result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
+  /api/workshop/line-suggestions:
+    post:
+      tags: [workshop]
+      summary: Generate line suggestions
+      x-classification: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenericObject"
+      responses:
+        "200":
+          description: Suggestion payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
+  /api/workshop/token-suggestions:
+    post:
+      tags: [workshop]
+      summary: Generate token-level suggestions
+      x-classification: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenericObject"
+      responses:
+        "200":
+          description: Suggestion payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
+  /api/workshop/additional-suggestions:
+    post:
+      tags: [workshop]
+      summary: Generate additional suggestions
+      x-classification: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenericObject"
+      responses:
+        "200":
+          description: Suggestion payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
+  /api/workshop/rhyme-workshop:
+    post:
+      tags: [workshop]
+      summary: Analyze rhyme, rhythm, and sound
+      x-classification: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenericObject"
+      responses:
+        "200":
+          description: Rhyme workshop payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
+  /api/notebook/notes:
+    get:
+      tags: [notebook]
+      summary: Fetch notebook notes for a thread
+      x-classification: public
+      parameters:
+        - in: query
+          name: threadId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Notebook notes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotebookNotesGetResponse"
+    post:
+      tags: [notebook]
+      summary: Save notebook notes for a thread
+      x-classification: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotebookNotesPostRequest"
+      responses:
+        "200":
+          description: Updated notebook notes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotebookNotesPostResponse"
+  /api/notebook/notes/line:
+    post:
+      tags: [notebook]
+      summary: Save one notebook line note atomically
+      x-classification: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenericObject"
+      responses:
+        "200":
+          description: Line note result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
+  /api/notebook/suggestions:
+    post:
+      tags: [notebook]
+      summary: Run identify, adjust, or personalize notebook suggestions
+      x-classification: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotebookSuggestionRequest"
+      responses:
+        "200":
+          description: Notebook suggestion step result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotebookSuggestionResponse"
+  /api/notebook/ai-assist:
+    post:
+      tags: [notebook]
+      summary: Notebook AI assist
+      x-classification: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenericObject"
+      responses:
+        "200":
+          description: Notebook AI assist result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
+  /api/notebook/poem-suggestions:
+    post:
+      tags: [notebook]
+      summary: Generate whole-poem suggestions
+      x-classification: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenericObject"
+      responses:
+        "200":
+          description: Poem suggestion payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
+  /api/notebook/prismatic:
+    post:
+      tags: [notebook]
+      summary: Notebook-side prismatic generation
+      x-classification: internal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenericObject"
+      responses:
+        "200":
+          description: Prismatic generation payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
+  /api/journey/list:
+    get:
+      tags: [journey]
+      summary: List archived journey items
+      x-classification: public
+      responses:
+        "200":
+          description: Journey list response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
+  /api/journey/save-reflection:
+    post:
+      tags: [journey]
+      summary: Save reflection text
+      x-classification: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenericObject"
+      responses:
+        "200":
+          description: Reflection save response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
+  /api/journey/generate-reflection:
+    post:
+      tags: [journey]
+      summary: Generate reflection and summary artifacts
+      x-classification: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenericObject"
+      responses:
+        "200":
+          description: Reflection generation response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
+  /api/journey/generate-brief-feedback:
+    post:
+      tags: [journey]
+      summary: Generate short journey feedback
+      x-classification: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenericObject"
+      responses:
+        "200":
+          description: Feedback generation response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
+  /api/reflection/ai-assist-step-c:
+    post:
+      tags: [reflection]
+      summary: Reflection-rail contextual suggestions
+      x-classification: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenericObject"
+      responses:
+        "200":
+          description: Reflection assist response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
+  /api/verification/grade-line:
+    post:
+      tags: [verification]
+      summary: Grade one saved line
+      x-classification: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [threadId, lineIndex]
+              properties:
+                threadId:
+                  type: string
+                  format: uuid
+                lineIndex:
+                  type: integer
+                  minimum: 0
+      responses:
+        "200":
+          description: Verification grade response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+  /api/verification/context-notes:
+    post:
+      tags: [verification]
+      summary: Generate educational context notes
+      x-classification: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenericObject"
+      responses:
+        "200":
+          description: Context-note response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
+  /api/verification/feedback:
+    post:
+      tags: [verification]
+      summary: Persist verification feedback
+      x-classification: internal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenericObject"
+      responses:
+        "200":
+          description: Feedback save response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
+  /api/verification/analytics:
+    get:
+      tags: [verification]
+      summary: Read verification analytics
+      x-classification: internal
+      responses:
+        "200":
+          description: Verification analytics response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
+  /api/verification/grade/{auditId}:
+    get:
+      tags: [verification]
+      summary: Read one audit result
+      x-classification: internal
+      parameters:
+        - in: path
+          name: auditId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Audit result response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
+  /api/verification/health:
+    get:
+      tags: [verification]
+      summary: Verification subsystem health and metrics
+      x-classification: internal
+      responses:
+        "200":
+          description: Verification health response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationHealthResponse"
+  /api/diary/completed-poems:
+    get:
+      tags: [diary]
+      summary: Fetch completed poems archive
+      x-classification: public
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - in: query
+          name: beforeCreatedAt
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: beforeId
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Completed poem page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiaryCompletedPoemsResponse"
+  /api/eval/run:
+    post:
+      tags: [eval]
+      summary: Experimental eval route
+      x-classification: experimental
+      responses:
+        "200":
+          description: Eval response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
+components:
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Missing or invalid authentication
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Authenticated but not allowed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    RateLimited:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    GenericObject:
+      type: object
+      additionalProperties: true
+    OkResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+      required: [ok]
+    ErrorResponse:
+      type: object
+      additionalProperties: true
+      properties:
+        error:
+          oneOf:
+            - type: string
+            - type: object
+              additionalProperties: true
+        details:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    HealthResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        ts:
+          type: integer
+      required: [ok, ts]
+    AuthSyncRequest:
+      type: object
+      properties:
+        event:
+          type: string
+        session:
+          type: object
+          properties:
+            access_token:
+              type: string
+            refresh_token:
+              type: string
+    WhoAmIResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        userId:
+          type: string
+      required: [ok, userId]
+    ProjectCreateRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 120
+        src_lang:
+          type: string
+          maxLength: 32
+        tgt_langs:
+          type: array
+          items:
+            type: string
+    ProjectCreateResponse:
+      type: object
+      properties:
+        project:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            title:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+          required: [id, title, created_at]
+      required: [project]
+    DeleteByIdRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        threadId:
+          type: string
+          format: uuid
+    ThreadCreateRequest:
+      type: object
+      required: [projectId]
+      properties:
+        projectId:
+          type: string
+          format: uuid
+        title:
+          type: string
+          maxLength: 120
+    ThreadCreateResponse:
+      type: object
+      properties:
+        thread:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            title:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+          required: [id, title, created_at]
+      required: [thread]
+    ThreadListResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+              title:
+                type: string
+              created_at:
+                type: string
+                format: date-time
+      required: [ok, items]
+    WorkshopTranslateLineRequest:
+      type: object
+      required: [threadId, lineIndex, lineText, fullPoem]
+      properties:
+        threadId:
+          type: string
+          format: uuid
+        lineIndex:
+          type: integer
+          minimum: 0
+        lineText:
+          type: string
+          minLength: 1
+        fullPoem:
+          type: string
+        stanzaIndex:
+          type: integer
+          minimum: 0
+        prevLine:
+          type: string
+        nextLine:
+          type: string
+    AlignedWord:
+      type: object
+      properties:
+        original:
+          type: string
+        translation:
+          type: string
+        partOfSpeech:
+          type: string
+        position:
+          type: integer
+      required: [original, translation, partOfSpeech, position]
+    LineTranslationMetadata:
+      type: object
+      properties:
+        literalness:
+          type: number
+        characterCount:
+          type: integer
+        preservesRhyme:
+          type: boolean
+        preservesMeter:
+          type: boolean
+      required: [literalness, characterCount]
+    LineTranslationVariant:
+      type: object
+      properties:
+        variant:
+          type: integer
+          enum: [1, 2, 3]
+        fullText:
+          type: string
+        words:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlignedWord"
+        metadata:
+          $ref: "#/components/schemas/LineTranslationMetadata"
+      required: [variant, fullText, words, metadata]
+    LineTranslationResponse:
+      type: object
+      description: >
+        Method-2 may return empty `words` arrays initially because alignment can complete later in
+        the background worker path.
+      properties:
+        lineOriginal:
+          type: string
+        translations:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items:
+            $ref: "#/components/schemas/LineTranslationVariant"
+        modelUsed:
+          type: string
+        qualityMetadata:
+          type: object
+          additionalProperties: true
+      required: [lineOriginal, translations, modelUsed]
+    InitializeTranslationsRequest:
+      type: object
+      required: [threadId]
+      properties:
+        threadId:
+          type: string
+          format: uuid
+        runInitialTick:
+          type: boolean
+          default: false
+    TranslationStatusResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        job:
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/GenericObject"
+        tick:
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/GenericObject"
+        progress:
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/GenericObject"
+        readyLines:
+          type: array
+          items:
+            type: object
+            properties:
+              line_number:
+                type: integer
+              original_text:
+                type: string
+              translations:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LineTranslationVariant"
+            additionalProperties: true
+      required: [ok]
+    NotebookNotesGetResponse:
+      type: object
+      properties:
+        threadNote:
+          type: [string, "null"]
+        lineNotes:
+          type: object
+          additionalProperties:
+            type: string
+        updatedAt:
+          type: [string, "null"]
+      required: [threadNote, lineNotes, updatedAt]
+    NotebookNotesPostRequest:
+      type: object
+      required: [threadId]
+      properties:
+        threadId:
+          type: string
+          format: uuid
+        threadNote:
+          type: [string, "null"]
+        lineNotes:
+          type: object
+          additionalProperties:
+            type: string
+    NotebookNotesPostResponse:
+      type: object
+      properties:
+        threadNote:
+          type: [string, "null"]
+        lineNotes:
+          type: object
+          additionalProperties:
+            type: string
+        updatedAt:
+          type: string
+          format: date-time
+      required: [threadNote, lineNotes, updatedAt]
+    NotebookSuggestionRequest:
+      type: object
+      required: [threadId, step, sourcePoem, translationPoem]
+      properties:
+        threadId:
+          type: string
+          format: uuid
+        step:
+          type: string
+          enum: [identify, adjust, personalize]
+        sourcePoem:
+          type: string
+        translationPoem:
+          type: string
+        sourceLanguage:
+          type: string
+        targetLanguage:
+          type: string
+        translationDiary:
+          type: string
+        lineNotes:
+          type: object
+          additionalProperties:
+            type: string
+        formalFeatures:
+          type: object
+          additionalProperties: true
+        selectedLines:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+    NotebookSuggestionResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        step:
+          type: string
+          enum: [identify, adjust, personalize]
+        formalFeatures:
+          type: object
+          additionalProperties: true
+        adjustments:
+          type: object
+          additionalProperties: true
+        personalized:
+          type: object
+          additionalProperties: true
+        cached:
+          type: boolean
+        error:
+          type: object
+          additionalProperties: true
+      required: [ok, step]
+    DiaryCompletedPoem:
+      type: object
+      properties:
+        thread_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        thread_created_at:
+          type: string
+          format: date-time
+        raw_poem:
+          type: [string, "null"]
+        workshop_lines:
+          description: Saved workshop line array as returned by the RPC.
+          oneOf:
+            - type: "null"
+            - type: array
+              items:
+                type: object
+                additionalProperties: true
+        notebook_notes:
+          oneOf:
+            - type: "null"
+            - type: object
+              additionalProperties: true
+        journey_summary_created_at:
+          type: [string, "null"]
+          format: date-time
+        reflection_text:
+          type: [string, "null"]
+        insights:
+          type: [array, "null"]
+          items:
+            type: string
+        strengths:
+          type: [array, "null"]
+          items:
+            type: string
+        challenges:
+          type: [array, "null"]
+          items:
+            type: string
+        recommendations:
+          type: [array, "null"]
+          items:
+            type: string
+    DiaryCompletedPoemsResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiaryCompletedPoem"
+        nextCursor:
+          oneOf:
+            - type: "null"
+            - type: object
+              properties:
+                beforeCreatedAt:
+                  type: string
+                  format: date-time
+                beforeId:
+                  type: string
+                  format: uuid
+      required: [ok, items]
+    VerificationHealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        features:
+          type: object
+          properties:
+            trackA:
+              type: boolean
+            trackB:
+              type: boolean
+        metrics:
+          type: object
+          additionalProperties: true
+      required: [status, timestamp]

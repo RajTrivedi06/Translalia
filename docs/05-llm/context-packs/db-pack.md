@@ -1,28 +1,31 @@
 # Database Context Pack
 
-## What this file is for
-Dense context for core data model and persistence patterns.
+## Load This For
+- Supabase schema changes
+- JSONB state-path work
+- debugging persistence or concurrent-write bugs
 
-## When to read/use this
-- Use for Supabase/Postgres schema changes, migration planning, and state persistence behavior.
+## Open These Files First
+- `translalia-web/supabase/migrations/20240117_add_exec_sql_rpc.sql`
+- `translalia-web/supabase/migrations/20260121_diary_completed_poems.sql`
+- `translalia-web/src/server/guide/updateGuideState.ts`
+- `translalia-web/src/lib/workshop/jobState.ts`
+- `translalia-web/src/app/api/notebook/notes/route.ts`
+- `translalia-web/src/app/api/diary/completed-poems/route.ts`
 
-## Data Stack Snapshot
-- Primary store: Supabase PostgreSQL.
-- Core auth/user identity attached to profile and project ownership.
-- Thread-level workflow data persisted in chat/workspace-oriented tables.
+## Entities To Keep In Mind
+- Tables: `chat_threads`, `projects`, `profiles`, `journey_reflections`, `journey_ai_summaries`, `journey_items_archive`, `prompt_audits`, `translation_audits`
+- Storage buckets: `avatars` (profile image uploads; URL stored in `profiles.avatar_url`)
+- RPCs: `exec_sql`, `patch_thread_state_field`, `append_method2_audit`, `diary_completed_poems`
+- Important JSONB paths: `translation_job`, `workshop_lines`, `notebook_notes`, `variant_recipes_v3`, `method2_audit`
 
-## High-Value Entity Groups
-- User/account entities: profile and ownership metadata.
-- Project/thread entities: project records, chat threads, thread state.
-- Translation workflow entities: source text, variants, notes, and completion state.
-- Diary/archive entities: completed poem views and related metadata.
+## DB Invariants
+- Thread ownership is the dominant access pattern.
+- Atomic state patching is a requirement, not a convenience.
+- Diary data is derived from saved workshop lines plus latest journey summary rows.
+- Guide answers are transitioning from JSONB storage to dedicated columns; docs should mention both until the legacy path is removed.
 
-## Persistence Patterns to Preserve
-- Thread-scoped state and recipe caches should remain stable across sessions.
-- Mode-specific recipe cache entries should be scoped and version-aware.
-- Keep schema-driven fields compatible with API response contracts.
-
-## Migration and Safety Patterns
-- Prefer additive, reversible migrations with explicit rollout notes.
-- Validate query and API compatibility before removing or renaming fields.
-- Document schema-impacting changes in `docs/02-reference/database.md`.
+## Read Next
+- `docs/02-reference/database.md`
+- `docs/reference/db-mapping.md`
+- `docs/03-guides/add-migration.md`

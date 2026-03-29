@@ -1,17 +1,20 @@
 ---
 title: AI Context Pack
-tags: [area:ai, audience:developers, status:stub]
-owner: TBD
-last_updated: 2026-02-24
+tags: [area:ai, audience:developers, status:current]
+owner: repo-maintainers
+last_updated: 2026-03-12
 ---
 
 # AI Context Pack
 
 ## What this file is for
-Alternative or legacy consolidated AI context for quick loading.
+Compatibility wrapper for older references that still point at `docs/ai/context-pack.md`.
 
-## When to read/use this
-- Read when a single compact AI context file is preferred.
-- Use alongside `docs/05-llm/DOC_MAP.md` for routing.
+## Use Instead
+- `docs/05-llm/DOC_MAP.md`
+- `docs/05-llm/context-packs/frontend-pack.md`
+- `docs/05-llm/context-packs/backend-pack.md`
+- `docs/05-llm/context-packs/db-pack.md`
 
-Placeholder for dense project context for assistant workflows.
+## Rule
+Do not treat this file as a fourth independent context pack. Use it only as a redirector into the canonical `docs/05-llm/` routing system.

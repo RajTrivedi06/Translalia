@@ -1,33 +1,33 @@
 # Claude Code Instructions
 
 ## What this file is for
-Guidance for how Claude should work in this repository.
+Repository-specific guidance for Claude Code and similar coding agents.
 
-## When to read/use this
-- Read when starting work.
-- Revisit when deciding workflow or documentation updates.
+## Read first
+- `docs/INDEX.md`
+- `docs/05-llm/DOC_MAP.md`
+- `docs/00-start-here/quickstart.md`
+- `docs/01-architecture/system-overview.md`
 
-## How Claude should work in this repo
-- Prefer existing project patterns over inventing new ones.
-- Keep changes scoped and easy to review.
-- Use repository docs as source of truth for conventions.
+## Working rules
+- Use root `docs/` as the canonical documentation set.
+- Use `translalia-web/docs/` only for prompt and translation-pipeline deep references.
+- Put temporary notes, inventories, and investigation outputs only in `docs/agent-temp/`.
+- Prefer concise cross-links to duplicated prose.
 
-## Preferred workflow
-1. Read relevant docs in `docs/INDEX.md` and `docs/05-llm/DOC_MAP.md`.
-2. Implement focused changes.
-3. Verify behavior locally when possible.
-4. Update permanent documentation only when requested.
+## When code changes require doc updates
+- API route/interface change: update `docs/02-reference/api.md` and `specs/openapi.yaml`
+- Env/config change: update `docs/02-reference/config-and-env.md` and `specs/config.schema.json`
+- Translation or prompt-path change: update `docs/05-llm/DOC_MAP.md` and the relevant file in `translalia-web/docs/`
 
-## Where to look first
-- Quick Start: `docs/00-start-here/quickstart.md`
-- Architecture: `docs/01-architecture/system-overview.md`
-- LLM Context Routing: `docs/05-llm/DOC_MAP.md`
+## Commands
+From `translalia-web/`:
+- `npm install`
+- `npm run dev`
+- `npm run build`
+- `npm run start`
 
-## Temporary Documentation
-- Use `temp-doc/` at repo root for temporary reports and investigations.
-- Do not place temporary or WIP reports in `docs/`.
-- Clean up `temp-doc/` periodically.
-
-## Documentation Maintenance
-- At the end of a work session, ask whether long-term docs should be updated.
-- Wait for confirmation before editing permanent docs.
+## Documentation maintenance
+- Do not load deprecated docs first just because they are longer.
+- Reconcile docs with current code before adding new narrative.
+- Keep permanent docs agent-focused: concrete paths, contracts, invariants, flags, and next files to open.

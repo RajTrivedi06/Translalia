@@ -1,22 +1,15 @@
 ---
 title: Architecture Summary
-tags: [area:overview, audience:developers, status:stub]
-owner: TBD
-last_updated: 2026-02-24
+tags: [area:overview, audience:developers, status:current]
+owner: repo-maintainers
+last_updated: 2026-03-12
 ---
 
 # Architecture Summary
 
-## What this file is for
-Short narrative overview of architecture decisions and system boundaries.
+This file is only a landing page. Canonical architecture detail lives in:
+- `docs/01-architecture/system-overview.md`
+- `docs/01-architecture/data-flow.md`
+- `docs/01-architecture/adr/0002-simplified-prompts.md`
 
-## When to read/use this
-- Read for quick architectural orientation.
-- Use before deep-diving into detailed architecture docs.
-
-## Canonical Detail
-- Primary architecture docs live in:
-  - `docs/01-architecture/system-overview.md`
-  - `docs/01-architecture/data-flow.md`
-
-This file is a high-level landing page and should stay short.
+Use this page only when a tool or human expects a short architecture entrypoint.

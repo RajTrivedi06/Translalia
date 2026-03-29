@@ -1,12 +1,11 @@
 # Guides Directory Notes
 
-## What this file is for
-Explains how `docs/guides/` complements the canonical numbered guides.
+`docs/guides/` is the expansion layer for the canonical implementation guides in `docs/03-guides/`.
 
-## When to read/use this
-- Read when deciding where to place process or operational guidance.
-- Use when choosing between step-by-step implementation guides and broader runbooks.
+Use this directory only for:
+- deeper setup notes
+- testing practice
+- deployment notes
+- operational runbooks
 
-## Canonical First
-- Start with `docs/03-guides/` for core implementation workflows.
-- Use `docs/guides/` for environment, operations, deployment, and testing expansions.
+Start with `docs/03-guides/` unless the task is explicitly about environment, operations, or release workflow.

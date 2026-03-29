@@ -23,7 +23,8 @@ Use these rules for every change in this repository.
 
 ## File Organization
 - Keep files in their appropriate domain directories.
-- Place long-term docs under `docs/` and temporary notes under `temp-doc/`.
+- Place long-term docs in the canonical `docs/` structure.
+- Place agent-generated temp docs, sanity reports, and investigation outputs **only** in `docs/agent-temp/`.
 
 ## Naming Conventions
 - Use descriptive names for files, folders, and symbols.

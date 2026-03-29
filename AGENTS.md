@@ -1,47 +1,57 @@
 # Agent Instructions
 
 ## What this file is for
-Primary entry point for AI agents working in this repository.
+Primary entry point for coding agents working in this repository.
 
 ## When to read/use this
-- Read first when starting work in this repo.
-- Re-check when unsure about workflow, conventions, or where docs live.
+- Read first when starting work.
+- Re-check when unsure which docs are canonical or where temporary outputs belong.
 
-## Project Summary
-This repository contains the Translalia project workspace, with the runnable web application in `translalia-web/` and supporting project-level documentation at the repository root.
+## Project summary
+- Runnable app: `translalia-web/`
+- Canonical docs: `docs/`
+- Machine-readable contracts: `specs/openapi.yaml`, `specs/config.schema.json`
 
-## Golden Commands
-### Web App (from `translalia-web/`)
-- `npm install` - Install dependencies.
-- `npm run dev` - Start local development server.
-- `npm run build` - Build for production.
-- `npm run start` - Run production build locally.
+## First files to open
+- `docs/INDEX.md`
+- `docs/05-llm/DOC_MAP.md`
+- `docs/00-start-here/quickstart.md`
+- `docs/01-architecture/system-overview.md`
 
-## Non-negotiables / Do Not
+## Golden commands
+From `translalia-web/`:
+- `npm install`
+- `npm run dev`
+- `npm run build`
+- `npm run start`
+
+## Documentation rules
+- Treat root `docs/` as canonical.
+- Treat `translalia-web/docs/` as deep reference only.
+- Do not create temporary or investigative docs outside `docs/agent-temp/`.
+- When changing API coverage, update both `docs/02-reference/api.md` and `specs/openapi.yaml`.
+- When changing env/config behavior, update both `docs/02-reference/config-and-env.md` and `specs/config.schema.json`.
+- Prefer links and cross-references over duplicating the same explanation in multiple files.
+
+## Non-negotiables
 - Do not commit secrets or real credentials.
 - Do not add dependencies without updating the relevant lockfile.
-- Do not place temporary investigations inside `docs/`.
+- Do not treat deprecated docs as canonical just because they are verbose.
 
-## Repo Navigation
-- Documentation Index: `docs/INDEX.md`
-- LLM Routing Map: `docs/05-llm/DOC_MAP.md`
-- Quick Start: `docs/00-start-here/quickstart.md`
-- Architecture Overview: `docs/01-architecture/system-overview.md`
-
-## Project Structure
+## Repo structure
 ```text
 AIDCPT/
 ├── translalia-web/
 ├── docs/
+│   └── agent-temp/
 ├── specs/
-├── temp-doc/
 ├── AGENTS.md
 ├── CLAUDE.md
 └── README.md
 ```
 
-## Workflow Expectations
-1. Read relevant docs before making changes.
-2. Follow existing project patterns.
-3. Verify changes locally where possible.
-4. Keep docs and references in sync with structural changes.
+## Workflow expectations
+1. Read the smallest relevant doc set first.
+2. Verify behavior against code before updating permanent docs.
+3. Keep canonical docs, deep references, and specs consistent.
+4. Leave temporary investigation outputs in `docs/agent-temp/` only.

@@ -1,142 +1,42 @@
-Updated: 2025-11-04
+# Translalia Workspace
 
-## Translalia
+Translalia is an AI-assisted poetry translation workspace. The runnable application lives in `translalia-web/`; the repository root owns the canonical documentation, agent routing, and machine-readable specs.
 
-A decolonial, AI‑assisted creative poetry translation workspace. The web app (Next.js) helps poets and translators explore variants, compare versions, and refine translations with LLM assistance.
-
-### Core features
-
-- AI‑assisted translation flows (preview, instruct, translate)
-- Enhancement planning via an enhancer endpoint (flag‑gated)
-- Optional verification/back‑translation (flag‑gated)
-- Supabase auth with SSR cookie sync
-- Rich notebook/workshop UI with versioning and comparisons
-
-### Tech stack
-
-- Next.js 15 (App Router), React 19
-- TanStack Query (data fetching/caching)
-- Zustand (client state)
-- Supabase (auth + client/server helpers)
-- OpenAI SDK (Responses/Chat)
-
-```34:43:/Users/raaj/Documents/CS/metamorphs/translalia-web/package.json
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start"
-  },
-  "dependencies": {
-    "next": "15.4.6",
-    "react": "19.1.0",
-    "openai": "^4.104.0"
-  }
-```
-
-### Prerequisites
-
-- Node.js 18+ (20+ recommended)
-- npm (repo uses `package-lock.json`)
-- OpenAI API key
-- Supabase project (URL + anon key)
-
-### Quick start
-
-1. Clone and enter the web app
-
-```bash
-git clone <your-fork-or-repo>
-cd metamorphs/translalia-web
-npm install
-```
-
-2. Configure environment (names only; do not commit secrets)
-
-Create `.env.local` in `translalia-web/` with at least:
-
-```bash
-OPENAI_API_KEY=sk-****...abcd
-NEXT_PUBLIC_SUPABASE_URL=https://....supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9....
-```
-
-Optional flags (set to `"1"` to enable):
-
-```bash
-NEXT_PUBLIC_FEATURE_TRANSLATOR=1
-NEXT_PUBLIC_FEATURE_ENHANCER=1
-NEXT_PUBLIC_FEATURE_VERIFY=0
-NEXT_PUBLIC_FEATURE_BACKTRANSLATE=0
-NEXT_PUBLIC_FEATURE_PRISMATIC=0
-# Debug logging of prompts (redacts secrets in logs)
-DEBUG_PROMPTS=0
-NEXT_PUBLIC_DEBUG_PROMPTS=0
-# Service role key only if you know what you are doing (server‑side)
-SUPABASE_SERVICE_ROLE_KEY=
-```
-
-3. Run the app
-
-```bash
-npm run dev
-# opens http://localhost:3000
-```
-
-### Usage examples
-
-- Sign up or sign in (Supabase auth flow)
-- Create/open a workspace, paste source text
-- Use translator preview or instruct to iterate on candidates
-- Toggle feature flags for enhancer/verify/back‑translate if needed
-
-### Project structure
-
-- `translalia-web/` — Next.js web app (all runnable code lives here)
-  - `src/app/` — routes, API handlers, layouts
-  - `src/components/` — UI components (notebook, workshop, chat, etc.)
-  - `src/lib/` — clients, env, feature flags, LLM helpers
-  - `src/hooks/`, `src/store/`, `src/types/` — hooks, state, types
-- `docs/` — architecture, API, policies, and style guide
-- `metamorphs-web/` — placeholder (no content yet)
-
-### Commands
-
-- Install: `cd translalia-web && npm install`
-- Develop: `npm run dev`
-- Build: `npm run build`
-- Start (prod): `npm run start`
-
-These commands are defined in the app’s `package.json` and align with the current lockfiles.
-
-### Environment variables (names only)
-
-- Required: `OPENAI_API_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- Optional server key: `SUPABASE_SERVICE_ROLE_KEY`
-- Feature flags: `NEXT_PUBLIC_FEATURE_TRANSLATOR`, `NEXT_PUBLIC_FEATURE_ENHANCER`, `NEXT_PUBLIC_FEATURE_VERIFY`, `NEXT_PUBLIC_FEATURE_BACKTRANSLATE`, `NEXT_PUBLIC_FEATURE_PRISMATIC`
-- Debug: `DEBUG_PROMPTS`, `NEXT_PUBLIC_DEBUG_PROMPTS`
-
-```56:66:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/lib/ai/openai.ts
-export const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
-});
-```
-
-```57:61:/Users/raaj/Documents/CS/metamorphs/translalia-web/src/app/api/journey/generate-reflection/route.ts
-const supabase = createServerClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-```
-
-### Links to documentation
-
-- App README: `translalia-web/README.md`
-- Docs index: `docs/INDEX.md`
-- Quick start: `docs/00-start-here/quickstart.md`
+## Start here
+- App setup: `docs/00-start-here/quickstart.md`
+- Command reference: `docs/00-start-here/dev-commands.md`
 - Architecture overview: `docs/01-architecture/system-overview.md`
 - API reference: `docs/02-reference/api.md`
-- LLM documentation map: `docs/05-llm/DOC_MAP.md`
+- Config and env: `docs/02-reference/config-and-env.md`
+- Agent routing: `docs/05-llm/DOC_MAP.md`
+- OpenAPI: `specs/openapi.yaml`
+- Config schema: `specs/config.schema.json`
 
-### Notes
+## Quick start
+Run the app from `translalia-web/`:
 
-- This repo’s root `package.json` only declares shared types (`zod`); the runnable app is under `translalia-web/`.
-- Never commit secrets. Provide variable names only; redact any sample values.
+```bash
+npm install
+npm run dev
+```
+
+Minimum environment required to boot is documented in `docs/00-start-here/quickstart.md`. The short version is:
+- `OPENAI_API_KEY`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+
+Common local additions:
+- `USE_SIMPLIFIED_PROMPTS=1`
+- `UPSTASH_REDIS_REST_URL`
+- `UPSTASH_REDIS_REST_TOKEN`
+
+## Repo layout
+- `translalia-web/` runnable Next.js application
+- `docs/` canonical repository documentation
+- `specs/` machine-readable API and config contracts
+- `AGENTS.md` and `CLAUDE.md` agent entry instructions
+
+## Documentation policy
+- Root `docs/` is canonical.
+- `translalia-web/docs/` is app-local deep reference only.
+- Temporary investigations belong only in `docs/agent-temp/`.

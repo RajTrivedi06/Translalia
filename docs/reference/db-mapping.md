@@ -1,17 +1,34 @@
 ---
 title: Database Mapping
-tags: [area:reference, audience:developers, status:stub]
-owner: TBD
-last_updated: 2026-02-24
+tags: [area:reference, audience:developers, status:current]
+owner: repo-maintainers
+last_updated: 2026-03-12
 ---
 
 # Database Mapping
 
-## What this file is for
-Maps application models to database entities and relationships.
+## Product Concept to Storage
 
-## When to read/use this
-- Read when integrating data access in services.
-- Use when validating schema-model consistency.
+| Concept | Storage |
+| --- | --- |
+| workspace/project | `projects` |
+| translation thread | `chat_threads` |
+| translator settings | `chat_threads` columns plus legacy `state.guide_answers` |
+| source poem text | `chat_threads.raw_poem` and some JSONB fallback reads |
+| translation job | `chat_threads.state.translation_job` |
+| saved workshop output | `chat_threads.state.workshop_lines` |
+| notebook notes | `chat_threads.state.notebook_notes` |
+| recipe cache | `chat_threads.state.variant_recipes_v3` |
+| prompt/verification audit rows | `prompt_audits`, `translation_audits` |
+| reflection text | `journey_reflections` |
+| generated journey summary | `journey_ai_summaries` |
+| completed diary feed | `diary_completed_poems` RPC over thread + summary data |
 
-Placeholder for table/model mapping and field conventions.
+## Update Strategy Notes
+- Columns are preferred for core guide settings.
+- JSONB remains the workflow state container.
+- Atomic JSONB patching is required for single-path updates.
+
+## Read Next
+- `docs/02-reference/database.md`
+- `docs/03-guides/add-migration.md`

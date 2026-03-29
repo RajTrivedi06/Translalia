@@ -1,17 +1,31 @@
 ---
 title: Operations Runbook
-tags: [area:guides, audience:ops, status:stub]
-owner: TBD
-last_updated: 2026-02-24
+tags: [area:guides, audience:ops, status:current]
+owner: repo-maintainers
+last_updated: 2026-03-12
 ---
 
 # Operations Runbook
 
-## What this file is for
-Operational procedures for incidents, maintenance, and routine tasks.
+## First Checks
+- `/api/health`
+- `/api/verification/health`
+- `/api/debug/env-check` in non-production
+- `/api/debug/test-rpc` when atomic state patching looks broken
 
-## When to read/use this
-- Read during on-call and incident response.
-- Use for scheduled maintenance operations.
+## Common Incidents
 
-Placeholder for operational runbooks and escalation protocols.
+| Incident | First move |
+| --- | --- |
+| translation jobs stop advancing | inspect `translation-status` behavior and Redis config |
+| notebook or guide state writes fail | verify `exec_sql` / `patch_thread_state_field` RPCs |
+| verification silently missing | confirm Track A / Track B flags |
+| auth regressions | confirm `/api/auth` cookie sync and `/api/auth/whoami` |
+
+## Worker Notes
+- `npm run worker:translations` runs the background worker.
+- In production-like operation, missing Redis is not a minor warning for queue-backed flows.
+
+## Read Next
+- `docs/02-reference/observability.md`
+- `docs/03-guides/troubleshooting.md`
