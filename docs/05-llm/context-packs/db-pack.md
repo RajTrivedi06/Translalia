@@ -16,8 +16,8 @@
 ## Entities To Keep In Mind
 - Tables: `chat_threads`, `projects`, `profiles`, `journey_reflections`, `journey_ai_summaries`, `journey_items_archive`, `prompt_audits`, `translation_audits`
 - Storage buckets: `avatars` (profile image uploads; URL stored in `profiles.avatar_url`)
-- RPCs: `exec_sql`, `patch_thread_state_field`, `append_method2_audit`, `diary_completed_poems`
-- Important JSONB paths: `translation_job`, `workshop_lines`, `notebook_notes`, `variant_recipes_v3`, `method2_audit`
+- RPCs: `exec_sql`, `patch_thread_state_field`, `diary_completed_poems` (`append_method2_audit` exists in migrations but is deprecated; audits go to `translation_audits`)
+- Important JSONB paths: `translation_job`, `workshop_lines`, `notebook_notes`, `variant_recipes_v3` (legacy reads: `variant_recipes_v2`, `variant_recipes_v1`)
 
 ## DB Invariants
 - Thread ownership is the dominant access pattern.

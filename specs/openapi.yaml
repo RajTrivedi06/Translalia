@@ -285,11 +285,17 @@ paths:
               $ref: "#/components/schemas/InitializeTranslationsRequest"
       responses:
         "200":
-          description: Translation job created or resumed
+          description: Translation job created or resumed. Background enqueue rejection (e.g. queue full) is logged server-side but still returns 200; poll translation-status to observe progress.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TranslationStatusResponse"
+        "400":
+          description: Poem exceeds MAX_POEM_LINES_FOR_TRANSLATION or invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/workshop/translation-status:
     get:
       tags: [workshop]
@@ -1099,6 +1105,10 @@ components:
       properties:
         ok:
           type: boolean
+        edgeState:
+          type: string
+          enum: [no-job, in-progress, completed, failed]
+          description: High-level job edge state returned by translation-status polling.
         job:
           oneOf:
             - type: "null"

@@ -18,7 +18,7 @@ last_updated: 2026-03-12
 | translation job | `chat_threads.state.translation_job` |
 | saved workshop output | `chat_threads.state.workshop_lines` |
 | notebook notes | `chat_threads.state.notebook_notes` |
-| recipe cache | `chat_threads.state.variant_recipes_v3` |
+| recipe cache | `chat_threads.state.variant_recipes_v3` (legacy reads: `variant_recipes_v2`, `variant_recipes_v1`) |
 | prompt/verification audit rows | `prompt_audits`, `translation_audits` |
 | reflection text | `journey_reflections` |
 | generated journey summary | `journey_ai_summaries` |

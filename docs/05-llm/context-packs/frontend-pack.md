@@ -6,8 +6,10 @@
 - thread-scoped client state and query hooks
 
 ## Open These Files First
-- `translalia-web/src/app/[locale]/(app)/workspace/[projectId]/page.tsx`
+- `translalia-web/src/app/[locale]/(app)/workspaces/[projectId]/page.tsx`
 - `translalia-web/src/app/[locale]/(app)/workspaces/[projectId]/threads/[threadId]/ThreadPageClient.tsx`
+- `translalia-web/src/app/[locale]/(app)/workspaces/[projectId]/threads/[threadId]/tuning/page.tsx` (translation tuning UI; mock-data prototype)
+- `translalia-web/src/app/[locale]/(app)/verification-dashboard/page.tsx`
 - `translalia-web/src/store/guideSlice.ts`
 - `translalia-web/src/store/workshopSlice.ts`
 - `translalia-web/src/store/notebookSlice.ts`
@@ -24,6 +26,7 @@
 
 ## Page and Component Shape
 - Route group: `src/app/[locale]/(app)` contains authenticated app pages.
+- Legacy `/workspace` URLs redirect to `/workspaces`; prefer `workspaces` paths in new work.
 - Domain folders under `src/components` are meaningful; prefer adding to an existing domain folder rather than inventing a new top-level folder.
 - `src/components/ui` is the primitive layer.
 

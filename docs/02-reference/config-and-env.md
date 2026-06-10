@@ -46,13 +46,13 @@ Most flags are string env vars, not booleans. The code distinguishes between:
 
 ### Translation Job and Queue Control
 - `USE_REDIS_LOCK`: when `"true"`, Redis locking is required and the code fails fast if Redis is missing.
-- `TRANSLATION_STATUS_TIMEOUT_MS`: short timeout for `/api/workshop/translation-status`.
-- `TICK_TIME_BUDGET_MS`: translation tick budget in milliseconds.
-- `ENABLE_PARALLEL_STANZAS`, `MAX_STANZAS_PER_TICK`, `CHUNK_CONCURRENCY`: stanza/chunk scheduling controls.
-- `MAIN_GEN_PARALLEL_LINES`, `MAIN_GEN_LINE_CONCURRENCY`: within-stanza line concurrency controls.
+- `TRANSLATION_STATUS_TIMEOUT_MS`: short timeout for `/api/workshop/translation-status` (default: `300`).
+- `TICK_TIME_BUDGET_MS`: translation tick budget passed to `runTranslationTick` from `translation-status` (default: `30000`). The background worker uses its own hardcoded budget (`15000` in `scripts/translation-worker.ts`), not this env var.
+- `ENABLE_PARALLEL_STANZAS`, `MAX_STANZAS_PER_TICK` (default: `4`, cap `5`), `CHUNK_CONCURRENCY` (default: `3`, cap `5`): stanza/chunk scheduling controls.
+- `MAIN_GEN_PARALLEL_LINES`, `MAIN_GEN_LINE_CONCURRENCY` (default: `6`, cap `8`): within-stanza line concurrency controls.
 - `ENABLE_TICK_TIME_SLICING`: kill switch for time-sliced chunk processing.
 - `MAX_REGEN_TIME_MS`, `MAX_REGEN_ROUNDS`: regen budget controls.
-- `ENABLE_GPT5_REGEN_PARALLEL`, `GPT5_REGEN_K`, `GPT5_REGEN_CONCURRENCY`, `DEFAULT_REGEN_CONCURRENCY`: regen parallelism and candidate counts.
+- `ENABLE_GPT5_REGEN_PARALLEL`, `GPT5_REGEN_K` (default: `2`), `GPT5_REGEN_CONCURRENCY` (default: `6`), `DEFAULT_REGEN_CONCURRENCY` (default: `3`): regen parallelism and candidate counts.
 
 ### Scalability and Queue Controls
 - `ENABLE_STATUS_READ_ADVANCE_SPLIT`: when `"1"`, `translation-status` ignores `advance` param and serves read-only responses. Worker is sole advancement owner.
@@ -79,7 +79,7 @@ Most flags are string env vars, not booleans. The code distinguishes between:
 These are consumed as numeric strings.
 
 ### Prompt, Schema, and Gate Tuning
-- `MAIN_GEN_MAX_OUTPUT_TOKENS`, `REGEN_MAX_OUTPUT_TOKENS`
+- `MAIN_GEN_MAX_OUTPUT_TOKENS` (default: `4000`, min `300`), `REGEN_MAX_OUTPUT_TOKENS` (default: `1500`, min `200`)
 - `ENABLE_STRICT_JSON_SCHEMA`, `STRICT_JSON_SCHEMA_MODELS`, `STRICT_SCHEMA_FALLBACK_TO_JSON_OBJECT`
 - `ENABLE_COMPRESSED_RECIPES`
 - `ENABLE_LOCAL_ANCHOR_REALIZATIONS`
@@ -94,7 +94,7 @@ These are consumed as numeric strings.
 
 ### Diagnostics and Debug Logging
 All of the following are code-backed debug toggles:
-- `ENABLE_DIAGNOSTICS`
+- `ENABLE_DIAGNOSTICS`: enabled by default unless explicitly set to `"false"` (`src/lib/diagnostics.ts`)
 - `DEBUG_AUDIT`
 - `DEBUG_ANCHOR_REALIZATIONS`
 - `DEBUG_ANCHOR_VALIDATION`

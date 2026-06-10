@@ -14,7 +14,7 @@ High-level map of the runtime boundaries, core directories, and integration poin
 
 | Subsystem | Primary paths | Responsibility |
 | --- | --- | --- |
-| App routes | `translalia-web/src/app/[locale]` | Locale-aware pages for workspace, workspaces, diary, account, and auth. |
+| App routes | `translalia-web/src/app/[locale]` | Locale-aware pages for workspaces, diary, account, auth, verification dashboard, and translation tuning. Legacy `/workspace` routes redirect to `/workspaces`. |
 | API routes | `translalia-web/src/app/api` | Auth, project/thread CRUD, workshop flows, notebook flows, journey flows, verification, diary, debug, health. |
 | Client state | `translalia-web/src/store` | Guide, workshop, notebook, and workspace state persisted per thread. |
 | Hooks | `translalia-web/src/lib/hooks`, `translalia-web/src/hooks` | Query/mutation helpers and auth/thread utilities. |
@@ -33,7 +33,7 @@ High-level map of the runtime boundaries, core directories, and integration poin
 ## State Boundaries That Matter
 - Long-lived collaborative state lives in Supabase, mainly `chat_threads` and related tables.
 - Per-thread local UI state is kept in Zustand via `threadStorage`.
-- `chat_threads.state` is a mixed JSONB document containing high-value fields such as `translation_job`, `workshop_lines`, `notebook_notes`, `variant_recipes_v3`, and legacy `guide_answers`.
+- `chat_threads.state` is a mixed JSONB document containing high-value fields such as `translation_job`, `workshop_lines`, `notebook_notes`, `variant_recipes_v3` (with legacy `variant_recipes_v2`/`v1` reads), and legacy `guide_answers`.
 - Atomic JSONB updates matter; `patchThreadStateField()` exists specifically to avoid state clobber on concurrent writers.
 
 ## Current Translation Architecture

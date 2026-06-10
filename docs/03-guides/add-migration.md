@@ -21,8 +21,8 @@ Pattern for adding a Supabase migration or RPC in `translalia-web/supabase/migra
 - Existing patterns to study:
   - `exec_sql`
   - `patch_thread_state_field`
-  - `append_method2_audit`
   - `diary_completed_poems`
+- Deprecated pattern (do not extend): `append_method2_audit` — method-2 audits now insert into `translation_audits` via `src/lib/ai/audit.ts`.
 
 ## Rollout Rules
 - Keep migrations reversible in spirit, even if exact rollback SQL is not committed alongside them.

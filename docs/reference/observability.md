@@ -12,7 +12,7 @@ last_updated: 2026-03-12
 - Verification subsystem health: `/api/verification/health`
 - Debug env/config inspection: `/api/debug/env-check`
 - RPC health check: `/api/debug/test-rpc`
-- Prompt/audit history: `prompt_audits`, `translation_audits`, `method2_audit`
+- Prompt/audit history: `prompt_audits`, `translation_audits` (`append_method2_audit` / `state.method2_audit` are deprecated)
 
 ## Logging Reality
 - Logging is mostly structured console output plus debug-flag-gated verbose logs.

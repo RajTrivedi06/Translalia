@@ -65,9 +65,8 @@ Describes the current workshop translation path, batch job flow, and rollback br
   - `poem_stanzas`
   - `raw_poem`
   - `translation_job`
-  - `variant_recipes_v3`
-  - `method2_audit`
-- Audit tables include `prompt_audits` and `translation_audits`.
+  - `variant_recipes_v3` (legacy reads: `variant_recipes_v2`, `variant_recipes_v1`)
+- Audit tables include `prompt_audits` and `translation_audits` (method-2 audits insert into `translation_audits` via `src/lib/ai/audit.ts`; `state.method2_audit` is deprecated).
 
 ## Rollback and legacy branches
 - Method 1: `src/lib/workshop/translateLineInternal.ts`

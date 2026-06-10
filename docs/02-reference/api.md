@@ -99,10 +99,10 @@ When `ENABLE_STATUS_READ_ADVANCE_SPLIT=1`, the route ignores the `advance` query
 
 Jobs that exceed max retries (5) without progress are moved to the dead-letter queue (`translation:dlq`) instead of being re-enqueued indefinitely.
 
-Load-shedding responses:
-- `429`: rate limit exceeded.
-- `400`: poem too large.
-- `202` semantics: job is enqueued for background processing.
+Admission responses:
+- `400`: poem exceeds `MAX_POEM_LINES_FOR_TRANSLATION`.
+- `200`: job created or resumed. The route always returns `200` on success even when background enqueue is rejected (e.g. queue full); rejection is logged server-side. Clients should poll `/api/workshop/translation-status` to observe job progress.
+- `429` does not apply to this route; rate limits apply to other high-cost LLM endpoints.
 
 ## Error Patterns
 - Validation errors are usually `400`.

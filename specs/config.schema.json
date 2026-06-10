@@ -188,8 +188,8 @@
     },
     "TICK_TIME_BUDGET_MS": {
       "$ref": "#/$defs/intString",
-      "default": "2500",
-      "description": "Main translation tick budget in milliseconds."
+      "default": "30000",
+      "description": "Translation tick budget in milliseconds passed from translation-status to runTranslationTick."
     },
     "ENABLE_STATUS_READ_ADVANCE_SPLIT": {
       "$ref": "#/$defs/flag01",
@@ -236,11 +236,13 @@
     },
     "MAX_STANZAS_PER_TICK": {
       "$ref": "#/$defs/intString",
-      "description": "Maximum stanzas/chunks per translation tick."
+      "default": "4",
+      "description": "Maximum stanzas/chunks per translation tick (capped at 5 in code)."
     },
     "CHUNK_CONCURRENCY": {
       "$ref": "#/$defs/intString",
-      "description": "Chunk/stanza concurrency limit."
+      "default": "3",
+      "description": "Chunk/stanza concurrency limit (capped at 5 in code)."
     },
     "MAIN_GEN_PARALLEL_LINES": {
       "$ref": "#/$defs/flag01",
@@ -249,7 +251,8 @@
     },
     "MAIN_GEN_LINE_CONCURRENCY": {
       "$ref": "#/$defs/intString",
-      "description": "Per-stanza line concurrency cap."
+      "default": "6",
+      "description": "Per-stanza line concurrency cap (capped at 8 in code)."
     },
     "ENABLE_TICK_TIME_SLICING": {
       "$ref": "#/$defs/flag01",
@@ -273,23 +276,28 @@
     },
     "GPT5_REGEN_K": {
       "$ref": "#/$defs/intString",
+      "default": "2",
       "description": "Candidate count for GPT-5 regen."
     },
     "GPT5_REGEN_CONCURRENCY": {
       "$ref": "#/$defs/intString",
+      "default": "6",
       "description": "Concurrency cap for GPT-5 regen requests."
     },
     "DEFAULT_REGEN_CONCURRENCY": {
       "$ref": "#/$defs/intString",
+      "default": "3",
       "description": "Concurrency cap for non-GPT-5 regen requests."
     },
     "MAIN_GEN_MAX_OUTPUT_TOKENS": {
       "$ref": "#/$defs/intString",
-      "description": "Output token cap for main generation."
+      "default": "4000",
+      "description": "Output token cap for main generation (minimum 300 in code)."
     },
     "REGEN_MAX_OUTPUT_TOKENS": {
       "$ref": "#/$defs/intString",
-      "description": "Output token cap for regeneration."
+      "default": "1500",
+      "description": "Output token cap for regeneration (minimum 200 in code)."
     },
     "ENABLE_STRICT_JSON_SCHEMA": {
       "$ref": "#/$defs/flag01",

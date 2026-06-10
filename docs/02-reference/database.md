@@ -12,7 +12,7 @@ Only entities and RPCs directly referenced by code or migrations are documented 
 | --- | --- | --- |
 | `chat_threads` | Primary thread record plus JSONB workflow state | workshop routes, notebook routes, journey routes, verification routes, server guide helpers, worker/job code |
 | `projects` | Workspace/project container | project routes, thread list routes, workspace pages |
-| `profiles` | User profile data | auth helpers, journey/reflection generation, profile UI |
+| `profiles` | User profile data (`locale`, `avatar_url`, etc.) | auth middleware, auth helpers, journey/reflection generation, profile UI |
 | `journey_reflections` | Saved reflection text | journey save/generate routes |
 | `journey_ai_summaries` | Generated journey summaries and diary enrichment | journey generation, diary RPC |
 | `journey_items_archive` | Archived journey items | `/api/journey/list` |
@@ -48,9 +48,10 @@ Only entities and RPCs directly referenced by code or migrations are documented 
 | `translation_job` | Background translation queue/progress state. |
 | `workshop_lines` | Saved line translations and verification payloads. |
 | `notebook_notes` | Thread note plus line notes. |
-| `variant_recipes_v3` | Cached method-2 recipe bundle by mode. |
-| `method2_audit` | Translation audit trail. |
-| `raw_poem` | JSONB fallback copy used by some routes. |
+| `variant_recipes_v3` | Current cached method-2 recipe bundle by mode. |
+| `variant_recipes_v2` | Legacy recipe cache; read for backward compatibility and migrated to v3. |
+| `variant_recipes_v1` | Legacy recipe cache; read-only fallback in `variantRecipes.ts`. |
+| `raw_poem` | Legacy JSONB fallback; `updateGuideState.ts` prefers the `raw_poem` column and strips this from JSONB on write. |
 
 ## Confirmed RPCs
 
@@ -58,7 +59,7 @@ Only entities and RPCs directly referenced by code or migrations are documented 
 | --- | --- | --- |
 | `exec_sql` | `supabase/migrations/20240117_add_exec_sql_rpc.sql` | Parameterized SQL execution for atomic JSONB patching. |
 | `patch_thread_state_field` | `supabase/migrations/20240117_add_exec_sql_rpc.sql` | Dedicated atomic patch helper for `chat_threads.state`. |
-| `append_method2_audit` | `supabase/migrations/20240117_add_exec_sql_rpc.sql` | Atomic append to `state.method2_audit`. |
+| `append_method2_audit` | `supabase/migrations/20240117_add_exec_sql_rpc.sql` | **Deprecated.** Legacy RPC for `state.method2_audit`; production writes use the `translation_audits` table via `src/lib/ai/audit.ts`. |
 | `diary_completed_poems` | `supabase/migrations/20260121_diary_completed_poems.sql` | Return completed poems for the authenticated user. |
 
 ## Ownership and Access
@@ -70,7 +71,8 @@ Only entities and RPCs directly referenced by code or migrations are documented 
 ## Concurrency Guarantees That Matter
 - `patchThreadStateField()` is the intended path for atomic JSONB updates.
 - The unsafe read-modify-write fallback for thread-state patching has been removed on purpose.
-- `translation_job`, `workshop_lines`, `notebook_notes`, and method-2 audits are the most concurrency-sensitive state paths.
+- `translation_job`, `workshop_lines`, `notebook_notes`, and recipe caches are the most concurrency-sensitive state paths.
+- Method-2 audit rows are written to `translation_audits`, not appended into JSONB.
 
 ## Known Gaps
 - The repo does not include a complete migration history for every table referenced by code.

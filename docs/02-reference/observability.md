@@ -21,8 +21,8 @@ Reference for the repo’s current health checks, debug endpoints, audit stores,
 
 ## Audit and Event Storage
 - `prompt_audits`: verification analytics and feedback storage.
-- `translation_audits`: translation audit writes from `src/lib/ai/audit.ts`.
-- `state.method2_audit`: atomic JSONB audit append path via `append_method2_audit`.
+- `translation_audits`: method-2 translation audit writes from `src/lib/ai/audit.ts` (direct table insert; gated by `PERSIST_METHOD2_AUDIT=1`).
+- `append_method2_audit` / `state.method2_audit`: deprecated legacy path retained in migrations only.
 
 ## Metrics and Timing
 - Verification metrics are collected in-memory in `src/lib/verification/monitoring.ts`.
