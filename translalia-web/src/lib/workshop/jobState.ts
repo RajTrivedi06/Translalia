@@ -208,6 +208,10 @@ export async function createTranslationJob(
         `[jobState] Model changed (${existingModel ?? "unknown"} → ${requestedModel}). Clearing stale job and recreating.`
       );
       delete state.translation_job;
+      // Clear workshop_lines atomically in the same writeThreadState call
+      // so stale translations from the old model can't survive via a
+      // concurrent write from the old tick.
+      delete (state as Record<string, unknown>).workshop_lines;
       // Fall through to create a new job below
     } else {
       return state.translation_job;

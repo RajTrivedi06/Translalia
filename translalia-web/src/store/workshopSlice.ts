@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { getActiveThreadId, threadStorage } from "@/lib/threadStorage";
 import type { LineTranslationResponse } from "@/types/lineTranslation";
+import type { TranslatedLine } from "@/types/translationJob";
 
 export interface WorkshopState {
   // Hydration flag
@@ -58,6 +59,10 @@ export interface WorkshopState {
     translation: LineTranslationResponse | null
   ) => void;
   selectVariant: (lineIndex: number, variant: 1 | 2 | 3 | null) => void;
+  hydrateFromJobChunks: (
+    chunkLineData: TranslatedLine[][],
+    completedLines: Record<number, string>
+  ) => number;
   clearLineTranslation: (lineIndex: number) => void;
   reset: () => void;
   resetToDefaults: () => void;
@@ -190,6 +195,66 @@ export const useWorkshopStore = create<WorkshopState>()(
             [lineIndex]: variant,
           },
         })),
+
+      hydrateFromJobChunks: (
+        chunkLineData: TranslatedLine[][],
+        completedLines: Record<number, string>
+      ) => {
+        let unsavedLineCount = 0;
+
+        set((state) => {
+          const nextLineTranslations = { ...state.lineTranslations };
+          const nextSelectedVariant = { ...state.selectedVariant };
+          const unsavedLineNumbers = new Set<number>();
+
+          chunkLineData.forEach((chunkLines) => {
+            chunkLines.forEach((line) => {
+              if (!line || typeof line.line_number !== "number") return;
+              if (!Array.isArray(line.translations) || line.translations.length < 3) {
+                return;
+              }
+
+              const translations =
+                line.translations.slice(0, 3) as LineTranslationResponse["translations"];
+
+              nextLineTranslations[line.line_number] = {
+                lineOriginal: line.original_text ?? "",
+                translations,
+                modelUsed: line.model_used ?? state.modelUsed ?? "unknown",
+              };
+
+              const savedText = completedLines[line.line_number];
+              if (!savedText) {
+                unsavedLineNumbers.add(line.line_number);
+                delete nextSelectedVariant[line.line_number];
+                return;
+              }
+
+              const selectedIndex = translations.findIndex(
+                (variant) => variant.fullText === savedText
+              );
+
+              if (selectedIndex >= 0) {
+                nextSelectedVariant[line.line_number] = (selectedIndex + 1) as
+                  | 1
+                  | 2
+                  | 3;
+              } else {
+                delete nextSelectedVariant[line.line_number];
+              }
+            });
+          });
+
+          unsavedLineCount = unsavedLineNumbers.size;
+
+          return {
+            lineTranslations: nextLineTranslations,
+            selectedVariant: nextSelectedVariant,
+          };
+        });
+
+        return unsavedLineCount;
+      },
 
       clearLineTranslation: (lineIndex: number) =>
         set((state) => {

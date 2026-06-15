@@ -11,7 +11,7 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { ArrowLeft, ChevronLeft } from "lucide-react";
 import { GuideRail } from "@/components/guide";
 import { WorkshopRail } from "@/components/workshop-rail/WorkshopRail";
@@ -26,6 +26,11 @@ import {
 } from "@/lib/threadStorage";
 import { type DragData } from "@/types/drag";
 import { Badge } from "@/components/ui/badge";
+import {
+  ProgressRingButton,
+  TranslationProgressDetails,
+} from "@/components/workshop/ProcessingProgress";
+import { useTranslationJob } from "@/lib/hooks/useTranslationJob";
 import { cn } from "@/lib/utils";
 import { useNotebookStore } from "@/store/notebookSlice";
 import { useGuideStore } from "@/store/guideSlice";
@@ -57,7 +62,7 @@ export default function ThreadPageClient({
     // Force update if different from what we expect
     if (currentCachedId !== threadId) {
       console.log(
-        `[ThreadPageClient] Synchronously setting thread ID: ${currentCachedId} → ${threadId}`
+        `[ThreadPageClient] Synchronously setting thread ID: ${currentCachedId} → ${threadId}`,
       );
       setActiveThreadId(threadId ?? null);
     }
@@ -73,12 +78,30 @@ export default function ThreadPageClient({
   const currentLineIndex = useWorkshopStore((s) => s.currentLineIndex);
   const setCurrentLineIndex = useWorkshopStore((s) => s.setCurrentLineIndex);
 
+  // Workshop status cluster (relocated into the Workshop title row, right side).
+  const workshopLineCount = useWorkshopStore((s) => s.poemLines.length);
+  const workshopSelectedVariant = useWorkshopStore((s) => s.selectedVariant);
+  const workshopCurrentVariant =
+    currentLineIndex !== null
+      ? workshopSelectedVariant[currentLineIndex]
+      : null;
+  // Passive observer of the translation-job cache. WorkshopRail owns the active
+  // poller; matching its query key (advanceOnPoll:true) with enabled:false lets
+  // us subscribe to cache updates without polling or advancing the job.
+  const workshopJobQuery = useTranslationJob(threadId || undefined, {
+    advanceOnPoll: true,
+    enabled: false,
+  });
+  const workshopProgress = workshopJobQuery.data?.progress ?? null;
+  const [workshopProgressExpanded, setWorkshopProgressExpanded] =
+    useState(false);
+
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
         distance: 8,
       },
-    })
+    }),
   );
 
   const [activeDragData, setActiveDragData] = useState<DragData | null>(null);
@@ -92,8 +115,10 @@ export default function ThreadPageClient({
   const completedLines = useWorkshopStore((s) => s.completedLines);
 
   // Always start expanded; we only collapse once workshop data is confirmed.
-  const [isGettingStartedCollapsed, setIsGettingStartedCollapsed] = useState(false);
+  const [isGettingStartedCollapsed, setIsGettingStartedCollapsed] =
+    useState(false);
   const [isGuideFocusMode, setIsGuideFocusMode] = useState(false);
+  const [hydrationNotice, setHydrationNotice] = useState<string | null>(null);
 
   // Track collapsed state for Workshop, Notebook, and Editing
   // When workshop starts: Workshop and Notebook are open (not collapsed)
@@ -110,13 +135,17 @@ export default function ThreadPageClient({
 
   const hasWorkshopData =
     isStoreReady && Object.keys(completedLines || {}).length > 0;
-  const isWorkshopStarted = isStoreReady && (isWorkshopUnlocked || hasWorkshopData);
+  const isWorkshopStarted =
+    isStoreReady && (isWorkshopUnlocked || hasWorkshopData);
 
   // New threads: always show the guide expanded in the startup layout.
-  const showStartupLayout = !isStoreReady || !isWorkshopStarted || isGuideFocusMode;
+  const showStartupLayout =
+    !isStoreReady || !isWorkshopStarted || isGuideFocusMode;
 
   // Once the workshop has started, allow the guide to collapse.
-  const isGuideCollapsed = isWorkshopStarted ? isGettingStartedCollapsed : false;
+  const isGuideCollapsed = isWorkshopStarted
+    ? isGettingStartedCollapsed
+    : false;
 
   // Reset collapse state when threadId changes - always start expanded for new threads
   useEffect(() => {
@@ -152,6 +181,16 @@ export default function ThreadPageClient({
     }
   }, [isStoreReady, hasWorkshopData, isWorkshopUnlocked, isWorkshopStarted]);
 
+  useEffect(() => {
+    if (!hydrationNotice) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setHydrationNotice(null);
+    }, 5000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [hydrationNotice]);
+
   // ============================================================
   // Effect: Initialize thread ID properly after mount
   // ============================================================
@@ -180,21 +219,21 @@ export default function ThreadPageClient({
 
     if (guideThreadId && guideThreadId !== threadId) {
       console.log(
-        `[ThreadPageClient] Detected stale guide state. Resetting from ${guideThreadId} to ${threadId}`
+        `[ThreadPageClient] Detected stale guide state. Resetting from ${guideThreadId} to ${threadId}`,
       );
       useGuideStore.getState().resetToDefaults();
     }
 
     if (workshopThreadId && workshopThreadId !== threadId) {
       console.log(
-        `[ThreadPageClient] Detected stale workshop state. Resetting from ${workshopThreadId} to ${threadId}`
+        `[ThreadPageClient] Detected stale workshop state. Resetting from ${workshopThreadId} to ${threadId}`,
       );
       useWorkshopStore.getState().resetToDefaults();
     }
 
     if (notebookThreadId && notebookThreadId !== threadId) {
       console.log(
-        `[ThreadPageClient] Detected stale notebook state. Resetting from ${notebookThreadId} to ${threadId}`
+        `[ThreadPageClient] Detected stale notebook state. Resetting from ${notebookThreadId} to ${threadId}`,
       );
       useNotebookStore.getState().resetToDefaults();
     }
@@ -238,16 +277,20 @@ export default function ThreadPageClient({
         const result = await getFullThreadState(threadId);
         if (!result.success) return;
 
-        const { answers, rawPoem, poemStanzas, workshopLines } = result;
+        const { answers, rawPoem, poemStanzas, workshopLines, chunkLineData } =
+          result;
 
         // Only hydrate if we actually got data back
         const hasDbPoem = rawPoem && rawPoem.trim().length > 0;
-        const hasDbWork = workshopLines && workshopLines.some((l) => l !== null);
+        const hasDbWork =
+          workshopLines && workshopLines.some((line) => line !== null);
+        const hasDbVariants =
+          chunkLineData && chunkLineData.some((chunk) => chunk.length > 0);
 
-        if (!hasDbPoem && !hasDbWork) return;
+        if (!hasDbPoem && !hasDbWork && !hasDbVariants) return;
 
         console.log(
-          `[ThreadPageClient] Hydrating stores from Supabase for thread ${threadId}`
+          `[ThreadPageClient] Hydrating stores from Supabase for thread ${threadId}`,
         );
 
         // Hydrate guide store
@@ -288,8 +331,9 @@ export default function ThreadPageClient({
           useWorkshopStore.getState().setPoemLines(poemLines);
         }
 
+        const completedFromDb: Record<number, string> = {};
+
         if (hasDbWork && workshopLines) {
-          const completedFromDb: Record<number, string> = {};
           workshopLines.forEach((line, index) => {
             if (line && line.translated) {
               completedFromDb[index] = line.translated;
@@ -300,8 +344,23 @@ export default function ThreadPageClient({
           }
         }
 
+        if (hasDbVariants && chunkLineData) {
+          const unsavedLineCount = useWorkshopStore
+            .getState()
+            .hydrateFromJobChunks(chunkLineData, completedFromDb);
+
+          if (unsavedLineCount > 0) {
+            setHydrationNotice(
+              "Your saved translations were restored. Unsaved variant selections may need to be redone.",
+            );
+          }
+        }
+
         // If we had a poem + any answers, the workshop was likely unlocked
-        if (hasDbPoem && (hasDbWork || answers.translationIntent)) {
+        if (
+          hasDbPoem &&
+          (hasDbWork || hasDbVariants || answers.translationIntent)
+        ) {
           useGuideStore.getState().unlockWorkshop();
         }
       } catch (error) {
@@ -419,16 +478,23 @@ export default function ThreadPageClient({
     setIsReflectionCollapsed(true);
   };
 
-  // Animation variants for panel transitions
-  const panelVariants = {
-    hidden: { opacity: 0, x: -10 },
-    visible: {
-      opacity: 1,
-      x: 0,
-      transition: { duration: 0.3, ease: "easeOut" },
-    },
-    exit: { opacity: 0, transition: { duration: 0.2 } },
-  };
+  const prefersReducedMotion = useReducedMotion();
+
+  const panelVariants = prefersReducedMotion
+    ? {
+        hidden: { opacity: 1 },
+        visible: { opacity: 1 },
+        exit: { opacity: 1 },
+      }
+    : {
+        hidden: { opacity: 0, x: -10 },
+        visible: {
+          opacity: 1,
+          x: 0,
+          transition: { duration: 0.3, ease: "easeOut" },
+        },
+        exit: { opacity: 0, transition: { duration: 0.2 } },
+      };
 
   const handleDragEnd = (event: DragEndEvent) => {
     setActiveDragData(null);
@@ -450,11 +516,11 @@ export default function ThreadPageClient({
       let targetLine: number;
       if (String(over.id).startsWith("notebook-dropzone-line-")) {
         const lineIndexMatch = String(over.id).match(
-          /notebook-dropzone-line-(\d+)/
+          /notebook-dropzone-line-(\d+)/,
         );
         targetLine = lineIndexMatch
           ? parseInt(lineIndexMatch[1], 10)
-          : dragData.sourceLineNumber ?? currentLineIndex ?? 0;
+          : (dragData.sourceLineNumber ?? currentLineIndex ?? 0);
       } else {
         // Use source line number if available, otherwise current line
         targetLine = dragData.sourceLineNumber ?? currentLineIndex ?? 0;
@@ -508,10 +574,7 @@ export default function ThreadPageClient({
         {/* Main area – fills remaining viewport height */}
         <div className="flex-1 min-h-0 overflow-hidden px-2 pb-2 pt-2 md:px-4 sm:px-6 lg:px-8">
           <div
-            className={cn(
-              "relative grid h-full min-h-0 gap-0",
-              "transition-[grid-template-columns] duration-500 ease-[cubic-bezier(0.4,0,0.2,1)]"
-            )}
+            className={cn("relative grid h-full min-h-0 gap-0")}
             style={{
               // Startup layout (new thread or not yet started): guide expanded at 80% width.
               // Working mode: maintain order - each section can be open (1fr) or collapsed (60px).
@@ -532,15 +595,14 @@ export default function ThreadPageClient({
           >
             {/* LEFT: Let's get started / collapsed rail */}
             <motion.div
-              layout
               className={cn(
                 "relative flex h-full min-h-0 flex-col overflow-hidden rounded-l-2xl rounded-r-none",
                 isGuideCollapsed
                   ? "bg-white shadow-sm transition-colors duration-500 bg-white/70 hover:bg-white/90"
-                  : "bg-white shadow-[0_10px_30px_rgba(15,23,42,0.06)]"
+                  : "bg-white shadow-[0_10px_30px_rgba(15,23,42,0.06)]",
               )}
             >
-              <AnimatePresence mode="wait">
+              <AnimatePresence mode="popLayout">
                 {!isGuideCollapsed ? (
                   <motion.div
                     key="full-guide"
@@ -569,7 +631,7 @@ export default function ThreadPageClient({
                         )}
                       </div>
                     </div>
-                    <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4">
+                    <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 md:p-4">
                       <GuideRail
                         projectId={projectId}
                         threadId={threadId}
@@ -577,6 +639,9 @@ export default function ThreadPageClient({
                         onCollapseToggle={handleToggleGettingStarted}
                         onAutoCollapse={() => {
                           if (!isStoreReady) return;
+                          // Exit focus mode so showStartupLayout becomes false
+                          // and the working-mode grid layout is used.
+                          setIsGuideFocusMode(false);
                           setIsGettingStartedCollapsed(true);
                           // When workshop starts, open Workshop and Notebook
                           setIsWorkshopCollapsed(false);
@@ -612,7 +677,7 @@ export default function ThreadPageClient({
                 <div
                   className={cn(
                     "flex h-full min-h-0 flex-col overflow-hidden border-l border-border/50 bg-white shadow-sm",
-                    "rounded-none transition-all duration-500 ease-in-out bg-white/70"
+                    "rounded-none transition-all duration-500 ease-in-out bg-white/70",
                   )}
                 >
                   <CollapsedPanelTab
@@ -625,7 +690,7 @@ export default function ThreadPageClient({
                 <div
                   className={cn(
                     "flex h-full min-h-0 flex-col overflow-hidden border-l border-border/50 bg-white shadow-sm",
-                    "rounded-none transition-all duration-500 ease-in-out bg-white/70"
+                    "rounded-none transition-all duration-500 ease-in-out bg-white/70",
                   )}
                 >
                   <CollapsedPanelTab
@@ -638,7 +703,7 @@ export default function ThreadPageClient({
                 <div
                   className={cn(
                     "flex h-full min-h-0 flex-col overflow-hidden border-l border-border/50 bg-white shadow-sm",
-                    "rounded-r-2xl rounded-l-none transition-all duration-500 ease-in-out bg-white/70"
+                    "rounded-r-2xl rounded-l-none transition-all duration-500 ease-in-out bg-white/70",
                   )}
                 >
                   <CollapsedPanelTab
@@ -654,17 +719,16 @@ export default function ThreadPageClient({
               <>
                 {/* Workshop section */}
                 <motion.div
-                  layout
                   className={cn(
                     "flex h-full min-h-0 flex-col overflow-hidden border-l border-border/50 bg-white shadow-sm",
                     "transition-colors duration-500 bg-white/70 hover:bg-white/90",
                     isNotebookCollapsed &&
                       isReflectionCollapsed &&
                       "rounded-r-2xl",
-                    !isWorkshopCollapsed && "rounded-none"
+                    !isWorkshopCollapsed && "rounded-none",
                   )}
                 >
-                  <AnimatePresence mode="wait">
+                  <AnimatePresence mode="popLayout">
                     {isWorkshopCollapsed ? (
                       <motion.div
                         key="collapsed-workshop"
@@ -677,9 +741,7 @@ export default function ThreadPageClient({
                         <CollapsedPanelTab
                           label={t("workshop")}
                           onClick={
-                            isWorkshopStarted
-                              ? handleToggleWorkshop
-                              : undefined
+                            isWorkshopStarted ? handleToggleWorkshop : undefined
                           }
                         />
                       </motion.div>
@@ -693,15 +755,50 @@ export default function ThreadPageClient({
                         className="flex h-full flex-col"
                       >
                         <div className="px-4 py-3 border-b border-border relative">
-                          <h2 className="text-xl font-semibold tracking-tight text-foreground">
-                            {t("workshop")}
-                          </h2>
-                          <p className="text-sm text-foreground-muted">
-                            {t("workshopDescription")}
-                          </p>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <h2 className="text-xl font-semibold tracking-tight text-foreground">
+                                {t("workshop")}
+                              </h2>
+                              <p className="text-sm text-foreground-muted">
+                                {t("workshopDescription")}
+                              </p>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-2">
+                              {/* {currentLineIndex !== null && (
+                                <span className="truncate text-xs text-neutral-500">
+                                  Line {currentLineIndex + 1} of{" "}
+                                  {workshopLineCount}
+                                </span>
+                              )} */}
+                              <Badge
+                                variant="secondary"
+                                className="hidden text-xs sm:inline-flex"
+                              >
+                                {workshopCurrentVariant
+                                  ? `Variant ${workshopCurrentVariant} selected`
+                                  : "Select a variant"}
+                              </Badge>
+                              {workshopProgress && (
+                                <ProgressRingButton
+                                  summary={workshopProgress}
+                                  expanded={workshopProgressExpanded}
+                                  onToggle={() =>
+                                    setWorkshopProgressExpanded((prev) => !prev)
+                                  }
+                                />
+                              )}
+                            </div>
+                          </div>
+                          {workshopProgress && workshopProgressExpanded && (
+                            <TranslationProgressDetails
+                              summary={workshopProgress}
+                              onRetry={() => workshopJobQuery.refetch()}
+                            />
+                          )}
                         </div>
-                        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-2 md:p-3">
-                          <WorkshopRail showHeaderTitle={false} />
+                        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden py-1 pl-2 pr-0 md:pl-3">
+                          <WorkshopRail />
                         </div>
                       </motion.div>
                     )}
@@ -710,15 +807,14 @@ export default function ThreadPageClient({
 
                 {/* Notebook section */}
                 <motion.div
-                  layout
                   className={cn(
                     "flex h-full min-h-0 flex-col overflow-hidden border-l border-border/50 bg-white shadow-sm",
                     "transition-colors duration-500 bg-white/70 hover:bg-white/90",
                     isReflectionCollapsed && "rounded-r-2xl",
-                    !isNotebookCollapsed && "rounded-none"
+                    !isNotebookCollapsed && "rounded-none",
                   )}
                 >
-                  <AnimatePresence mode="wait">
+                  <AnimatePresence mode="popLayout">
                     {isNotebookCollapsed ? (
                       <motion.div
                         key="collapsed-notebook"
@@ -731,9 +827,7 @@ export default function ThreadPageClient({
                         <CollapsedPanelTab
                           label={t("notebook")}
                           onClick={
-                            isWorkshopStarted
-                              ? handleToggleNotebook
-                              : undefined
+                            isWorkshopStarted ? handleToggleNotebook : undefined
                           }
                         />
                       </motion.div>
@@ -772,13 +866,12 @@ export default function ThreadPageClient({
 
                 {/* Editing section */}
                 <motion.div
-                  layout
                   className={cn(
                     "flex h-full min-h-0 flex-col overflow-hidden border-l border-border/50 bg-white shadow-sm",
-                    "transition-colors duration-500 bg-white/70 hover:bg-white/90 rounded-r-2xl"
+                    "transition-colors duration-500 bg-white/70 hover:bg-white/90 rounded-r-2xl",
                   )}
                 >
-                  <AnimatePresence mode="wait">
+                  <AnimatePresence mode="popLayout">
                     {isReflectionCollapsed ? (
                       <motion.div
                         key="collapsed-reflection"
@@ -814,7 +907,7 @@ export default function ThreadPageClient({
                             {t("reflectionDescription")}
                           </p>
                         </div>
-                        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-2 md:p-3">
+                        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 md:p-4">
                           <ReflectionRail showHeaderTitle={false} />
                         </div>
                       </motion.div>
@@ -826,6 +919,19 @@ export default function ThreadPageClient({
           </div>
         </div>
       </div>
+
+      <AnimatePresence>
+        {hydrationNotice ? (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 12 }}
+            className="fixed bottom-4 right-4 z-50 max-w-sm rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-[0_14px_40px_rgba(15,23,42,0.18)]"
+          >
+            {hydrationNotice}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
       <DragOverlay>
         {activeDragData ? (

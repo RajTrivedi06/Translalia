@@ -266,7 +266,7 @@ export function NotebookAISuggestions({
               variant="ghost"
               size="sm"
               onClick={selectAllLines}
-              className="text-xs h-7"
+              className="text-xs h-9"
             >
               Select all
             </Button>
@@ -274,7 +274,7 @@ export function NotebookAISuggestions({
               variant="ghost"
               size="sm"
               onClick={clearSelection}
-              className="text-xs h-7"
+              className="text-xs h-9"
               disabled={selectedLines.size === 0}
             >
               Clear

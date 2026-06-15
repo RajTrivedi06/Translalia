@@ -34,8 +34,8 @@ export interface NotebookState {
   // Notes state
   threadNote: string | null;
   lineNotes: Record<number, string>;
-  notesExpanded: boolean;
-  notesLastSaved: Date | null;
+  noteEditingLineIndex: number | null;
+  notesSheetOpen: boolean;
 
   // Actions
   setLastEditedLine: (lineIndex: number | null) => void;
@@ -52,13 +52,14 @@ export interface NotebookState {
   // Notes actions
   setThreadNote: (note: string | null) => void;
   setLineNote: (lineIndex: number, note: string | null) => void;
-  toggleNotesPanel: () => void;
-  setNotesExpanded: (expanded: boolean) => void;
-  updateNotesLastSaved: () => void;
   setNotes: (
     threadNote: string | null,
     lineNotes: Record<number, string>
   ) => void;
+  openNotePopover: (lineIndex: number) => void;
+  closeNotePopover: () => void;
+  toggleNotesSheet: () => void;
+  setNotesSheetOpen: (open: boolean) => void;
 }
 
 const initialState = {
@@ -70,15 +71,15 @@ const initialState = {
   undoStack: [],
   threadNote: null,
   lineNotes: {},
-  notesExpanded: false,
-  notesLastSaved: null,
+  noteEditingLineIndex: null,
+  notesSheetOpen: false,
 };
 
 export const useNotebookStore = create<NotebookState>()(
   persist(
     (set, get) => ({
       hydrated: false,
-      meta: { threadId: null }, // ✅ Safe default - will be set by component
+      meta: { threadId: null },
       ...initialState,
 
       setLastEditedLine: (lineIndex: number | null) =>
@@ -93,7 +94,7 @@ export const useNotebookStore = create<NotebookState>()(
       pushUndo: (lineIndex: number, text: string) =>
         set((state) => ({
           undoStack: [
-            ...state.undoStack.slice(-19), // Keep last 20
+            ...state.undoStack.slice(-19),
             { lineIndex, text, timestamp: Date.now() },
           ],
         })),
@@ -118,14 +119,12 @@ export const useNotebookStore = create<NotebookState>()(
       reset: () =>
         set({ ...initialState, meta: { threadId: getActiveThreadId() } }),
 
-      // Add method to update thread ID after mount
       setThreadId: (threadId: string | null) => {
         set((state) => ({
           meta: { ...state.meta, threadId },
         }));
       },
 
-      // Reset to defaults for new thread
       resetToDefaults: () => {
         const tid = getActiveThreadId();
         set({
@@ -135,7 +134,6 @@ export const useNotebookStore = create<NotebookState>()(
         });
       },
 
-      // Notes actions
       setThreadNote: (note: string | null) => set({ threadNote: note }),
 
       setLineNote: (lineIndex: number, note: string | null) =>
@@ -149,25 +147,26 @@ export const useNotebookStore = create<NotebookState>()(
           return { lineNotes: newLineNotes };
         }),
 
-      toggleNotesPanel: () =>
-        set((state) => ({ notesExpanded: !state.notesExpanded })),
-
-      setNotesExpanded: (expanded: boolean) => set({ notesExpanded: expanded }),
-
-      updateNotesLastSaved: () => set({ notesLastSaved: new Date() }),
-
       setNotes: (
         threadNote: string | null,
         lineNotes: Record<number, string>
       ) => set({ threadNote, lineNotes }),
+
+      openNotePopover: (lineIndex: number) =>
+        set({ noteEditingLineIndex: lineIndex }),
+
+      closeNotePopover: () => set({ noteEditingLineIndex: null }),
+
+      toggleNotesSheet: () =>
+        set((state) => ({ notesSheetOpen: !state.notesSheetOpen })),
+
+      setNotesSheetOpen: (open: boolean) => set({ notesSheetOpen: open }),
     }),
     {
       name: "notebook-storage",
-      version: 2, // Increment version due to breaking changes
+      version: 2,
       storage: createJSONStorage(() => threadStorage),
       migrate: (persistedState: unknown, version: number) => {
-        // Migration from version 1 (old cell-based) to version 2 (simplified)
-        // Just return empty state - old data is incompatible
         if (version < 2) {
           console.log(
             "[notebookSlice] Migrating from v1 to v2 - clearing old cell-based data"
@@ -176,23 +175,19 @@ export const useNotebookStore = create<NotebookState>()(
         }
         return persistedState as NotebookState;
       },
-      // If the persisted payload is for a different thread, ignore it
       merge: (persisted, current) => {
         const p = persisted as Partial<NotebookState> | undefined;
 
-        // No persisted data - return current
         if (!p) {
           return {
             ...current,
             hydrated: true,
-            meta: { threadId: null }, // ✅ Safe default
+            meta: { threadId: null },
           };
         }
 
-        // Get thread ID from URL (source of truth)
         const tid = getActiveThreadId();
 
-        // Thread switch detection
         if (tid && p.meta?.threadId && p.meta.threadId !== tid) {
           console.log(
             `[notebookSlice] Thread switch detected: ${p.meta.threadId} → ${tid}. Returning fresh state.`
@@ -200,13 +195,11 @@ export const useNotebookStore = create<NotebookState>()(
           return { ...current, hydrated: true, meta: { threadId: tid } };
         }
 
-        // Restore persisted state
         return {
           ...current,
           lastEditedLine: p.lastEditedLine ?? current.lastEditedLine,
           showLineNumbers: p.showLineNumbers ?? current.showLineNumbers,
           fontSize: p.fontSize ?? current.fontSize,
-          notesExpanded: p.notesExpanded ?? current.notesExpanded,
           hydrated: true,
           meta: { threadId: tid ?? p.meta?.threadId ?? null },
         };
@@ -221,9 +214,6 @@ export const useNotebookStore = create<NotebookState>()(
         showLineNumbers: state.showLineNumbers,
         fontSize: state.fontSize,
         lastEditedLine: state.lastEditedLine,
-        notesExpanded: state.notesExpanded,
-        // Don't persist undoStack (session-only), sessionStartTime, autoSaveTimestamp
-        // Notes are persisted in database, not localStorage
       }),
     }
   )

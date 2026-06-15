@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Loader2, RotateCcw } from "lucide-react";
+import { CheckCircle2, Clock3, Loader2, RotateCcw, XCircle } from "lucide-react";
 import type { TranslationStanzaStatus } from "@/types/translationJob";
 import { Button } from "@/components/ui/button";
 
@@ -109,7 +109,7 @@ export function LineClickHandler({
         // Allow selection for completed lines, or let user see status for others
         onSelect();
       }}
-      className={`p-3 border-2 rounded-lg cursor-pointer transition-all ${borderColor} ${bgColor}`}
+      className={`rounded-xl border-2 p-4 cursor-pointer transition-all ${borderColor} ${bgColor}`}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => {
@@ -125,7 +125,7 @@ export function LineClickHandler({
     >
       <div className="flex items-center justify-between gap-3">
         <div className="flex-1 min-w-0">
-          <div className="text-xs text-gray-600 mb-1">
+          <div className="text-xs text-foreground-muted mb-1">
             Line {lineNumber} of Segment {stanzaNumber}
           </div>
           <div className="font-medium truncate">{lineText}</div>
@@ -137,16 +137,16 @@ export function LineClickHandler({
             <span
               className={`text-[10px] px-2.5 py-1 rounded-full font-semibold whitespace-nowrap flex items-center gap-1 ${statusMeta.badgeClass}`}
             >
-              {isComplete && "✅"}
+              {isComplete && <CheckCircle2 className="h-3 w-3" />}
               {isProcessing && <Loader2 className="h-3 w-3 animate-spin" />}
-              {isQueued && "⏱️"}
-              {isFailed && "❌"}
+              {isQueued && <Clock3 className="h-3 w-3" />}
+              {isFailed && <XCircle className="h-3 w-3" />}
               <span>{statusMeta.label}</span>
             </span>
           )}
           {isPending && (
-            <span className="text-xs text-gray-500 font-medium">
-              ⏱️ Pending
+            <span className="text-xs text-foreground-muted font-medium flex items-center gap-1">
+              <Clock3 className="h-3 w-3" /> Pending
             </span>
           )}
 
@@ -183,7 +183,7 @@ export function LineClickHandler({
 
           {/* Can't edit notice for incomplete lines */}
           {!isComplete && !isFailed && (
-            <span className="text-[10px] text-gray-400 font-medium">
+            <span className="text-[10px] text-foreground-disabled font-medium">
               {isProcessing && "Editing locked"}
               {isQueued && "Queued"}
               {isPending && "Not ready"}

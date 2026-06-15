@@ -940,7 +940,7 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
     };
 
     return (
-      <div className="space-y-6 p-4">
+      <div className="space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
           {/* Navigation arrows */}
           <div className="flex items-center gap-2">
@@ -979,23 +979,29 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
                 {badgeModelUsed}
               </Badge>
             )}
-            {hasModelMismatch && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleRegenerateWithSelectedModel}
-                disabled={isRegenerating}
-                className="h-7 px-2 text-xs text-amber-700 hover:text-amber-800 hover:bg-amber-50"
-                title={`Regenerate with ${userSelectedModel}`}
-              >
-                {isRegenerating ? (
-                  <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                ) : (
-                  <RefreshCw className="h-3 w-3 mr-1" />
-                )}
-                Use {userSelectedModel}
-              </Button>
-            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleRegenerateWithSelectedModel}
+              disabled={isRegenerating}
+              className={
+                hasModelMismatch
+                  ? "h-8 px-2.5 text-xs text-amber-700 hover:text-amber-800 hover:bg-amber-50"
+                  : "h-8 px-2.5 text-xs text-foreground-muted hover:text-foreground hover:bg-muted"
+              }
+              title={
+                hasModelMismatch
+                  ? `Regenerate with ${userSelectedModel}`
+                  : "Regenerate this line"
+              }
+            >
+              {isRegenerating ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5 mr-1" />
+              )}
+              {hasModelMismatch ? `Use ${userSelectedModel}` : "Regenerate"}
+            </Button>
           </div>
         </div>
 
@@ -1005,7 +1011,7 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
           onSuggest={handleOpenTokenSuggestions}
         />
 
-        <div className="space-y-4">
+        <div className="space-y-3">
           {currentLineTranslation.translations.map((variant) => (
             <TranslationVariantCard
               key={variant.variant}
@@ -1063,7 +1069,7 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
               <Button
                 onClick={() => setShowFullEditor(true)}
                 size="lg"
-                className="px-8 py-6 text-base font-semibold bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200"
+                className="px-8 py-6 text-base font-semibold bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-lg hover:shadow-xl hover:brightness-110 transition-all duration-200"
               >
                 <Sparkles className="w-5 h-5 mr-2" />
                 Finalize Translation
@@ -1127,7 +1133,7 @@ function SourceWordsPalette({
   }
 
   return (
-    <div className="rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 p-4 border border-blue-100">
+    <div className="rounded-lg border border-blue-100 bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
       <div className="flex items-center gap-2 mb-3">
         <svg className="w-4 h-4 text-blue-600" viewBox="0 0 20 20">
           <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
@@ -1249,7 +1255,7 @@ function TranslationVariantCard({
           : "border-border-subtle hover:border-accent/50 hover:shadow-card"
       )}
     >
-      <CardContent className="p-4 space-y-3">
+      <CardContent className="space-y-3 p-4">
         <div className="flex items-start justify-between cursor-pointer">
           <div className="flex items-center gap-2">
             <Badge

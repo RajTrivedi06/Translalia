@@ -71,48 +71,50 @@ export function StanzaProgressPanel({
       : 0;
 
   return (
-    <div className="border-b border-gray-200 bg-white px-4 py-3 space-y-3">
+    <div className="border-b border-border-subtle bg-surface px-4 py-3 space-y-3" aria-live="polite" aria-atomic="true">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <p className="text-xs uppercase tracking-wide text-gray-500">
+          <p className="text-xs uppercase tracking-wide text-foreground-muted">
             Background progress
           </p>
-          <p className="text-sm font-semibold text-gray-800">
+          <p className="text-sm font-semibold text-foreground">
             {progress.completed} / {progress.total} stanzas completed
           </p>
         </div>
-        <div className="text-xs text-gray-500">
+        <div className="text-xs text-foreground-muted">
           Job status:{" "}
-          <span className="font-medium text-gray-800 capitalize">
+          <span className="font-medium text-foreground capitalize">
             {summary.status}
           </span>
         </div>
       </div>
 
       <div>
-        <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+        <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
           <div
-            className="h-full bg-green-500 transition-all duration-500"
+            className="h-full bg-success transition-all duration-500"
             style={{ width: `${completionPercent}%` }}
+            role="progressbar"
             aria-valuenow={completionPercent}
             aria-valuemin={0}
             aria-valuemax={100}
+            aria-label={`Translation progress: ${completionPercent}% complete`}
           />
         </div>
-        <div className="mt-1 text-xs text-gray-500">
+        <div className="mt-1 text-xs text-foreground-muted">
           {completionPercent}% complete
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-6 text-xs text-gray-600">
+      <div className="flex flex-wrap gap-6 text-xs text-foreground-secondary">
         <ProgressChip label="Processing" value={progress.processing} />
         <ProgressChip label="Queued" value={progress.queued} />
         <ProgressChip label="Pending" value={progress.pending} />
         <ProgressChip label="Failed" value={progress.failed} />
       </div>
 
-      <div className="max-h-48 overflow-y-auto rounded-lg border border-gray-100">
-        <div className="divide-y divide-gray-100 text-sm">
+      <div className="max-h-48 overflow-y-auto rounded-lg border border-border-subtle">
+        <div className="divide-y divide-border-subtle text-sm">
           {(() => {
             let runningLineIndex = 0;
             return stanzaResult.stanzas.map((stanza, idx) => {
@@ -131,33 +133,33 @@ export function StanzaProgressPanel({
               return (
                 <div
                   key={idx}
-                  className="flex items-start gap-3 px-3 py-2 hover:bg-gray-50 transition-colors"
+                  className="flex items-start gap-3 px-3 py-2 hover:bg-muted transition-colors"
                 >
                   <div className="flex flex-col items-center pt-1 min-w-[16px]">
                     <span
                       className={`h-2 w-2 rounded-full ${meta.dotClass}`}
                       aria-hidden
                     />
-                    <span className="text-[10px] uppercase text-gray-400 mt-1">
+                    <span className="text-[10px] uppercase text-foreground-disabled mt-1">
                       #{idx + 1}
                     </span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-3">
-                      <p className="text-xs font-medium text-gray-800 truncate">
+                      <p className="text-xs font-medium text-foreground truncate">
                         {stanza.lines[0] || "(blank stanza)"}
                       </p>
                       <Badge className={`text-[10px] ${meta.badgeClass}`}>
                         {meta.label}
                       </Badge>
                     </div>
-                    <p className="text-[11px] text-gray-500 mt-1">
+                    <p className="text-[11px] text-foreground-muted mt-1">
                       {processed}/{totalLines} lines processed
                     </p>
                     {meta.label === "Failed" && threadId && (
                       <button
                         type="button"
-                        className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-red-600 hover:text-red-700"
+                        className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-error hover:text-error/80"
                         disabled={retryingIndex === idx}
                         onClick={() => handleRetry(idx, lineNumbers)}
                       >
@@ -181,7 +183,7 @@ export function StanzaProgressPanel({
 function ProgressChip({ label, value }: { label: string; value: number }) {
   return (
     <span>
-      <span className="font-semibold text-gray-900">{value}</span>{" "}
+      <span className="font-semibold text-foreground">{value}</span>{" "}
       <span>{label}</span>
     </span>
   );

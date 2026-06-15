@@ -1,10 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { FileText, Save } from "lucide-react";
+import { FileText, Save, StickyNote } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { SegmentedProgress } from "@/components/ui/segmented-progress";
 
 interface NotebookHeaderProps {
@@ -22,6 +23,14 @@ interface NotebookHeaderProps {
   onSaveAll?: () => void;
   /** Callback to open full editor/comparison view */
   onOpenFullEditor?: () => void;
+  /** Callback to open the compiled notes sheet */
+  onOpenNotes?: () => void;
+  /** Count of line notes for the badge */
+  lineNotesCount?: number;
+  /** Label for the notes button */
+  notesButtonLabel?: string;
+  /** Ref for returning focus when the notes sheet closes */
+  notesButtonRef?: React.RefObject<HTMLButtonElement | null>;
 }
 
 /**
@@ -36,6 +45,10 @@ export function NotebookHeader({
   isSaving = false,
   onSaveAll,
   onOpenFullEditor,
+  onOpenNotes,
+  lineNotesCount = 0,
+  notesButtonLabel = "Notes",
+  notesButtonRef,
 }: NotebookHeaderProps) {
   const hasUnsaved = draftCount > 0;
 
@@ -90,6 +103,28 @@ export function NotebookHeader({
               </motion.div>
             )}
           </AnimatePresence>
+
+          {onOpenNotes && (
+            <Button
+              ref={notesButtonRef}
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs"
+              onClick={onOpenNotes}
+            >
+              <StickyNote className="w-3.5 h-3.5 mr-1.5" />
+              {notesButtonLabel}
+              {lineNotesCount > 0 && (
+                <Badge
+                  variant="secondary"
+                  className="ml-1.5 h-4 min-w-[1rem] px-1 text-[10px] leading-none"
+                >
+                  {lineNotesCount}
+                </Badge>
+              )}
+            </Button>
+          )}
 
           {onOpenFullEditor && (
             <Button

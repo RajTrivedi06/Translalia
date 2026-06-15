@@ -11,6 +11,7 @@ interface ConfirmationDialogProps {
   description?: string;
   confirmText?: string;
   cancelText?: string;
+  isDestructive?: boolean;
 }
 
 export function ConfirmationDialog({
@@ -22,6 +23,7 @@ export function ConfirmationDialog({
   description = "You're all set! Your poem, translation zone, and translation intent are ready. Click 'Start Workshop' to begin.",
   confirmText = "Start Workshop",
   cancelText = "Cancel",
+  isDestructive = false,
 }: ConfirmationDialogProps) {
   const handleConfirm = async () => {
     try {
@@ -45,7 +47,7 @@ export function ConfirmationDialog({
           </DialogTitle>
         </DialogHeader>
 
-        <DialogDescription className="mt-3">
+        <DialogDescription className="mt-3 whitespace-pre-line">
           {description}
         </DialogDescription>
 
@@ -62,7 +64,11 @@ export function ConfirmationDialog({
             type="button"
             onClick={handleConfirm}
             disabled={isLoading}
-            className="inline-flex items-center justify-center rounded-md bg-accent px-4 py-2 text-sm font-semibold text-white shadow-card transition hover:bg-accent-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+            className={`inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-semibold text-white shadow-card transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${
+              isDestructive
+                ? "bg-error hover:bg-error/90 focus-visible:ring-error"
+                : "bg-accent hover:bg-accent-dark focus-visible:ring-accent"
+            }`}
           >
             {isLoading ? (
               <>

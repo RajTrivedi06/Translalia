@@ -7,7 +7,7 @@ import { ReflectionHeader } from "@/components/reflection-rail/ReflectionHeader"
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, Loader2, BookOpen, Lightbulb, CheckCircle2, Music2, ChevronDown, ChevronUp } from "lucide-react";
+import { Sparkles, Loader2, BookOpen, Lightbulb, CheckCircle2, Music2, ChevronDown, ChevronUp, Check } from "lucide-react";
 import { useWorkshopStore } from "@/store/workshopSlice";
 import { useGuideStore } from "@/store/guideSlice";
 import { useNotebookStore } from "@/store/notebookSlice";
@@ -68,6 +68,8 @@ export function ReflectionRail({
   const [errorJourney, setErrorJourney] = React.useState<string | null>(null);
   const [showCongratulations, setShowCongratulations] = React.useState(false);
   const [showRefineRhyme, setShowRefineRhyme] = React.useState(false);
+  const [showInsights, setShowInsights] = React.useState(true);
+  const [showJourney, setShowJourney] = React.useState(true);
   const completedCount = Object.keys(completedLines).length;
   const allLinesCompleted = completedCount === poemLines.length && poemLines.length > 0;
   const hasNotes =
@@ -88,8 +90,10 @@ export function ReflectionRail({
     setLoadingSuggestions(false);
     setLoadingJourney(false);
 
-    // Reset Refine & Rhyme state
+    // Reset collapse state
     setShowRefineRhyme(false);
+    setShowInsights(true);
+    setShowJourney(true);
 
     console.log('[ReflectionRail] State reset for thread:', threadId);
   }, [threadId]);
@@ -188,38 +192,40 @@ export function ReflectionRail({
       <div className="flex-1 overflow-y-auto p-4 pt-2">
         <div className="space-y-6">
           {completedCount === 0 && (
-            <p className="text-amber-600 text-sm">
+            <p className="text-warning text-sm">
               Complete at least one translation line to unlock reflection
               features.
             </p>
           )}
 
           {/* Refine & Rhyme - Rhyme Workshop */}
-          <Card className="p-4 border-teal-200 bg-teal-50/30">
+          <Card className="p-4 border-card-teal-border bg-card-teal-bg/30">
             <div className="space-y-3">
               <button
                 onClick={() => setShowRefineRhyme(!showRefineRhyme)}
                 className="w-full flex items-center justify-between"
+                aria-expanded={showRefineRhyme}
+                aria-controls="refine-rhyme-content"
               >
                 <div className="flex items-center gap-2">
-                  <Music2 className="h-5 w-5 text-teal-600" />
-                  <h3 className="font-semibold text-slate-900">
+                  <Music2 className="h-5 w-5 text-success" />
+                  <h3 className="font-semibold text-foreground">
                     Refine & Rhyme
                   </h3>
                 </div>
                 {showRefineRhyme ? (
-                  <ChevronUp className="h-4 w-4 text-teal-600" />
+                  <ChevronUp className="h-4 w-4 text-success" />
                 ) : (
-                  <ChevronDown className="h-4 w-4 text-teal-600" />
+                  <ChevronDown className="h-4 w-4 text-success" />
                 )}
               </button>
 
-              <p className="text-sm text-slate-600">
+              <p className="text-sm text-foreground-muted">
                 Get help making your translation rhyme
               </p>
 
               {showRefineRhyme && completedCount > 0 && (
-                <div className="mt-4 pt-4 border-t border-teal-200">
+                <div id="refine-rhyme-content" className="mt-4 pt-4 border-t border-card-teal-border">
                   <NotebookAISuggestions
                     translationDiary={notebookNotes?.threadNote || undefined}
                     lineNotes={notebookNotes?.lineNotes}
@@ -230,7 +236,7 @@ export function ReflectionRail({
               )}
 
               {showRefineRhyme && completedCount === 0 && (
-                <p className="text-sm text-amber-600 mt-2">
+                <p className="text-sm text-warning mt-2">
                   Complete at least one translation line to use this feature.
                 </p>
               )}
@@ -238,23 +244,35 @@ export function ReflectionRail({
           </Card>
 
           {/* AI Assist Step C: Contextual Suggestions */}
-          <Card className="p-4 border-blue-200 bg-blue-50/30">
+          <Card className="p-4 border-card-blue-border bg-card-blue-bg/30">
             <div className="space-y-3">
-              <div className="flex items-start justify-between">
+              <button
+                onClick={() => setShowInsights(!showInsights)}
+                className="w-full flex items-center justify-between"
+                aria-expanded={showInsights}
+                aria-controls="insights-content"
+              >
                 <div className="flex items-center gap-2">
-                  <Lightbulb className="h-5 w-5 text-blue-600" />
-                  <h3 className="font-semibold text-slate-900">
+                  <Lightbulb className="h-5 w-5 text-accent" />
+                  <h3 className="font-semibold text-foreground">
                     Translation Insights
                   </h3>
+                  {hasNotes && (
+                    <Badge variant="outline" className="text-xs">
+                      Notes included
+                    </Badge>
+                  )}
                 </div>
-                {hasNotes && (
-                  <Badge variant="outline" className="text-xs">
-                    Notes included
-                  </Badge>
+                {showInsights ? (
+                  <ChevronUp className="h-4 w-4 text-accent" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-accent" />
                 )}
-              </div>
+              </button>
 
-              <p className="text-sm text-slate-600">
+              {showInsights && (
+                <div id="insights-content" className="space-y-3">
+              <p className="text-sm text-foreground-muted">
                 Get personalized suggestions based on your translation choices
                 and notes.
               </p>
@@ -279,31 +297,31 @@ export function ReflectionRail({
               </Button>
 
               {errorSuggestions && (
-                <p className="text-sm text-red-600">{errorSuggestions}</p>
+                <p className="text-sm text-error">{errorSuggestions}</p>
               )}
 
               {aiSuggestions && (
                 <div className="mt-4 space-y-4">
-                  <div className="p-3 bg-white rounded-lg border border-blue-200">
-                    <h4 className="text-sm font-medium text-slate-700 mb-2">
+                  <div className="p-3 bg-surface rounded-lg border border-card-blue-border">
+                    <h4 className="text-sm font-medium text-foreground-secondary mb-2">
                       Your Translation Aims:
                     </h4>
-                    <p className="text-sm text-slate-600">{aiSuggestions.aims}</p>
+                    <p className="text-sm text-foreground-muted">{aiSuggestions.aims}</p>
                   </div>
 
                   <div className="space-y-3">
-                    <h4 className="text-sm font-semibold text-slate-700">
+                    <h4 className="text-sm font-semibold text-foreground-secondary">
                       Suggestions:
                     </h4>
                     {aiSuggestions.suggestions.map((suggestion, idx) => (
                       <div
                         key={idx}
-                        className="p-3 bg-white rounded-lg border border-slate-200"
+                        className="p-3 bg-surface rounded-lg border border-border-subtle"
                       >
-                        <h5 className="font-medium text-slate-900 mb-1">
+                        <h5 className="font-medium text-foreground mb-1">
                           {idx + 1}. {suggestion.title}
                         </h5>
-                        <p className="text-sm text-slate-600 whitespace-pre-wrap">
+                        <p className="text-sm text-foreground-muted whitespace-pre-wrap">
                           {suggestion.description}
                         </p>
                         {suggestion.lineReferences &&
@@ -325,20 +343,36 @@ export function ReflectionRail({
                   </div>
                 </div>
               )}
+                </div>
+              )}
             </div>
           </Card>
 
           {/* Journey Summary */}
-          <Card className="p-4 border-purple-200 bg-purple-50/30">
+          <Card className="p-4 border-card-purple-border bg-card-purple-bg/30">
             <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <BookOpen className="h-5 w-5 text-purple-600" />
-                <h3 className="font-semibold text-slate-900">
-                  Journey Summary
-                </h3>
-              </div>
+              <button
+                onClick={() => setShowJourney(!showJourney)}
+                className="w-full flex items-center justify-between"
+                aria-expanded={showJourney}
+                aria-controls="journey-content"
+              >
+                <div className="flex items-center gap-2">
+                  <BookOpen className="h-5 w-5 text-accent" />
+                  <h3 className="font-semibold text-foreground">
+                    Journey Summary
+                  </h3>
+                </div>
+                {showJourney ? (
+                  <ChevronUp className="h-4 w-4 text-accent" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-accent" />
+                )}
+              </button>
 
-              <p className="text-sm text-slate-600">
+              {showJourney && (
+                <div id="journey-content" className="space-y-3">
+              <p className="text-sm text-foreground-muted">
                 Reflect on your translation process, growth, and creative
                 decisions.
               </p>
@@ -363,7 +397,7 @@ export function ReflectionRail({
               </Button>
 
               {errorJourney && (
-                <p className="text-sm text-red-600">{errorJourney}</p>
+                <p className="text-sm text-error">{errorJourney}</p>
               )}
 
               {journeyReflection && (
@@ -381,18 +415,18 @@ export function ReflectionRail({
                         <>
                           {journeyReflection.insights &&
                             journeyReflection.insights.length > 0 && (
-                              <div className="p-3 bg-white rounded-lg border border-purple-200">
-                                <h4 className="text-sm font-medium text-slate-700 mb-2">
+                              <div className="p-3 bg-surface rounded-lg border border-card-purple-border">
+                                <h4 className="text-sm font-medium text-foreground-secondary mb-2">
                                   Key Insights:
                                 </h4>
-                                <ul className="space-y-1 text-sm text-slate-600">
+                                <ul className="space-y-1 text-sm text-foreground-muted">
                                   {journeyReflection.insights.map(
                                     (insight, idx) => (
                                       <li
                                         key={idx}
                                         className="flex items-start gap-2"
                                       >
-                                        <span className="text-purple-500 mt-1">
+                                        <span className="text-accent mt-1">
                                           •
                                         </span>
                                         <span>{insight}</span>
@@ -405,20 +439,18 @@ export function ReflectionRail({
 
                           {journeyReflection.strengths &&
                             journeyReflection.strengths.length > 0 && (
-                              <div className="p-3 bg-white rounded-lg border border-green-200">
-                                <h4 className="text-sm font-medium text-slate-700 mb-2">
+                              <div className="p-3 bg-surface rounded-lg border border-card-green-border">
+                                <h4 className="text-sm font-medium text-foreground-secondary mb-2">
                                   Strengths:
                                 </h4>
-                                <ul className="space-y-1 text-sm text-slate-600">
+                                <ul className="space-y-1 text-sm text-foreground-muted">
                                   {journeyReflection.strengths.map(
                                     (strength, idx) => (
                                       <li
                                         key={idx}
                                         className="flex items-start gap-2"
                                       >
-                                        <span className="text-green-500 mt-1">
-                                          ✓
-                                        </span>
+                                        <Check className="w-4 h-4 text-success mt-0.5 flex-shrink-0" />
                                         <span>{strength}</span>
                                       </li>
                                     )
@@ -429,18 +461,18 @@ export function ReflectionRail({
 
                           {journeyReflection.challenges &&
                             journeyReflection.challenges.length > 0 && (
-                              <div className="p-3 bg-white rounded-lg border border-orange-200">
-                                <h4 className="text-sm font-medium text-slate-700 mb-2">
+                              <div className="p-3 bg-surface rounded-lg border border-card-orange-border">
+                                <h4 className="text-sm font-medium text-foreground-secondary mb-2">
                                   Challenges:
                                 </h4>
-                                <ul className="space-y-1 text-sm text-slate-600">
+                                <ul className="space-y-1 text-sm text-foreground-muted">
                                   {journeyReflection.challenges.map(
                                     (challenge, idx) => (
                                       <li
                                         key={idx}
                                         className="flex items-start gap-2"
                                       >
-                                        <span className="text-orange-500 mt-1">
+                                        <span className="text-warning mt-1">
                                           !
                                         </span>
                                         <span>{challenge}</span>
@@ -453,18 +485,18 @@ export function ReflectionRail({
 
                           {journeyReflection.recommendations &&
                             journeyReflection.recommendations.length > 0 && (
-                              <div className="p-3 bg-white rounded-lg border border-amber-200">
-                                <h4 className="text-sm font-medium text-slate-700 mb-2">
+                              <div className="p-3 bg-surface rounded-lg border border-card-amber-border">
+                                <h4 className="text-sm font-medium text-foreground-secondary mb-2">
                                   To Explore Further:
                                 </h4>
-                                <ul className="space-y-1 text-sm text-slate-600">
+                                <ul className="space-y-1 text-sm text-foreground-muted">
                                   {journeyReflection.recommendations.map(
                                     (rec, idx) => (
                                       <li
                                         key={idx}
                                         className="flex items-start gap-2"
                                       >
-                                        <span className="text-amber-500 mt-1">
+                                        <span className="text-warning mt-1">
                                           →
                                         </span>
                                         <span>{rec}</span>
@@ -479,8 +511,8 @@ export function ReflectionRail({
                     } else {
                       // Fallback: show narrative text if arrays are empty
                       return (
-                        <div className="p-3 bg-white rounded-lg border border-purple-200">
-                          <div className="whitespace-pre-wrap text-sm text-slate-600 leading-relaxed">
+                        <div className="p-3 bg-surface rounded-lg border border-card-purple-border">
+                          <div className="whitespace-pre-wrap text-sm text-foreground-muted leading-relaxed">
                             {journeyReflection.reflection ||
                               "No reflection text returned."}
                           </div>
@@ -490,20 +522,22 @@ export function ReflectionRail({
                   })()}
                 </div>
               )}
+                </div>
+              )}
             </div>
           </Card>
 
           {/* Finish Button - Show when all lines are completed */}
           {allLinesCompleted && (
-            <Card className="p-4 border-green-200 bg-green-50/30">
+            <Card className="p-4 border-card-green-border bg-card-green-bg/30">
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-5 w-5 text-green-600" />
-                  <h3 className="font-semibold text-slate-900">
+                  <CheckCircle2 className="h-5 w-5 text-success" />
+                  <h3 className="font-semibold text-foreground">
                     {t("translationComplete")}
                   </h3>
                 </div>
-                <p className="text-sm text-slate-600">
+                <p className="text-sm text-foreground-muted">
                   {t("translationCompleteDescription", {
                     count: poemLines.length,
                   })}
@@ -522,9 +556,9 @@ export function ReflectionRail({
           )}
 
           {/* Help text */}
-          <div className="text-xs text-slate-500 space-y-1">
+          <div className="text-xs text-foreground-muted space-y-1">
             <p>
-              💡 <strong>Tip:</strong> Add notes to your translation for more
+              <Lightbulb className="inline w-3.5 h-3.5 mr-1 flex-shrink-0" /> <strong>Tip:</strong> Add notes to your translation for more
               personalized insights.
             </p>
             <p>

@@ -14,6 +14,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import {
+  AlertTriangle,
   ArrowLeftRight,
   Copy,
   Download,
@@ -565,7 +566,7 @@ export function ComparisonView({
               variant="secondary"
               className="text-amber-600 bg-amber-50 ml-2"
             >
-              ⚠️ Unsaved changes
+              <AlertTriangle className="w-3.5 h-3.5 mr-1 inline" /> Unsaved changes
             </Badge>
           )}
 
@@ -977,7 +978,7 @@ export function ComparisonView({
                 variant="secondary"
                 className="text-amber-600 bg-amber-50 ml-2"
               >
-                ⚠️ Unsaved changes
+                <AlertTriangle className="w-3.5 h-3.5 mr-1 inline" /> Unsaved changes
               </Badge>
             )}
 
@@ -1352,10 +1353,10 @@ function DifferenceIndicator({
         </Badge>
       </div>
       {lengthRatio < 0.7 && (
-        <span className="text-amber-600">⚠️ Much shorter</span>
+        <span className="text-amber-600 flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> Much shorter</span>
       )}
       {lengthRatio > 1.5 && (
-        <span className="text-amber-600">⚠️ Much longer</span>
+        <span className="text-amber-600 flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> Much longer</span>
       )}
     </div>
   );

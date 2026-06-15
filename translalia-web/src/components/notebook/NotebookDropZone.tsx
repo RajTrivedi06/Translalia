@@ -85,7 +85,7 @@ export function NotebookDropZone({
               isOver ? "text-accent-dark" : "text-foreground-secondary"
             )}
           >
-            {isOver ? "Drop here!" : "Drop words here"}
+            {isOver ? "Drop here!" : "Drop or click words to add them"}
           </h3>
           <p className="text-sm text-foreground-muted mb-2">
             Words will be appended to your translation

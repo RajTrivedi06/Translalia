@@ -3,7 +3,8 @@
 import * as React from "react";
 import { useDndMonitor } from "@dnd-kit/core";
 import { motion, AnimatePresence } from "framer-motion";
-import { FileText, X, Pencil } from "lucide-react";
+import { FileText, X, Pencil, Info } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { useWorkshopStore } from "@/store/workshopSlice";
 import { useThreadId } from "@/hooks/useThreadId";
@@ -16,10 +17,14 @@ import { NotebookDropZone } from "./NotebookDropZone";
 import { FullTranslationEditor } from "./FullTranslationEditor";
 import { CompletionConfirmationDialog } from "./CompletionConfirmationDialog";
 import { CongratulationsModal } from "@/components/workshop/CongratulationsModal";
-import { NotebookNotesPanel } from "./NotebookNotesPanel";
 import { NotebookStatusIndicator } from "./NotebookStatusIndicator";
 import { NotebookHeader } from "./NotebookHeader";
+import { NoteMarker } from "./NoteMarker";
+import { LineNotePopover } from "./LineNotePopover";
+import { NotesSheet } from "./NotesSheet";
 import { useNotebookStore } from "@/store/notebookSlice";
+import { useIsCoarsePointer } from "@/hooks/useIsCoarsePointer";
+import { useNotebookNotesHydration } from "@/lib/hooks/useNotebookNotesHydration";
 
 interface NotebookPhase6Props {
   projectId?: string;
@@ -40,6 +45,7 @@ export default function NotebookPhase6({
   showTitle = true,
   onOpenEditing,
 }: NotebookPhase6Props = {}) {
+  const t = useTranslations("Notebook");
   const poemLines = useWorkshopStore((s) => s.poemLines);
   const currentLineIndex = useWorkshopStore((s) => s.currentLineIndex);
   const draftLines = useWorkshopStore((s) => s.draftLines);
@@ -54,7 +60,13 @@ export default function NotebookPhase6({
   const saveManualLine = useSaveManualLine();
   const saveManualLineBatch = useSaveManualLineWithoutInvalidation();
   const queryClient = useQueryClient();
-  const toggleNotesPanel = useNotebookStore((s) => s.toggleNotesPanel);
+  const toggleNotesSheet = useNotebookStore((s) => s.toggleNotesSheet);
+  const lineNotes = useNotebookStore((s) => s.lineNotes);
+  const noteEditingLineIndex = useNotebookStore((s) => s.noteEditingLineIndex);
+  const openNotePopover = useNotebookStore((s) => s.openNotePopover);
+  const closeNotePopover = useNotebookStore((s) => s.closeNotePopover);
+  const notesSheetOpen = useNotebookStore((s) => s.notesSheetOpen);
+  const setNotesSheetOpen = useNotebookStore((s) => s.setNotesSheetOpen);
 
   const [showFullEditor, setShowFullEditor] = React.useState(false);
   const [isDragActive, setIsDragActive] = React.useState(false);
@@ -71,7 +83,17 @@ export default function NotebookPhase6({
   const textareaRefs = React.useRef<Record<number, HTMLTextAreaElement | null>>(
     {}
   );
+  const markerRefs = React.useRef<Record<number, HTMLButtonElement | null>>({});
+  const rowRefs = React.useRef<Record<number, HTMLDivElement | null>>({});
+  const popoverAnchorRef = React.useRef<HTMLButtonElement | null>(null);
+  const notesButtonRef = React.useRef<HTMLButtonElement | null>(null);
+  const notebookRootRef = React.useRef<HTMLDivElement | null>(null);
   const autoSaveTimeoutRef = React.useRef<Record<number, NodeJS.Timeout>>({});
+  const isCoarsePointer = useIsCoarsePointer();
+  useNotebookNotesHydration();
+  const [jumpHighlightIndex, setJumpHighlightIndex] = React.useState<
+    number | null
+  >(null);
 
   // Auto-resize textareas when text changes - only expand when content overflows
   const resizeTextareaIfOverflow = React.useCallback(
@@ -210,14 +232,13 @@ export default function NotebookPhase6({
     }
   }, [allLinesCompleted, onOpenEditing, hasOpenedEditing]);
 
-  // Keyboard shortcut: ⌘/Ctrl + N to toggle notes panel
+  // Keyboard shortcut: ⌘/Ctrl + N toggles the notes sheet
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isMac = navigator.platform.toUpperCase().includes("MAC");
       const modifier = isMac ? e.metaKey : e.ctrlKey;
 
       if (modifier && e.key === "n" && !e.shiftKey) {
-        // Only trigger if not typing in an input/textarea
         const target = e.target as HTMLElement;
         if (
           target.tagName !== "INPUT" &&
@@ -225,14 +246,129 @@ export default function NotebookPhase6({
           !target.isContentEditable
         ) {
           e.preventDefault();
-          toggleNotesPanel();
+          toggleNotesSheet();
         }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [toggleNotesPanel]);
+  }, [toggleNotesSheet]);
+
+  const openNotePopoverWithAnchor = React.useCallback(
+    (lineIndex: number) => {
+      popoverAnchorRef.current = markerRefs.current[lineIndex] ?? null;
+      openNotePopover(lineIndex);
+    },
+    [openNotePopover]
+  );
+
+  // Keyboard shortcut: ⌘/Ctrl + . opens note popover for the focused line
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isMac = navigator.platform.toUpperCase().includes("MAC");
+      const modifier = isMac ? e.metaKey : e.ctrlKey;
+
+      if (!modifier || e.key !== "." || e.shiftKey) return;
+
+      const active = document.activeElement as HTMLElement | null;
+      if (!notebookRootRef.current?.contains(active)) return;
+
+      const row = active?.closest("[data-notebook-line]");
+      let lineIndex: number | null = null;
+      if (row) {
+        const idx = Number(row.getAttribute("data-notebook-line"));
+        if (!Number.isNaN(idx)) lineIndex = idx;
+      } else if (currentLineIndex !== null) {
+        lineIndex = currentLineIndex;
+      }
+      if (lineIndex === null) return;
+
+      e.preventDefault();
+      openNotePopoverWithAnchor(lineIndex);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [currentLineIndex, openNotePopoverWithAnchor]);
+
+  React.useLayoutEffect(() => {
+    if (noteEditingLineIndex !== null) {
+      popoverAnchorRef.current =
+        markerRefs.current[noteEditingLineIndex] ?? null;
+    } else {
+      popoverAnchorRef.current = null;
+    }
+  }, [noteEditingLineIndex]);
+
+  const handleRowContextMenu = React.useCallback(
+    (lineIndex: number, e: React.MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === "TEXTAREA" ||
+        target.tagName === "INPUT" ||
+        target.tagName === "SELECT" ||
+        target.isContentEditable ||
+        target.closest(
+          "textarea, input, select, [contenteditable='true'], [contenteditable='']"
+        )
+      ) {
+        return;
+      }
+      e.preventDefault();
+      openNotePopoverWithAnchor(lineIndex);
+    },
+    [openNotePopoverWithAnchor]
+  );
+
+  const lineNotesCount = React.useMemo(
+    () => Object.keys(lineNotes).length,
+    [lineNotes]
+  );
+
+  const handleNotesSheetOpenChange = React.useCallback(
+    (open: boolean) => {
+      setNotesSheetOpen(open);
+      if (!open) {
+        requestAnimationFrame(() => {
+          notesButtonRef.current?.focus();
+        });
+      }
+    },
+    [setNotesSheetOpen]
+  );
+
+  const handleJumpToLine = React.useCallback(
+    (lineIndex: number) => {
+      setNotesSheetOpen(false);
+      setCurrentLineIndex(lineIndex);
+      setJumpHighlightIndex(lineIndex);
+      window.setTimeout(() => setJumpHighlightIndex(null), 1500);
+      requestAnimationFrame(() => {
+        rowRefs.current[lineIndex]?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      });
+    },
+    [setCurrentLineIndex, setNotesSheetOpen]
+  );
+
+  const handleEditLineNote = React.useCallback(
+    (lineIndex: number) => {
+      setNotesSheetOpen(false);
+      requestAnimationFrame(() => {
+        rowRefs.current[lineIndex]?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+        window.setTimeout(() => {
+          openNotePopoverWithAnchor(lineIndex);
+        }, 150);
+      });
+    },
+    [openNotePopoverWithAnchor, setNotesSheetOpen]
+  );
 
   const activeIdx = currentLineIndex ?? 0;
   const isSaving = saveManualLine.isPending;
@@ -386,7 +522,7 @@ export default function NotebookPhase6({
   }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div ref={notebookRootRef} className="h-full flex flex-col overflow-hidden">
       {/* Notebook Header with segmented progress bar */}
       <NotebookHeader
         showTitle={showTitle}
@@ -396,15 +532,40 @@ export default function NotebookPhase6({
         isSaving={isSaving || isSavingAll}
         onSaveAll={handleSaveAll}
         onOpenFullEditor={() => setShowFullEditor(true)}
+        onOpenNotes={() => setNotesSheetOpen(true)}
+        lineNotesCount={lineNotesCount}
+        notesButtonLabel={t("notesTitle", { defaultValue: "Notes" })}
+        notesButtonRef={notesButtonRef}
       />
 
-      {/* Column Headers */}
-      <div className="grid grid-cols-2 bg-surface sticky top-0 z-10">
-        <div className="notebook-column-header border-r border-border-subtle pl-14">
-          Source
+      {/* Column headers + notes instruction (muted; keeps action header uncluttered) */}
+      <div className="sticky top-0 z-10 bg-surface">
+        <div className="grid grid-cols-2 border-b border-border-subtle">
+          <div className="notebook-column-header border-r border-border-subtle pl-14">
+            Source
+          </div>
+          <div className="notebook-column-header pl-8">Translation</div>
         </div>
-        <div className="notebook-column-header pl-8">
-          Translation
+        <div className="flex items-center gap-1.5 border-b border-border-subtle px-5 py-1.5">
+          <p className="text-xs text-foreground-muted leading-snug">
+            {t("notesInstruction", {
+              defaultValue: "Right-click a line to add a note.",
+            })}
+          </p>
+          <button
+            type="button"
+            className="shrink-0 rounded p-0.5 text-foreground-muted hover:text-foreground-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+            title={t("notesInstructionLong", {
+              defaultValue:
+                "You can right-click any line to add a note. Lines with notes show a small marker. Use the Notes button (or press ⌘N / Ctrl+N) to see all notes together. Press ⌘. (Ctrl+. on Windows) while editing a line to open its note.",
+            })}
+            aria-label={t("notesInstructionLong", {
+              defaultValue:
+                "You can right-click any line to add a note. Lines with notes show a small marker. Use the Notes button (or press ⌘N / Ctrl+N) to see all notes together. Press ⌘. (Ctrl+. on Windows) while editing a line to open its note.",
+            })}
+          >
+            <Info className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
         </div>
       </div>
 
@@ -422,33 +583,56 @@ export default function NotebookPhase6({
           const isHovered = hoveredLineIndex === idx;
           const isExtraLine = idx >= sourceLineCount;
           const sourceLine = poemLines[idx] ?? "";
+          const lineNote = lineNotes[idx] ?? null;
+          const hasLineNote =
+            lineNote !== null && lineNote.trim().length > 0;
+
+          const isJumpHighlighted = jumpHighlightIndex === idx;
 
           return (
             <motion.div
               key={`row-${idx}`}
+              data-notebook-line={idx}
+              ref={(el) => {
+                rowRefs.current[idx] = el;
+              }}
               initial={false}
               animate={{
                 backgroundColor: isActive
                   ? "rgb(239 246 255 / 0.5)"
+                  : isJumpHighlighted
+                  ? "rgb(254 249 195 / 0.7)"
                   : isHovered
                   ? "rgb(250 248 244)"
                   : "transparent",
               }}
               transition={{ duration: 0.15 }}
               className={[
-                "notebook-row grid grid-cols-2 border-b border-border-subtle relative",
+                "notebook-row group grid grid-cols-2 border-b border-border-subtle relative",
                 isActive ? "notebook-row-selected" : "",
                 isExtraLine ? "bg-purple-50/20" : "",
+                isJumpHighlighted ? "ring-2 ring-inset ring-amber-300/80" : "",
               ].join(" ")}
               onMouseEnter={() => setHoveredLineIndex(idx)}
               onMouseLeave={() => setHoveredLineIndex(null)}
+              onContextMenu={(e) => handleRowContextMenu(idx, e)}
             >
+              <NoteMarker
+                ref={(el) => {
+                  markerRefs.current[idx] = el;
+                }}
+                lineIndex={idx}
+                hasNote={hasLineNote}
+                isCoarsePointer={isCoarsePointer}
+                onOpen={openNotePopoverWithAnchor}
+              />
+
               {/* Source Cell */}
               <button
                 type="button"
                 onClick={() => setCurrentLineIndex(idx)}
                 className={[
-                  "w-full text-left px-3 py-3 border-r border-border-subtle",
+                  "w-full text-left pl-3 pr-7 py-3 border-r border-border-subtle",
                   "focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/50",
                   "flex items-start gap-1",
                   isExtraLine ? "bg-purple-50/30" : "",
@@ -462,11 +646,14 @@ export default function NotebookPhase6({
                 ].join(" ")}>
                   {idx + 1}
                 </span>
-                <span className={[
-                  "flex-1 min-w-0 notebook-source-text text-[15px]",
-                  isExtraLine ? "italic text-purple-400" : "",
-                  isActive ? "text-stone-800" : "text-stone-600",
-                ].join(" ")}>
+                <span
+                  id={`source-line-${idx}`}
+                  className={[
+                    "flex-1 min-w-0 notebook-source-text text-[15px]",
+                    isExtraLine ? "italic text-purple-400" : "",
+                    isActive ? "text-stone-800" : "text-stone-600",
+                  ].join(" ")}
+                >
                   {isExtraLine ? "(extra line)" : sourceLine}
                 </span>
               </button>
@@ -474,7 +661,7 @@ export default function NotebookPhase6({
               {/* Translation Cell */}
               <div
                 className={[
-                  "group relative px-3 py-3",
+                  "group relative pl-7 pr-3 py-3",
                   "flex items-start gap-2",
                 ].join(" ")}
                 onClick={() => setCurrentLineIndex(idx)}
@@ -541,6 +728,7 @@ export default function NotebookPhase6({
                         }
                       }}
                       placeholder="..."
+                      aria-labelledby={`source-line-${idx}`}
                       className={[
                         "w-full resize-none border-0 bg-transparent p-0 text-[15px] leading-relaxed",
                         "focus:ring-0 focus:outline-none notebook-translation-input",
@@ -599,40 +787,36 @@ export default function NotebookPhase6({
           );
         })}
 
-        {/* Add Line button - decorative design with separator */}
-        <div className="relative py-6 px-4">
-          {/* Decorative dashed separator */}
-          <div className="absolute inset-x-8 top-1/2 -translate-y-1/2 border-t border-dashed border-border-subtle" />
 
-          {/* Centered pill button */}
-          <button
-            type="button"
-            onClick={() => {
-              // Add a new line by setting a draft at the next index
-              const nextIndex = totalLines;
-              setDraft(nextIndex, "");
-              setCurrentLineIndex(nextIndex);
-              // Focus the new textarea after render
-              setTimeout(() => {
-                const textarea = textareaRefs.current[nextIndex];
-                if (textarea) {
-                  textarea.focus();
-                }
-              }, 100);
-            }}
-            className="relative mx-auto flex items-center gap-2 px-4 py-2
-              bg-surface border border-border-subtle rounded-full
-              text-sm text-foreground-secondary
-              hover:border-accent hover:text-accent hover:bg-accent/5
-              active:scale-[0.98]
-              transition-all duration-200 ease-out
-              shadow-sm hover:shadow"
-          >
-            <span className="text-lg font-light leading-none">+</span>
-            <span>Add line</span>
-          </button>
-        </div>
+      </div>
 
+      {/* Add Line button - sticky at bottom for discoverability */}
+      <div className="border-t border-border-subtle bg-surface px-4 py-2 flex justify-center">
+        <button
+          type="button"
+          onClick={() => {
+            const nextIndex = totalLines;
+            setDraft(nextIndex, "");
+            setCurrentLineIndex(nextIndex);
+            setTimeout(() => {
+              const textarea = textareaRefs.current[nextIndex];
+              if (textarea) {
+                textarea.focus();
+                textarea.scrollIntoView({ behavior: "smooth", block: "center" });
+              }
+            }, 100);
+          }}
+          className="flex items-center gap-2 px-4 py-2
+            bg-surface border border-border-subtle rounded-full
+            text-sm text-foreground-secondary
+            hover:border-accent hover:text-accent hover:bg-accent/5
+            active:scale-[0.98]
+            transition-all duration-200 ease-out
+            shadow-sm hover:shadow"
+        >
+          <span className="text-lg font-light leading-none">+</span>
+          <span>Add line</span>
+        </button>
       </div>
 
       {/* Save error display */}
@@ -644,8 +828,32 @@ export default function NotebookPhase6({
         </div>
       )}
 
-      {/* Notes Panel */}
-      <NotebookNotesPanel />
+      {/* Line note popover */}
+      {noteEditingLineIndex !== null && (
+        <LineNotePopover
+          open
+          lineIndex={noteEditingLineIndex}
+          sourceLineText={
+            noteEditingLineIndex >= sourceLineCount
+              ? ""
+              : (poemLines[noteEditingLineIndex] ?? "")
+          }
+          noteText={lineNotes[noteEditingLineIndex] ?? null}
+          anchorRef={popoverAnchorRef}
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) closeNotePopover();
+          }}
+        />
+      )}
+
+      <NotesSheet
+        open={notesSheetOpen}
+        onOpenChange={handleNotesSheetOpenChange}
+        poemLines={poemLines}
+        sourceLineCount={sourceLineCount}
+        onJumpToLine={handleJumpToLine}
+        onEditLineNote={handleEditLineNote}
+      />
 
       {/* Full Translation Editor */}
       <FullTranslationEditor

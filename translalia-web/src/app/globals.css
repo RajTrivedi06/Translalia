@@ -18,6 +18,17 @@
   }
 }
 
+@keyframes popoverIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @keyframes slideInRight {
   from {
     transform: translateX(100%);
@@ -87,9 +98,65 @@
   }
 }
 
+/* ============================================
+   TRANSLATION TUNING — pipeline motion
+   transform/opacity only; gated with motion-safe at the call site
+   and additionally neutralized by the prefers-reduced-motion block below.
+   ============================================ */
+
+/* Accent dot flowing along the connector into a running node.
+   translateX uses cqw, so the dot traverses the segment's full width
+   regardless of viewport size — no layout (left/width) animation. The
+   segment span must set container-type: inline-size. */
+@keyframes tuning-flow {
+  0% {
+    transform: translate(0, -50%);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.5;
+  }
+  85% {
+    opacity: 0.5;
+  }
+  100% {
+    transform: translate(100cqw, -50%);
+    opacity: 0;
+  }
+}
+
+/* Calm opacity breathe for the running-node halo and the paused scrubber
+   handle. No scale — keeps the tone scholarly (no pulse/bounce). */
+@keyframes tuning-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* Checkmark settles in (fade + gentle scale-up, no overshoot) when a node
+   reads as done — fades in rather than popping. */
+@keyframes tuning-pop-in {
+  0% {
+    transform: scale(0.85);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
 /* Utility classes */
 .animate-fade-in {
   animation: fadeIn 0.3s ease-out forwards;
+}
+
+.animate-popover-in {
+  animation: popoverIn 0.12s ease-out forwards;
 }
 
 .animate-slide-in-right {
@@ -153,40 +220,54 @@
 
   /* Semantic color tokens */
   /* Background layers */
-  --color-base: 250 250 249;        /* warm off-white #FAFAF9 */
-  --color-surface: 255 255 255;     /* white for cards */
-  --color-muted: 245 245 244;       /* secondary surfaces #F5F5F4 */
+  --color-base: 250 250 249; /* warm off-white #FAFAF9 */
+  --color-surface: 255 255 255; /* white for cards */
+  --color-muted: 245 245 244; /* secondary surfaces #F5F5F4 */
 
   /* Text hierarchy */
-  --color-foreground: 28 25 23;           /* near-black #1C1917 */
+  --color-foreground: 28 25 23; /* near-black #1C1917 */
   --color-foreground-secondary: 87 83 78; /* #57534E */
-  --color-foreground-muted: 168 162 158;  /* #A8A29E */
+  --color-foreground-muted: 168 162 158; /* #A8A29E */
   --color-foreground-disabled: 214 211 209; /* #D6D3D1 */
 
   /* Accent (sky blue) */
-  --color-accent: 2 132 199;        /* sky-600 #0284C7 */
+  --color-accent: 2 132 199; /* sky-600 #0284C7 */
   --color-accent-light: 186 230 253; /* sky-200 #BAE6FD */
-  --color-accent-dark: 3 105 161;   /* sky-700 #0369A1 */
+  --color-accent-dark: 3 105 161; /* sky-700 #0369A1 */
 
   /* Semantic colors */
-  --color-success: 16 185 129;      /* emerald-500 #10B981 */
+  --color-success: 16 185 129; /* emerald-500 #10B981 */
   --color-success-light: 209 250 229; /* emerald-100 #D1FAE5 */
-  --color-warning: 245 158 11;      /* amber-500 #F59E0B */
+  --color-warning: 245 158 11; /* amber-500 #F59E0B */
   --color-warning-light: 254 243 199; /* amber-100 #FEF3C7 */
-  --color-error: 239 68 68;         /* red-500 #EF4444 */
+  --color-error: 239 68 68; /* red-500 #EF4444 */
   --color-error-light: 254 226 226; /* red-100 #FEE2E2 */
 
   /* Border colors */
-  --color-border: 214 211 209;      /* stone-300 #D6D3D1 */
+  --color-border: 214 211 209; /* stone-300 #D6D3D1 */
   --color-border-subtle: 231 229 228; /* stone-200 #E7E5E4 */
 
+  /* Accent card colors */
+  --color-card-teal-border: 153 246 228; /* teal-200 */
+  --color-card-teal-bg: 204 251 241; /* teal-50 */
+  --color-card-blue-border: 191 219 254; /* blue-200 */
+  --color-card-blue-bg: 219 234 254; /* blue-50 */
+  --color-card-purple-border: 221 214 254; /* purple-200 */
+  --color-card-purple-bg: 243 232 255; /* purple-50 */
+  --color-card-green-border: 187 247 208; /* green-200 */
+  --color-card-green-bg: 220 252 231; /* green-50 */
+  --color-card-orange-border: 254 215 170; /* orange-200 */
+  --color-card-orange-bg: 255 237 213; /* orange-50 */
+  --color-card-amber-border: 253 230 138; /* amber-200 */
+  --color-card-amber-bg: 254 243 199; /* amber-50 */
+
   /* Notebook-specific colors (Digital Poetry Journal aesthetic) */
-  --notebook-bg: 253 251 247;           /* Warm cream paper #FDFBF7 */
-  --notebook-source-text: 68 64 60;     /* Rich charcoal for source #44403C */
+  --notebook-bg: 253 251 247; /* Warm cream paper #FDFBF7 */
+  --notebook-source-text: 68 64 60; /* Rich charcoal for source #44403C */
   --notebook-translation-text: 28 25 23; /* Near-black for translation #1C1917 */
-  --notebook-line-hover: 250 248 244;   /* Subtle warm cream hover #FAF8F4 */
+  --notebook-line-hover: 250 248 244; /* Subtle warm cream hover #FAF8F4 */
   --notebook-line-selected: 239 246 255; /* Light blue selected tint #EFF6FF */
-  --notebook-line-number: 156 163 175;  /* Muted gray for margins #9CA3AF */
+  --notebook-line-number: 156 163 175; /* Muted gray for margins #9CA3AF */
 }
 
 :root.dark {
@@ -195,38 +276,52 @@
   --fg: 231 229 228;
 
   /* Semantic color tokens - dark mode */
-  --color-base: 28 25 23;           /* stone-900 #1C1917 */
-  --color-surface: 41 37 36;        /* stone-800 #292524 */
-  --color-muted: 68 64 60;          /* stone-700 #44403C */
+  --color-base: 28 25 23; /* stone-900 #1C1917 */
+  --color-surface: 41 37 36; /* stone-800 #292524 */
+  --color-muted: 68 64 60; /* stone-700 #44403C */
 
-  --color-foreground: 250 250 249;  /* stone-50 #FAFAF9 */
+  --color-foreground: 250 250 249; /* stone-50 #FAFAF9 */
   --color-foreground-secondary: 214 211 209; /* stone-300 */
   --color-foreground-muted: 120 113 108; /* stone-500 */
   --color-foreground-disabled: 87 83 78; /* stone-600 */
 
   /* Accent (sky blue - lighter for dark mode) */
-  --color-accent: 56 189 248;       /* sky-400 #38BDF8 */
+  --color-accent: 56 189 248; /* sky-400 #38BDF8 */
   --color-accent-light: 125 211 252; /* sky-300 #7DD3FC */
-  --color-accent-dark: 14 165 233;  /* sky-500 #0EA5E9 */
+  --color-accent-dark: 14 165 233; /* sky-500 #0EA5E9 */
 
   /* Semantic - slightly adjusted for dark */
-  --color-success: 52 211 153;      /* emerald-400 */
-  --color-success-light: 6 78 59;   /* emerald-900 */
-  --color-warning: 251 191 36;      /* amber-400 */
+  --color-success: 52 211 153; /* emerald-400 */
+  --color-success-light: 6 78 59; /* emerald-900 */
+  --color-warning: 251 191 36; /* amber-400 */
   --color-warning-light: 120 53 15; /* amber-900 */
-  --color-error: 248 113 113;       /* red-400 */
-  --color-error-light: 127 29 29;   /* red-900 */
+  --color-error: 248 113 113; /* red-400 */
+  --color-error-light: 127 29 29; /* red-900 */
 
-  --color-border: 68 64 60;         /* stone-700 */
-  --color-border-subtle: 87 83 78;  /* stone-600 */
+  --color-border: 68 64 60; /* stone-700 */
+  --color-border-subtle: 87 83 78; /* stone-600 */
+
+  /* Accent card colors - dark mode (muted tones) */
+  --color-card-teal-border: 17 94 89;
+  --color-card-teal-bg: 13 48 46;
+  --color-card-blue-border: 30 64 175;
+  --color-card-blue-bg: 23 37 84;
+  --color-card-purple-border: 88 28 135;
+  --color-card-purple-bg: 46 16 101;
+  --color-card-green-border: 22 101 52;
+  --color-card-green-bg: 20 83 45;
+  --color-card-orange-border: 154 52 18;
+  --color-card-orange-bg: 124 45 18;
+  --color-card-amber-border: 146 64 14;
+  --color-card-amber-bg: 120 53 15;
 
   /* Notebook-specific colors - dark mode */
-  --notebook-bg: 41 37 36;              /* Warm dark surface */
-  --notebook-source-text: 214 211 209;  /* Light charcoal for source */
+  --notebook-bg: 41 37 36; /* Warm dark surface */
+  --notebook-source-text: 214 211 209; /* Light charcoal for source */
   --notebook-translation-text: 250 250 249; /* Near-white for translation */
-  --notebook-line-hover: 55 51 50;      /* Subtle dark hover */
-  --notebook-line-selected: 30 41 59;   /* Dark blue selected tint */
-  --notebook-line-number: 120 113 108;  /* Muted gray for margins */
+  --notebook-line-hover: 55 51 50; /* Subtle dark hover */
+  --notebook-line-selected: 30 41 59; /* Dark blue selected tint */
+  --notebook-line-number: 120 113 108; /* Muted gray for margins */
 }
 
 /* Use min-height/viewport and prevent accidental horizontal scroll */
@@ -373,13 +468,12 @@ body {
 
   /* Horizontal ruled lines effect */
   .notebook-ruled {
-    background-image: 
-      repeating-linear-gradient(
-        transparent,
-        transparent 47px,
-        #e8e4d9 47px,
-        #e8e4d9 48px
-      );
+    background-image: repeating-linear-gradient(
+      transparent,
+      transparent 47px,
+      #e8e4d9 47px,
+      #e8e4d9 48px
+    );
     background-size: 100% 48px;
   }
 
@@ -389,7 +483,7 @@ body {
   }
 
   .notebook-spine::after {
-    content: '';
+    content: "";
     position: absolute;
     left: 50%;
     top: 0;
@@ -402,8 +496,9 @@ body {
       #d4d0c4 95%,
       transparent 100%
     );
-    box-shadow: -1px 0 4px rgba(0, 0, 0, 0.03),
-                1px 0 4px rgba(0, 0, 0, 0.03);
+    box-shadow:
+      -1px 0 4px rgba(0, 0, 0, 0.03),
+      1px 0 4px rgba(0, 0, 0, 0.03);
     z-index: 1;
     pointer-events: none;
   }
@@ -411,7 +506,9 @@ body {
   /* Notebook row styling - enhanced with smooth transitions */
   .notebook-row {
     min-height: 52px;
-    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+    transition:
+      background-color 0.2s ease,
+      box-shadow 0.2s ease;
   }
 
   .notebook-row:hover {
@@ -430,7 +527,8 @@ body {
 
   /* Line number styling (margin annotation look) */
   .notebook-line-number {
-    font-family: 'JetBrains Mono', 'SF Mono', 'Courier New', ui-monospace, monospace;
+    font-family:
+      "JetBrains Mono", "SF Mono", "Courier New", ui-monospace, monospace;
     font-size: 12px;
     font-variant-numeric: tabular-nums;
     color: rgb(var(--notebook-line-number));
@@ -440,7 +538,9 @@ body {
     padding-right: 14px;
     user-select: none;
     opacity: 0.5;
-    transition: opacity 0.2s ease, color 0.2s ease;
+    transition:
+      opacity 0.2s ease,
+      color 0.2s ease;
   }
 
   .notebook-row:hover .notebook-line-number {
@@ -457,7 +557,9 @@ body {
   /* Status indicator styling - icon-based (replacing dots) */
   .notebook-status-indicator {
     flex-shrink: 0;
-    transition: transform 0.2s ease, opacity 0.2s ease;
+    transition:
+      transform 0.2s ease,
+      opacity 0.2s ease;
   }
 
   .notebook-status-indicator.status-pending {
@@ -506,7 +608,7 @@ body {
   }
 
   .notebook-title {
-    font-family: 'Merriweather', Georgia, serif;
+    font-family: "Merriweather", Georgia, serif;
     font-size: 20px;
     font-weight: 600;
     color: rgb(var(--color-foreground));
@@ -538,13 +640,17 @@ body {
   }
 
   .notebook-column-header::after {
-    content: '';
+    content: "";
     position: absolute;
     bottom: 0;
     left: 16px;
     right: 16px;
     height: 2px;
-    background: linear-gradient(90deg, rgb(var(--color-accent) / 0.3), transparent);
+    background: linear-gradient(
+      90deg,
+      rgb(var(--color-accent) / 0.3),
+      transparent
+    );
   }
 
   /* Translation input placeholder styling */
@@ -562,7 +668,7 @@ body {
 
   /* Source text styling - literary serif font */
   .notebook-source-text {
-    font-family: 'Merriweather', 'Georgia', serif;
+    font-family: "Merriweather", "Georgia", serif;
     font-size: 15px;
     line-height: 1.7;
     letter-spacing: -0.01em;
@@ -571,7 +677,7 @@ body {
 
   /* Translation text styling - clean modern sans-serif */
   .notebook-translation-text {
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: "Inter", system-ui, sans-serif;
     font-size: 15px;
     line-height: 1.6;
     font-weight: 450;
@@ -596,7 +702,8 @@ body {
   }
 
   @keyframes drop-pulse {
-    0%, 100% {
+    0%,
+    100% {
       border-color: rgb(var(--color-accent));
       box-shadow: 0 0 0 0 rgb(var(--color-accent) / 0.2);
     }
@@ -613,12 +720,33 @@ body {
   }
 
   .notebook-add-line::before {
-    content: '';
+    content: "";
     position: absolute;
     left: 2rem;
     right: 2rem;
     top: 50%;
     transform: translateY(-50%);
     border-top: 1px dashed rgb(var(--color-border-subtle));
+  }
+
+  /* Workshop: scroll shell + centered content column with generous margins */
+  .workshop-scroll {
+    @apply flex-1 min-h-0 overflow-y-auto;
+  }
+
+  .workshop-content {
+    @apply w-full py-3 pr-2 md:py-4 md:pr-3;
+  }
+}
+
+/* Respect prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

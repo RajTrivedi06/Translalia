@@ -7,10 +7,8 @@ import { useWorkshopStore } from "@/store/workshopSlice";
 import { useThreadId } from "@/hooks/useThreadId";
 import { useTranslationJob } from "@/lib/hooks/useTranslationJob";
 import { useWorkshopState } from "@/lib/hooks/useWorkshopFlow";
-import { WorkshopHeader } from "@/components/workshop-rail/WorkshopHeader";
+import { Check, Lock } from "lucide-react";
 import { WordGrid } from "@/components/workshop-rail/WordGrid";
-import { StanzaProgressPanel } from "@/components/workshop-rail/StanzaProgressPanel";
-import { ProcessingProgress } from "@/components/workshop/ProcessingProgress";
 import { LineClickHandler } from "@/components/workshop-rail/LineClickHandler";
 import { getStatusMeta } from "@/components/workshop-rail/stanzaStatusMeta";
 import type {
@@ -19,11 +17,7 @@ import type {
 } from "@/types/translationJob";
 import type { LineTranslationVariant } from "@/types/lineTranslation";
 
-interface WorkshopRailProps {
-  showHeaderTitle?: boolean;
-}
-
-export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
+export function WorkshopRail() {
   const t = useTranslations("Workshop");
   const threadId = useThreadId();
   const poem = useGuideStore((s) => s.poem);
@@ -430,7 +424,6 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
   if (!workshopHydrated) {
     return (
       <div className="h-full flex flex-col">
-        <WorkshopHeader showTitle={showHeaderTitle} />
         <div className="flex-1 flex items-center justify-center p-6">
           <div className="text-sm text-foreground-secondary">Loading workshop…</div>
         </div>
@@ -442,23 +435,10 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
   if (!isWorkshopUnlocked) {
     return (
       <div className="h-full flex flex-col">
-        <WorkshopHeader showTitle={showHeaderTitle} />
         <div className="flex-1 flex items-center justify-center p-6">
           <div className="text-center max-w-sm">
             <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-muted flex items-center justify-center">
-              <svg
-                className="w-8 h-8 text-foreground-muted"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                />
-              </svg>
+              <Lock className="w-8 h-8 text-foreground-muted" />
             </div>
             <h3 className="text-lg font-semibold text-foreground mb-2">
               Workshop Locked
@@ -468,9 +448,9 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
               Fill in all required fields and confirm to begin.
             </p>
             <div className="text-xs text-foreground-muted space-y-1">
-              <p>✓ Add your poem</p>
-              <p>✓ Define translation zone</p>
-              <p>✓ Set translation intent</p>
+              <p className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5" /> Add your poem</p>
+              <p className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5" /> Define translation zone</p>
+              <p className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5" /> Set translation intent</p>
             </div>
           </div>
         </div>
@@ -482,7 +462,6 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
   if (!poem.text || !poemStanzas || poemStanzas.totalStanzas === 0) {
     return (
       <div className="h-full flex flex-col">
-        <WorkshopHeader showTitle={showHeaderTitle} />
         <div className="flex-1 flex items-center justify-center p-6">
           <div className="text-center max-w-sm">
             <h3 className="text-lg font-medium text-foreground-secondary mb-2">
@@ -502,29 +481,9 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
   if (selectedStanzaIndex === null) {
     return (
       <div className="h-full flex flex-col">
-        <WorkshopHeader
-          showTitle={showHeaderTitle}
-          hideBottomBorder={!!(shouldPollTranslations && translationProgress)}
-        />
 
-        {/* ✅ Re-enabled: Show translation progress */}
-        {shouldPollTranslations && translationProgress && (
-          <>
-            <ProcessingProgress
-              summary={translationProgress}
-              showDetails={false}
-              onRetry={() => translationJobQuery.refetch()}
-            />
-            <StanzaProgressPanel
-              summary={translationProgress}
-              stanzaResult={undefined}
-              threadId={threadId || undefined}
-              onRetry={() => translationJobQuery.refetch()}
-            />
-          </>
-        )}
-
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="workshop-scroll">
+          <div className="workshop-content">
           <WorkshopNavigationToggle
             title={t("segmentSelection")}
             subtitle={t("step1ChooseSegment")}
@@ -535,8 +494,7 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
             disableLines
             lineLabel={t("linesSelectSegmentFirst")}
           />
-          <h2 className="text-xl font-bold mb-4">{t("selectSegment")}</h2>
-          <div className="space-y-2">
+          <div className="space-y-4">
             {poemStanzas.stanzas.map((stanza, idx) => {
               // ✅ Get real segment status from translation progress (use chunks or stanzas)
               const progressChunks =
@@ -553,7 +511,7 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
                     // Reset line selection when switching segments
                     deselectLine();
                   }}
-                  className="p-4 border border-border-subtle rounded-md cursor-pointer hover:bg-accent-light/20 hover:border-accent/50 transition-all duration-fast shadow-card"
+                  className="cursor-pointer rounded-lg border border-border-subtle p-5 shadow-card transition-all duration-fast hover:border-accent/50 hover:bg-accent-light/20"
                 >
                   <div className="flex items-center justify-between mb-2">
                     <div className="font-semibold text-lg text-foreground">
@@ -579,6 +537,7 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
               );
             })}
           </div>
+          </div>
         </div>
       </div>
     );
@@ -595,28 +554,8 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
 
   return (
     <div className="h-full flex flex-col">
-      <WorkshopHeader
-        hideBottomBorder={!!(shouldPollTranslations && translationProgress)}
-      />
-
-      {/* ✅ Re-enabled: Show translation progress */}
-      {shouldPollTranslations && translationProgress && (
-        <>
-          <ProcessingProgress
-            summary={translationProgress}
-            showDetails={false}
-            onRetry={() => translationJobQuery.refetch()}
-          />
-          <StanzaProgressPanel
-            summary={translationProgress}
-            stanzaResult={undefined}
-            threadId={threadId || undefined}
-            onRetry={() => translationJobQuery.refetch()}
-          />
-        </>
-      )}
-
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="workshop-scroll">
+        <div className="workshop-content">
         <WorkshopNavigationToggle
           title={t("segment", { number: currentStanza.number })}
           subtitle={
@@ -628,14 +567,9 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
           onChunksClick={goToChunkSelection}
           onLinesClick={showLineSelection}
         />
-        {/* Current segment title */}
-        <h2 className="text-xl font-bold mb-4">
-          {t("segment", { number: currentStanza.number })}
-        </h2>
 
-        {/* Line selector */}
         {currentLineIndex === null ? (
-          <div className="space-y-2">
+          <div className="space-y-4">
             {stanzaLines.map((line, idx) => {
               const globalLineIndex = globalLineOffset + idx;
               const lineStatus = lineStatuses?.[globalLineIndex];
@@ -718,6 +652,7 @@ export function WorkshopRail({ showHeaderTitle = true }: WorkshopRailProps) {
             lineContext={lineContext}
           />
         )}
+        </div>
       </div>
     </div>
   );
@@ -755,7 +690,7 @@ function WorkshopNavigationToggle({
   const disabledClasses = "opacity-40 cursor-not-allowed hover:bg-transparent";
 
   return (
-    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border-subtle bg-muted px-4 py-3">
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border-subtle bg-muted/60 px-4 py-2.5">
       <div>
         {subtitle ? (
           <p className="text-xs uppercase tracking-wide text-foreground-muted">

@@ -434,11 +434,12 @@ export function FullTranslationEditor({
                   setWholeTranslation(e.target.value);
                   setHasUnsavedChanges(true);
                 }}
+                aria-label="Full translation editor"
                 className={cn(
                   "w-full h-full min-h-[400px] resize-none border-0 bg-transparent p-0",
                   "text-lg text-foreground",
                   "focus:outline-none focus:ring-0",
-                  "placeholder:text-slate-300 placeholder:italic"
+                  "placeholder:text-foreground-disabled placeholder:italic"
                 )}
                 placeholder="Type your translation here...&#10;&#10;Each line corresponds to a source line.&#10;Press Enter to create new lines."
                 spellCheck={false}

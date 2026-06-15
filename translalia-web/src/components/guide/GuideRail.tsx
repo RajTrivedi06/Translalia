@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { ChevronLeft, Info } from "lucide-react";
+import { Check, ChevronLeft, Info } from "lucide-react";
 import { useRouter } from "@/i18n/routing";
 import { useLocale, useTranslations } from "next-intl";
 
@@ -140,6 +140,7 @@ export function GuideRail({
     useState(false);
 
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [showRestartWarning, setShowRestartWarning] = useState(false);
   const [showGuideHints, setShowGuideHints] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [showSegmentEditor, setShowSegmentEditor] = useState(false);
@@ -756,7 +757,16 @@ export function GuideRail({
     }
 
     setValidationError(null);
-    setShowConfirmDialog(true);
+    if (isWorkshopUnlocked) {
+      setShowRestartWarning(true);
+    } else {
+      setShowConfirmDialog(true);
+    }
+  };
+
+  const handleRestartWorkshopConfirm = async () => {
+    setShowRestartWarning(false);
+    await handleConfirmWorkshop();
   };
 
   const handleConfirmWorkshop = async () => {
@@ -803,15 +813,19 @@ export function GuideRail({
       workshopReset();
     }
 
-    // Phase 2: Saves succeeded — unlock workshop and navigate
-    const hasExistingWork = Object.keys(completedLines || {}).length > 0;
-    if (!hasExistingWork) {
-      onAutoCollapse?.();
-    }
+    // Phase 2: Saves succeeded — unlock workshop and collapse the setup panel.
+    // Call onAutoCollapse synchronously so the panel state updates in the same
+    // React batch as unlockWorkshop — avoids race conditions with effects and
+    // potential component remounts from router.push.
     unlockWorkshop();
-    setTimeout(() => {
+    onAutoCollapse?.();
+
+    // Only navigate on first start; on restart the user is already on the
+    // correct thread URL so pushing again can trigger a soft re-mount that
+    // resets all panel useState hooks to their initial (collapsed) values.
+    if (!isWorkshopUnlocked) {
       router.push(`/workspaces/${projectId}/threads/${threadId}`);
-    }, 0);
+    }
 
     // Phase 3: Initialize translations (fire-and-forget, polling handles the rest)
     (async () => {
@@ -873,7 +887,7 @@ export function GuideRail({
               htmlFor="poem-input"
               className={ui.label}
             >
-              {t("poemTitle")} {isPoemSubmitted && "✓"}
+              {t("poemTitle")} {isPoemSubmitted && <Check className="inline w-4 h-4 text-success" />}
             </label>
 
             <p className={ui.helper}>{t("poemHelper")}</p>
@@ -1378,6 +1392,17 @@ export function GuideRail({
             cancelText={t("confirmDialogCancel")}
           />
 
+          <ConfirmationDialog
+            open={showRestartWarning}
+            onOpenChange={setShowRestartWarning}
+            onConfirm={handleRestartWorkshopConfirm}
+            isLoading={false}
+            title={t("restartWorkshopDialogTitle")}
+            description={t("restartWorkshopDialogDescription")}
+            confirmText={t("restartWorkshopDialogConfirm")}
+            cancelText={t("confirmDialogCancel")}
+          />
+
           {/* Clear Inputs Confirmation Dialog */}
           <ConfirmationDialog
             open={showClearConfirmation}
@@ -1388,6 +1413,7 @@ export function GuideRail({
             description="Warning: This will clear all your progress in both the 'Let's Get Started' section and the Workshop area. All completed translations, drafts, and line translations will be lost. This action cannot be undone."
             confirmText="Yes, Clear Everything"
             cancelText="Cancel"
+            isDestructive
           />
 
           {/* Segment Editor */}

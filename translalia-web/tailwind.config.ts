@@ -54,6 +54,31 @@ const config: Config = {
           DEFAULT: "rgb(var(--color-border) / <alpha-value>)",
           subtle: "rgb(var(--color-border-subtle) / <alpha-value>)",
         },
+        // Accent card colors (for themed card sections)
+        "card-teal": {
+          border: "rgb(var(--color-card-teal-border) / <alpha-value>)",
+          bg: "rgb(var(--color-card-teal-bg) / <alpha-value>)",
+        },
+        "card-blue": {
+          border: "rgb(var(--color-card-blue-border) / <alpha-value>)",
+          bg: "rgb(var(--color-card-blue-bg) / <alpha-value>)",
+        },
+        "card-purple": {
+          border: "rgb(var(--color-card-purple-border) / <alpha-value>)",
+          bg: "rgb(var(--color-card-purple-bg) / <alpha-value>)",
+        },
+        "card-green": {
+          border: "rgb(var(--color-card-green-border) / <alpha-value>)",
+          bg: "rgb(var(--color-card-green-bg) / <alpha-value>)",
+        },
+        "card-orange": {
+          border: "rgb(var(--color-card-orange-border) / <alpha-value>)",
+          bg: "rgb(var(--color-card-orange-bg) / <alpha-value>)",
+        },
+        "card-amber": {
+          border: "rgb(var(--color-card-amber-border) / <alpha-value>)",
+          bg: "rgb(var(--color-card-amber-bg) / <alpha-value>)",
+        },
       },
       // Standardized border radius (3 levels)
       borderRadius: {

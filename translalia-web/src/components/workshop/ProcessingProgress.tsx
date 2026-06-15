@@ -2,55 +2,21 @@
 
 import * as React from "react";
 import {
+  AlertTriangle,
   CheckCircle2,
   AlertCircle,
   Clock,
-  Info,
-  ChevronDown,
+  Check,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import type { TranslationJobProgressSummary } from "@/types/translationJob";
 
 interface ProcessingProgressProps {
-  /**
-   * Translation job progress summary
-   */
   summary?: TranslationJobProgressSummary | null;
-
-  /**
-   * Whether to show detailed breakdown (otherwise just shows bar)
-   */
-  showDetails?: boolean;
-
-  /**
-   * Callback when user wants to retry failed stanzas
-   */
   onRetry?: () => void;
 }
 
-/**
- * ProcessingProgress Component
- *
- * Displays overall translation job progress with visual indicators
- * for completed, processing, queued, pending, and failed stanzas.
- *
- * This component provides a high-level view of the translation progress,
- * complementary to the detailed StanzaProgressPanel.
- */
-export function ProcessingProgress({
-  summary,
-  showDetails = true,
-  onRetry,
-}: ProcessingProgressProps) {
-  const [isExpanded, setIsExpanded] = React.useState(showDetails);
-
-  React.useEffect(() => {
-    setIsExpanded(showDetails);
-  }, [showDetails]);
-
-  if (!summary) {
-    return null;
-  }
-
+function useProgressState(summary: TranslationJobProgressSummary) {
   const { progress, status } = summary;
   const completionPercent =
     progress.total > 0
@@ -63,163 +29,230 @@ export function ProcessingProgress({
   const hasFailed = progress.failed > 0;
 
   const statusLabel = isComplete
-    ? "Translation Complete"
+    ? "Translation complete"
     : hasFailed
-    ? "Translation Paused"
+    ? "Translation paused"
     : isProcessing
-    ? "Processing..."
-    : "Pending";
+    ? "Processing translation"
+    : "Translation pending";
 
-  const statusSubtext = isProcessing
-    ? "Translating... (this takes a bit of time)"
-    : isComplete
-    ? "Done"
+  return {
+    progress,
+    completionPercent,
+    isProcessing,
+    isComplete,
+    hasFailed,
+    statusLabel,
+  };
+}
+
+export function ProgressRingButton({
+  summary,
+  expanded,
+  onToggle,
+}: {
+  summary: TranslationJobProgressSummary;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const {
+    completionPercent,
+    isProcessing,
+    isComplete,
+    hasFailed,
+    statusLabel,
+  } = useProgressState(summary);
+
+  const size = 36;
+  const stroke = 3;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const dashOffset =
+    circumference - (completionPercent / 100) * circumference;
+
+  const ringColor = isComplete
+    ? "stroke-green-500"
     : hasFailed
-    ? "Has errors"
-    : "Queued";
-
-  const statusIcon = isComplete ? (
-    <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
-  ) : hasFailed ? (
-    <AlertCircle className="h-4 w-4 text-red-600 flex-shrink-0" />
-  ) : isProcessing ? (
-    <Clock className="h-4 w-4 text-blue-600 flex-shrink-0 animate-spin" />
-  ) : (
-    <Clock className="h-4 w-4 text-gray-400 flex-shrink-0" />
-  );
+    ? "stroke-red-500"
+    : isProcessing
+    ? "stroke-blue-500"
+    : "stroke-slate-300";
 
   return (
-    <div className="mb-4">
-      {/* Compact summary row */}
-      <div className="flex items-center justify-between rounded-full border border-slate-200 bg-white/90 px-3 py-2 text-xs shadow-sm">
-        <div className="flex items-center gap-2">
-          {statusIcon}
-          <div>
-            <p className="text-[13px] font-semibold text-gray-900">
-              {statusLabel}
-            </p>
-            <p className="text-[11px] text-gray-500">
-              {progress.completed} / {progress.total} segments · {statusSubtext}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-semibold text-blue-600">
-            {completionPercent}%
+    <button
+      type="button"
+      onClick={onToggle}
+      className={cn(
+        "relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
+        "border border-border-subtle bg-white transition-colors",
+        "hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+        expanded && "bg-muted/40 ring-1 ring-accent/30"
+      )}
+      aria-expanded={expanded}
+      aria-label={`${statusLabel}: ${completionPercent}%. ${
+        expanded ? "Hide" : "Show"
+      } progress details`}
+      title={statusLabel}
+    >
+      <svg
+        width={size}
+        height={size}
+        viewBox={`0 0 ${size} ${size}`}
+        className="-rotate-90"
+        aria-hidden="true"
+      >
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          className="stroke-slate-200"
+          strokeWidth={stroke}
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          className={cn(ringColor, isProcessing && !isComplete && "opacity-90")}
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={dashOffset}
+        />
+      </svg>
+      <span className="absolute inset-0 flex items-center justify-center">
+        {isComplete ? (
+          <Check className="h-3.5 w-3.5 text-green-600" aria-hidden="true" />
+        ) : hasFailed ? (
+          <AlertCircle className="h-3.5 w-3.5 text-red-600" aria-hidden="true" />
+        ) : isProcessing ? (
+          <Clock
+            className="h-3 w-3 text-blue-600 animate-spin"
+            aria-hidden="true"
+          />
+        ) : (
+          <span className="text-[10px] font-semibold tabular-nums text-foreground-secondary">
+            {completionPercent}
           </span>
-          <button
-            type="button"
-            onClick={() => setIsExpanded((prev) => !prev)}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-blue-200 bg-white text-blue-600 transition hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
-            aria-label={
-              isExpanded ? "Hide progress details" : "Show progress details"
-            }
-            aria-expanded={isExpanded}
-            title={
-              isExpanded ? "Hide progress details" : "Show progress details"
-            }
-          >
-            {isExpanded ? (
-              <ChevronDown className="h-3.5 w-3.5" />
-            ) : (
-              <Info className="h-3.5 w-3.5" />
+        )}
+      </span>
+    </button>
+  );
+}
+
+export function TranslationProgressDetails({
+  summary,
+  onRetry,
+}: {
+  summary: TranslationJobProgressSummary;
+  onRetry?: () => void;
+}) {
+  const {
+    progress,
+    completionPercent,
+    isProcessing,
+    isComplete,
+    hasFailed,
+    statusLabel,
+  } = useProgressState(summary);
+
+  return (
+    <div className="border-t border-border-subtle bg-surface/95 px-6 py-2.5 md:px-10">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <p className="text-xs font-medium text-foreground">{statusLabel}</p>
+        <p className="text-xs tabular-nums text-foreground-muted">
+          {progress.completed} / {progress.total} segments · {completionPercent}%
+        </p>
+      </div>
+
+      <div className="mb-2.5">
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+          <div
+            className={cn(
+              "h-full transition-all duration-500",
+              isComplete
+                ? "bg-green-500"
+                : hasFailed
+                ? "bg-red-500"
+                : "bg-blue-600"
             )}
-          </button>
+            style={{ width: `${completionPercent}%` }}
+            role="progressbar"
+            aria-valuenow={completionPercent}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={`Translation progress: ${completionPercent}% complete`}
+          />
         </div>
       </div>
 
-      {/* Expanded view */}
-      {isExpanded && (
-        <div className="mt-3 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
-          {/* Progress bar */}
-          <div className="mb-3">
-            <div className="w-full bg-blue-200 rounded-full h-2 overflow-hidden">
-              <div
-                className={`h-full transition-all duration-500 ${
-                  isComplete
-                    ? "bg-green-500"
-                    : hasFailed
-                    ? "bg-red-500"
-                    : "bg-blue-600"
-                }`}
-                style={{ width: `${completionPercent}%` }}
-                role="progressbar"
-                aria-valuenow={completionPercent}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-label={`Translation progress: ${completionPercent}% complete`}
-              />
-            </div>
-          </div>
+      <div className="grid grid-cols-3 gap-1.5 text-[11px] sm:grid-cols-5">
+        <StatusBadge label="Done" value={progress.completed} variant="success" />
+        <StatusBadge
+          label="Processing"
+          value={progress.processing}
+          variant="primary"
+        />
+        <StatusBadge label="Queued" value={progress.queued} variant="warning" />
+        <StatusBadge label="Pending" value={progress.pending} variant="gray" />
+        <StatusBadge label="Failed" value={progress.failed} variant="error" />
+      </div>
 
-          {/* Status breakdown */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
-            <StatusBadge
-              label="Completed"
-              value={progress.completed}
-              variant="success"
-            />
-            <StatusBadge
-              label="Processing"
-              value={progress.processing}
-              variant="primary"
-            />
-            <StatusBadge
-              label="Queued"
-              value={progress.queued}
-              variant="warning"
-            />
-            <StatusBadge
-              label="Pending"
-              value={progress.pending}
-              variant="gray"
-            />
-            <StatusBadge
-              label="Failed"
-              value={progress.failed}
-              variant="error"
-            />
-          </div>
-
-          {/* Error message with retry button */}
-          {hasFailed && onRetry && (
-            <div className="mt-3 flex items-center justify-between p-2 bg-red-100 border border-red-300 rounded">
-              <p className="text-xs text-red-700">
-                ⚠️ {progress.failed} segment{progress.failed !== 1 ? "s" : ""}{" "}
-                failed to process
-              </p>
-              <button
-                onClick={onRetry}
-                className="text-xs font-medium text-red-700 hover:text-red-900 underline"
-              >
-                Retry
-              </button>
-            </div>
-          )}
-
-          {/* Processing indicator */}
-          {isProcessing && !isComplete && (
-            <div className="mt-3 text-xs text-blue-700 p-2 bg-blue-100 border border-blue-300 rounded">
-              ⏳ Translation in progress. Segments are being processed in the
-              background.
-            </div>
-          )}
-
-          {/* Success indicator */}
-          {isComplete && (
-            <div className="mt-3 text-xs text-green-700 p-2 bg-green-100 border border-green-300 rounded">
-              ✅ All segments have been translated successfully!
-            </div>
-          )}
+      {hasFailed && onRetry && (
+        <div className="mt-2 flex items-center justify-between rounded border border-red-200 bg-red-50 px-2 py-1.5">
+          <p className="text-[11px] text-red-700 flex items-center gap-1">
+            <AlertTriangle className="h-3 w-3 shrink-0" />
+            {progress.failed} segment{progress.failed !== 1 ? "s" : ""} failed
+          </p>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="text-[11px] font-medium text-red-700 underline hover:text-red-900"
+          >
+            Retry
+          </button>
         </div>
+      )}
+
+      {isProcessing && !isComplete && (
+        <p className="mt-2 text-[11px] text-blue-700">
+          Segments are processing in the background.
+        </p>
+      )}
+
+      {isComplete && (
+        <p className="mt-2 flex items-center gap-1 text-[11px] text-green-700">
+          <CheckCircle2 className="h-3 w-3 shrink-0" />
+          All segments translated successfully.
+        </p>
       )}
     </div>
   );
 }
 
-/**
- * Status badge component for progress breakdown
- */
+/** @deprecated Use ProgressRingButton + TranslationProgressDetails in WorkshopHeader */
+export function ProcessingProgress({ summary, onRetry }: ProcessingProgressProps) {
+  const [expanded, setExpanded] = React.useState(false);
+
+  if (!summary) return null;
+
+  return (
+    <div className="mb-4">
+      <div className="flex justify-end px-3">
+        <ProgressRingButton
+          summary={summary}
+          expanded={expanded}
+          onToggle={() => setExpanded((prev) => !prev)}
+        />
+      </div>
+      {expanded && (
+        <TranslationProgressDetails summary={summary} onRetry={onRetry} />
+      )}
+    </div>
+  );
+}
+
 function StatusBadge({
   label,
   value,
@@ -238,9 +271,11 @@ function StatusBadge({
   };
 
   return (
-    <div className={`${variantClasses[variant]} rounded px-2 py-1`}>
-      <p className="font-semibold">{value}</p>
-      <p className="text-[10px] opacity-75">{label}</p>
+    <div className={`rounded px-1.5 py-1 ${variantClasses[variant]}`}>
+      <p className="font-semibold leading-none">{value}</p>
+      <p className="mt-0.5 text-[9px] opacity-75">{label}</p>
     </div>
   );
 }
+
+export default ProcessingProgress;

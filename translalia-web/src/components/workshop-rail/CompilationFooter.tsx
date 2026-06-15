@@ -123,6 +123,14 @@ export function CompilationFooter({
           setShowSuccess(true);
           setTimeout(() => setShowSuccess(false), 2000);
 
+          // Move focus to the notebook textarea for the completed line
+          setTimeout(() => {
+            const textarea = document.querySelector<HTMLTextAreaElement>(
+              `[aria-labelledby="source-line-${res.lineIndex}"]`
+            );
+            textarea?.focus();
+          }, 100);
+
           // Auto-advance to next line after showing success message
           if (stanzaLines && currentLineIndex !== null) {
             // Calculate next line index within the current stanza

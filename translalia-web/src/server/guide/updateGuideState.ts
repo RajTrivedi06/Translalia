@@ -4,6 +4,7 @@ import { supabaseServer } from "@/lib/supabaseServer";
 import { GuideAnswers } from "@/store/guideSlice";
 import type { SimplePoemStanzas } from "@/lib/utils/stanzaUtils";
 import type { StanzaDetectionResult } from "@/lib/poem/stanzaDetection";
+import type { TranslatedLine, TranslationJobState } from "@/types/translationJob";
 import { z } from "zod";
 
 // Validation schemas for each answer type
@@ -404,6 +405,7 @@ export async function getFullThreadState(
       rawPoem: string | null;
       poemStanzas: StanzaDetectionResult | null;
       workshopLines: Array<{ original: string; translated: string } | null> | null;
+      chunkLineData: TranslatedLine[][] | null;
     }
   | { success: false; error: string }
 > {
@@ -454,12 +456,30 @@ export async function getFullThreadState(
     // Extract workshop lines (completed translations)
     const workshopLines = (currentState.workshop_lines as Array<{ original: string; translated: string } | null>) ?? null;
 
+    // Extract lean line-level variant data from completed chunks/stanzas
+    const translationJob = currentState.translation_job as TranslationJobState | undefined;
+    const chunkOrStanzaStates = translationJob?.chunks ?? translationJob?.stanzas ?? null;
+    const chunkLineData = chunkOrStanzaStates
+      ? Object.values(chunkOrStanzaStates)
+          .filter(
+            (
+              chunk
+            ): chunk is { status: string; lines: TranslatedLine[] } =>
+              Boolean(chunk) &&
+              typeof chunk.status === "string" &&
+              Array.isArray(chunk.lines)
+          )
+          .filter((chunk) => chunk.status === "completed" && chunk.lines.length > 0)
+          .map((chunk) => chunk.lines)
+      : null;
+
     return {
       success: true,
       answers,
       rawPoem: thread.raw_poem ?? null,
       poemStanzas,
       workshopLines,
+      chunkLineData,
     };
   } catch (error) {
     console.error("[getFullThreadState] Unexpected error:", error);

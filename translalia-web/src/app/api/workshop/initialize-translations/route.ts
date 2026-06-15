@@ -2,13 +2,17 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { requireUser } from "@/lib/auth/requireUser";
+import { getUpstashRedis } from "@/lib/ai/cache";
 import {
   createTranslationJob,
   getTranslationJob,
 } from "@/lib/workshop/jobState";
 import { loadThreadContext } from "@/lib/workshop/runTranslationTick";
 import { summarizeTranslationJob } from "@/lib/workshop/translationProgress";
-import { enqueueTranslationJob } from "@/lib/workshop/translationQueue";
+import {
+  deactivateTranslationJob,
+  enqueueTranslationJob,
+} from "@/lib/workshop/translationQueue";
 
 const RequestSchema = z.object({
   threadId: z.string().uuid(),
@@ -76,31 +80,19 @@ export async function POST(req: Request) {
     );
   }
 
-  // Check if an existing job uses a different model — if so, clear stale
-  // workshop_lines from DB state before creating the new job.
+  // Detect model change so we can force-clear the old tick's resources after
+  // the new job is created. workshop_lines cleanup is handled atomically
+  // inside createTranslationJob (same writeThreadState call) to avoid
+  // interleaving with the old tick's writes.
   const existingJob = await getTranslationJob(threadId);
   const requestedModel = (context.guideAnswers as Record<string, unknown>)?.translationModel;
   const existingModel = (existingJob?.guide_preferences as Record<string, unknown> | undefined)?.translationModel;
+  const modelChanged = !!(existingJob && requestedModel && requestedModel !== existingModel);
 
-  if (existingJob && requestedModel && requestedModel !== existingModel) {
+  if (modelChanged) {
     console.log(
-      `[initialize-translations] Model changed (${existingModel} → ${requestedModel}). Clearing stale workshop_lines.`
+      `[initialize-translations] Model changed (${existingModel} → ${requestedModel}). Job will be replaced.`
     );
-    // Clear workshop_lines so stale translations from the old model don't persist
-    const { data: threadData } = await sb
-      .from("chat_threads")
-      .select("state")
-      .eq("id", threadId)
-      .single();
-
-    if (threadData?.state && typeof threadData.state === "object") {
-      const currentState = threadData.state as Record<string, unknown>;
-      delete currentState.workshop_lines;
-      await sb
-        .from("chat_threads")
-        .update({ state: currentState })
-        .eq("id", threadId);
-    }
   }
 
   const job = await createTranslationJob(
@@ -117,18 +109,57 @@ export async function POST(req: Request) {
     }
   );
 
-  // Enqueue translation job for background processing
-  const enqueueResult = await enqueueTranslationJob(threadId, {
-    userId: user.id,
-  }).catch((error) => {
-    console.error("[initialize-translations] Failed to enqueue job:", error);
-    return { enqueued: false, reason: "error" } as const;
-  });
+  // When replacing an in-progress job (model switch), the old tick may still
+  // hold the per-thread Redis lock and occupy the queue active set. Force-clear
+  // both so the new job can be enqueued and processed immediately.
+  // Safety: the OCC version check in writeThreadState catches any stale writes
+  // from the old tick — it will fail with "Translation job modified concurrently"
+  // and stop gracefully.
+  let alreadyEnqueued = false;
 
-  if (!enqueueResult.enqueued) {
-    console.warn(
-      `[initialize-translations] Enqueue rejected: ${enqueueResult.reason}`
-    );
+  if (modelChanged) {
+    try {
+      const redis = await getUpstashRedis();
+      if (redis) {
+        // 1. Release the tick lock so the old tick can't block the new job
+        const tickKey = `tick:${threadId}`;
+        await (redis as { del: (key: string) => Promise<number> }).del(tickKey);
+        console.log(`[initialize-translations] Force-released tick lock: ${tickKey}`);
+      }
+    } catch (error) {
+      // Non-fatal: lock will expire via its 10-minute TTL naturally
+      console.warn("[initialize-translations] Failed to force-release tick lock:", error);
+    }
+
+    try {
+      // 2. Remove from queue active set so re-enqueue is accepted
+      await deactivateTranslationJob(threadId);
+      // 3. Enqueue the new job for processing
+      const result = await enqueueTranslationJob(threadId, { userId: user.id });
+      alreadyEnqueued = true;
+      if (!result.enqueued) {
+        console.warn(`[initialize-translations] Re-enqueue after model change rejected: ${result.reason}`);
+      }
+    } catch (error) {
+      console.error("[initialize-translations] Failed to re-enqueue after model change:", error);
+    }
+  }
+
+  // Enqueue translation job for background processing (skip if already
+  // enqueued above during model-change handling to avoid double-enqueue)
+  if (!alreadyEnqueued) {
+    const enqueueResult = await enqueueTranslationJob(threadId, {
+      userId: user.id,
+    }).catch((error) => {
+      console.error("[initialize-translations] Failed to enqueue job:", error);
+      return { enqueued: false, reason: "error" } as const;
+    });
+
+    if (!enqueueResult.enqueued) {
+      console.warn(
+        `[initialize-translations] Enqueue rejected: ${enqueueResult.reason}`
+      );
+    }
   }
 
   // Optional: run a tiny "warm start" tick if explicitly requested (debug only)

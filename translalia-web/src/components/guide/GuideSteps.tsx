@@ -7,7 +7,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Pencil } from "lucide-react";
+import { Check, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface GuideStepsProps {
@@ -111,13 +111,10 @@ export function GuideSteps({
 
                   <div className="flex items-center gap-2">
                     {isComplete && (
-                      <span
-                        className="text-sm font-semibold text-success"
+                      <Check
+                        className="w-4 h-4 text-success"
                         aria-label="Completed"
-                        title="Completed"
-                      >
-                        ✓
-                      </span>
+                      />
                     )}
                     {isComplete && canEditSteps && onEditStep && (
                       <button

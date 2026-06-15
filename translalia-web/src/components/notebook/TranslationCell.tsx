@@ -135,14 +135,14 @@ export function TranslationCell({
             <Button
               size="sm"
               variant="ghost"
-              className="h-6 w-6 p-0 text-gray-400 opacity-0 transition-opacity group-hover:opacity-100"
+              className="relative h-7 w-7 p-0 text-gray-400 opacity-0 transition-opacity group-hover:opacity-100 after:absolute after:inset-[-4px] after:content-['']"
               onClick={(e) => {
                 e.stopPropagation();
                 onEdit(cell.id);
               }}
               title="Edit word"
             >
-              <Edit2 className="w-3 h-3" />
+              <Edit2 className="w-3.5 h-3.5" />
             </Button>
             {partOfSpeechSummary && (
               <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
@@ -153,14 +153,14 @@ export function TranslationCell({
               <Button
                 size="sm"
                 variant="ghost"
-                className="h-6 w-6 p-0 text-gray-400 hover:text-red-500"
+                className="relative h-7 w-7 p-0 text-gray-400 hover:text-red-500 after:absolute after:inset-[-4px] after:content-['']"
                 onClick={(e) => {
                   e.stopPropagation();
                   onRemove(cell.id);
                 }}
                 title="Remove"
               >
-                <X className="w-3 h-3" />
+                <X className="w-3.5 h-3.5" />
               </Button>
             )}
           </div>
@@ -339,7 +339,7 @@ export function TranslationCell({
               <Button
                 size="sm"
                 variant="ghost"
-                className="h-7 w-7 p-0"
+                className="relative h-8 w-8 p-0 after:absolute after:inset-[-4px] after:content-['']"
                 onClick={(e) => {
                   e.stopPropagation();
                   onToggleLock(cell.id);
@@ -347,9 +347,9 @@ export function TranslationCell({
                 title={cell.isLocked ? "Unlock cell" : "Lock cell"}
               >
                 {cell.isLocked ? (
-                  <Lock className="w-3 h-3 text-yellow-600" />
+                  <Lock className="w-3.5 h-3.5 text-yellow-600" />
                 ) : (
-                  <Unlock className="w-3 h-3 text-gray-400" />
+                  <Unlock className="w-3.5 h-3.5 text-gray-400" />
                 )}
               </Button>
 
@@ -357,14 +357,14 @@ export function TranslationCell({
               <Button
                 size="sm"
                 variant="ghost"
-                className="h-7 w-7 p-0"
+                className="relative h-8 w-8 p-0 after:absolute after:inset-[-4px] after:content-['']"
                 onClick={(e) => {
                   e.stopPropagation();
                   onEdit(cell.id);
                 }}
                 title="Edit translation"
               >
-                <Edit2 className="w-3 h-3" />
+                <Edit2 className="w-3.5 h-3.5" />
               </Button>
 
               {/* Remove */}
@@ -372,14 +372,14 @@ export function TranslationCell({
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="h-7 w-7 p-0 text-red-500 hover:text-red-600"
+                  className="relative h-8 w-8 p-0 text-red-500 hover:text-red-600 after:absolute after:inset-[-4px] after:content-['']"
                   onClick={(e) => {
                     e.stopPropagation();
                     onRemove(cell.id);
                   }}
                   title="Remove cell"
                 >
-                  <X className="w-3 h-3" />
+                  <X className="w-3.5 h-3.5" />
                 </Button>
               )}
             </div>
