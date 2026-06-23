@@ -1319,12 +1319,6 @@ components:
             - type: object
               description: Latest step-c snapshot from state.translation_insights.
               additionalProperties: true
-        refineRhyme:
-          oneOf:
-            - type: "null"
-            - type: object
-              description: Refine & Rhyme artifacts from state.refine_rhyme.
-              additionalProperties: true
         journey_summary_created_at:
           type: [string, "null"]
           format: date-time

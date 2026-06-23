@@ -63,7 +63,7 @@ Only entities and RPCs directly referenced by code or migrations are documented 
 | `exec_sql` | `supabase/migrations/20240117_add_exec_sql_rpc.sql` | Parameterized SQL execution for atomic JSONB patching. |
 | `patch_thread_state_field` | `supabase/migrations/20240117_add_exec_sql_rpc.sql` | Dedicated atomic patch helper for `chat_threads.state`. |
 | `append_method2_audit` | `supabase/migrations/20240117_add_exec_sql_rpc.sql` | **Deprecated.** Legacy RPC for `state.method2_audit`; production writes use the `translation_audits` table via `src/lib/ai/audit.ts`. |
-| `diary_completed_poems` | `supabase/migrations/20260121_diary_completed_poems.sql`; extended by `20260621_diary_express_your_view.sql` and `20260622_diary_ai_artifacts.sql` | Return completed poems for the authenticated user (includes `express_your_view`, `translation_insights`, `refine_rhyme`, journey summary). |
+| `diary_completed_poems` | `supabase/migrations/20260121_diary_completed_poems.sql`; extended by `20260621_diary_express_your_view.sql` and `20260622_diary_ai_artifacts.sql` | Return completed poems for the authenticated user (includes `express_your_view`, `translation_insights`, journey summary). The API omits `refine_rhyme` from diary responses. |
 
 ## Ownership and Access
 - Project ownership is checked via `projects.owner_id`.

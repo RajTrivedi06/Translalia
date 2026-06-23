@@ -1,7 +1,6 @@
 import type {
   DiaryEntry,
   DiaryExportLabels,
-  DiaryRefineRhyme,
 } from "@/lib/diary/types";
 
 function escapeHtml(text: string): string {
@@ -57,21 +56,6 @@ function getLineNoteEntries(
     .map(([idx, note]) => ({ lineIndex: Number(idx), note: note!.trim() }))
     .filter(({ lineIndex }) => !Number.isNaN(lineIndex))
     .sort((a, b) => a.lineIndex - b.lineIndex);
-}
-
-function hasRefineRhyme(entry: DiaryEntry): boolean {
-  return hasRefineRhymeData(entry.refineRhyme);
-}
-
-function hasRefineRhymeData(
-  refineRhyme: DiaryRefineRhyme | null | undefined
-): boolean {
-  if (!refineRhyme) return false;
-  return !!(
-    refineRhyme.formalFeatures ||
-    refineRhyme.adjustments ||
-    refineRhyme.personalize
-  );
 }
 
 function hasTranslationInsightsData(
@@ -159,59 +143,6 @@ function buildNotesAndReflectionSectionTxt(
   return parts.join("\n");
 }
 
-function buildRefineRhymeSectionTxt(
-  entry: DiaryEntry,
-  labels: DiaryExportLabels
-): string {
-  const parts: string[] = [`${labels.refineRhyme}\n${"=".repeat(60)}`];
-  const r = entry.refineRhyme;
-
-  if (r && hasRefineRhymeData(r)) {
-    if (r.formalFeatures) {
-      const ff = r.formalFeatures;
-      if (ff.rhymeScheme) {
-        parts.push(`${labels.rhymeScheme}: ${ff.rhymeScheme}`);
-        if (ff.rhymeSchemeDescription) parts.push(ff.rhymeSchemeDescription);
-      }
-      if (ff.summary) parts.push(ff.summary);
-      if (ff.otherFeatures?.length) {
-        parts.push(`\n${labels.otherSoundPatterns}:`);
-        ff.otherFeatures.forEach((f) => {
-          parts.push(`  • ${f.name}: ${f.description}`);
-        });
-      }
-      parts.push("");
-    }
-
-    if (r.adjustments?.adjustments?.length) {
-      parts.push(`${labels.suggestedChanges}:`);
-      r.adjustments.adjustments.forEach((adj, i) => {
-        parts.push(
-          `  ${i + 1}. Lines ${adj.targetLines.map((n) => n + 1).join(", ")}`
-        );
-        parts.push(`     ${labels.current}: ${adj.currentText}`);
-        parts.push(`     ${labels.suggested}: ${adj.suggestedText}`);
-        parts.push(`     ${adj.explanation}`);
-      });
-      parts.push("");
-    }
-
-    if (r.personalize) {
-      const p = r.personalize;
-      parts.push(`${labels.personalizedIdeas}:`);
-      if (p.insight?.observation) parts.push(p.insight.observation);
-      p.suggestions?.forEach((s, i) => {
-        parts.push(`  ${i + 1}. ${s.title}`);
-        parts.push(`     ${s.description}`);
-      });
-      if (p.encouragement) parts.push(p.encouragement);
-      parts.push("");
-    }
-  }
-
-  return parts.join("\n");
-}
-
 function buildInsightsSectionTxt(
   entry: DiaryEntry,
   labels: DiaryExportLabels
@@ -286,7 +217,6 @@ function buildFullDocumentTxt(
 
   const sections = [
     buildTranslationSectionTxt(entry, labels),
-    buildRefineRhymeSectionTxt(entry, labels),
     buildInsightsSectionTxt(entry, labels),
     buildJourneySectionTxt(entry, labels),
     buildNotesAndReflectionSectionTxt(entry, labels),
@@ -376,73 +306,6 @@ function buildNotesAndReflectionSectionHtml(
   return `
     <section class="doc-section accent-amber">
       <h2>${escapeHtml(labels.notesAndReflection)}</h2>
-      ${inner}
-    </section>
-  `;
-}
-
-function buildRefineRhymeSectionHtml(
-  entry: DiaryEntry,
-  labels: DiaryExportLabels
-): string {
-  let inner = "";
-  const r = entry.refineRhyme;
-
-  if (r && hasRefineRhymeData(r)) {
-    if (r.formalFeatures) {
-      const ff = r.formalFeatures;
-      if (ff.rhymeScheme) {
-        inner += `<p><strong>${escapeHtml(labels.rhymeScheme)}:</strong> ${escapeHtml(ff.rhymeScheme)}</p>`;
-        if (ff.rhymeSchemeDescription) {
-          inner += `<p class="muted">${escapeHtml(ff.rhymeSchemeDescription)}</p>`;
-        }
-      }
-      if (ff.summary) inner += `<p>${escapeHtml(ff.summary)}</p>`;
-      if (ff.otherFeatures?.length) {
-        inner += `<h3>${escapeHtml(labels.otherSoundPatterns)}</h3><ul>`;
-        ff.otherFeatures.forEach((f) => {
-          inner += `<li><strong>${escapeHtml(f.name)}</strong>: ${escapeHtml(f.description)}</li>`;
-        });
-        inner += `</ul>`;
-      }
-    }
-
-    if (r.adjustments?.adjustments?.length) {
-      inner += `<h3>${escapeHtml(labels.suggestedChanges)}</h3>`;
-      r.adjustments.adjustments.forEach((adj, i) => {
-        inner += `
-        <div class="adjustment-block">
-          <p><strong>${i + 1}.</strong> Lines ${adj.targetLines.map((n) => n + 1).join(", ")}</p>
-          <p class="muted"><em>${escapeHtml(labels.current)}:</em> ${escapeHtml(adj.currentText)}</p>
-          <p><em>${escapeHtml(labels.suggested)}:</em> ${escapeHtml(adj.suggestedText)}</p>
-          <p>${escapeHtml(adj.explanation)}</p>
-        </div>
-      `;
-      });
-    }
-
-    if (r.personalize) {
-      const p = r.personalize;
-      inner += `<h3>${escapeHtml(labels.personalizedIdeas)}</h3>`;
-      if (p.insight?.observation) {
-        inner += `<p>${escapeHtml(p.insight.observation)}</p>`;
-      }
-      if (p.suggestions?.length) {
-        inner += `<ul>`;
-        p.suggestions.forEach((s) => {
-          inner += `<li><strong>${escapeHtml(s.title)}</strong>: ${escapeHtml(s.description)}</li>`;
-        });
-        inner += `</ul>`;
-      }
-      if (p.encouragement) {
-        inner += `<p class="muted">${escapeHtml(p.encouragement)}</p>`;
-      }
-    }
-  }
-
-  return `
-    <section class="doc-section accent-teal">
-      <h2>${escapeHtml(labels.refineRhyme)}</h2>
       ${inner}
     </section>
   `;
@@ -556,7 +419,6 @@ const PRINT_STYLES = `
     margin: 1rem 0 0.5rem;
     color: #555;
   }
-  .accent-teal h2 { border-color: #0d9488; color: #0f766e; }
   .accent-blue h2 { border-color: #3b82f6; color: #1d4ed8; }
   .accent-amber h2 { border-color: #f59e0b; color: #b45309; }
   .comparison-row {
@@ -596,12 +458,6 @@ const PRINT_STYLES = `
     margin: 0;
   }
   .muted { color: #666; font-size: 0.9rem; }
-  .adjustment-block {
-    margin-bottom: 1rem;
-    padding: 12px;
-    background: #fafafa;
-    border-radius: 6px;
-  }
   ul, ol { margin: 0.5rem 0; padding-left: 1.5rem; }
   li { margin-bottom: 0.35rem; }
   .footer {
@@ -645,7 +501,6 @@ export function exportEntryAsPdf(
 
   const bodySections = [
     buildTranslationSectionHtml(entry, labels),
-    buildRefineRhymeSectionHtml(entry, labels),
     buildInsightsSectionHtml(entry, labels),
     buildJourneySectionHtml(entry, labels),
     buildNotesAndReflectionSectionHtml(entry, labels),
@@ -685,8 +540,6 @@ export {
   hasThreadNote,
   hasLineNotes,
   hasNotesAndReflection,
-  hasRefineRhyme,
-  hasRefineRhymeData,
   hasTranslationInsights,
   hasTranslationInsightsData,
   hasJourney,

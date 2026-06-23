@@ -60,7 +60,6 @@ export async function GET(req: NextRequest) {
       notebook_notes: unknown;
       express_your_view: string | null;
       translation_insights: unknown;
-      refine_rhyme: unknown;
       journey_summary_created_at: string | null;
       reflection_text: string | null;
       insights: string[] | null;
@@ -70,11 +69,10 @@ export async function GET(req: NextRequest) {
     }>;
 
     const items = rows.map(
-      ({ express_your_view, translation_insights, refine_rhyme, ...rest }) => ({
+      ({ express_your_view, translation_insights, ...rest }) => ({
         ...rest,
         expressYourView: express_your_view ?? null,
         translationInsights: translation_insights ?? null,
-        refineRhyme: refine_rhyme ?? null,
       })
     );
 

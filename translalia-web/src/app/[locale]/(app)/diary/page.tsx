@@ -18,7 +18,6 @@ import {
   FileText,
   Calendar,
   PenLine,
-  Music2,
   Download,
   Printer,
 } from "lucide-react";
@@ -29,7 +28,6 @@ import { cn } from "@/lib/utils";
 import type {
   DiaryEntry,
   DiaryExportLabels,
-  DiaryRefineRhyme,
   DiaryResponse,
   DiaryTranslationInsights,
 } from "@/lib/diary/types";
@@ -40,19 +38,17 @@ import {
   getValidLines,
   hasJourneyContent,
   hasNotesAndReflection,
-  hasRefineRhymeData,
   hasTranslationInsightsData,
 } from "@/lib/diary/exportEntry";
 
 const DIARY_SECTIONS = [
   { key: "translation", icon: BookOpen, variant: "default" as const },
-  { key: "refineRhyme", icon: Music2, variant: "teal" as const },
   { key: "translationInsights", icon: Lightbulb, variant: "blue" as const },
   { key: "journeySummary", icon: Sparkles, variant: "purple" as const },
   { key: "notesAndReflection", icon: PenLine, variant: "amber" as const },
 ] as const;
 
-type SectionVariant = "default" | "teal" | "blue" | "amber" | "purple";
+type SectionVariant = "default" | "blue" | "amber" | "purple";
 
 const VARIANT_STYLES: Record<
   SectionVariant,
@@ -62,12 +58,6 @@ const VARIANT_STYLES: Record<
     container: "bg-muted/80 ring-1 ring-border-subtle/60",
     icon: "text-foreground-muted",
     hover: "hover:bg-muted/60",
-  },
-  teal: {
-    container:
-      "bg-gradient-to-br from-teal-50/80 to-emerald-50/50 ring-1 ring-teal-200/60",
-    icon: "text-teal-700",
-    hover: "hover:bg-teal-50/60",
   },
   blue: {
     container:
@@ -178,121 +168,6 @@ function SectionNav({
         </button>
       ))}
     </nav>
-  );
-}
-
-function RefineRhymeContent({
-  refineRhyme,
-  t,
-}: {
-  refineRhyme: DiaryRefineRhyme | null;
-  t: (key: string) => string;
-}) {
-  if (!hasRefineRhymeData(refineRhyme)) return null;
-
-  const r = refineRhyme!;
-
-  return (
-    <div className="space-y-4">
-      {r.formalFeatures && (
-        <div className="space-y-3 rounded-xl bg-white/80 p-4 shadow-sm">
-          {r.formalFeatures.rhymeScheme && (
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge className="bg-teal-700 text-sm">{r.formalFeatures.rhymeScheme}</Badge>
-              <span className="text-sm font-medium text-foreground-secondary">
-                {t("rhymeScheme")}
-              </span>
-            </div>
-          )}
-          {r.formalFeatures.rhymeSchemeDescription && (
-            <p className="border-l-2 border-teal-200 pl-3 text-sm text-foreground-muted">
-              {r.formalFeatures.rhymeSchemeDescription}
-            </p>
-          )}
-          {r.formalFeatures.summary && (
-            <p className="text-sm text-foreground-secondary">
-              {r.formalFeatures.summary}
-            </p>
-          )}
-          {r.formalFeatures.otherFeatures?.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wider text-foreground-muted">
-                {t("otherSoundPatterns")}
-              </p>
-              {r.formalFeatures.otherFeatures.map((f, idx) => (
-                <div
-                  key={idx}
-                  className="rounded-lg border border-border-subtle bg-white p-3 text-sm"
-                >
-                  <span className="font-medium text-foreground-secondary">
-                    {f.name}
-                  </span>
-                  <p className="mt-1 text-foreground-muted">{f.description}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {r.adjustments?.adjustments &&
-        r.adjustments.adjustments.length > 0 && (
-          <div className="space-y-3">
-            <p className="text-xs font-semibold uppercase tracking-wider text-foreground-muted">
-              {t("suggestedChanges")}
-            </p>
-            {r.adjustments.adjustments.map((adj, idx) => (
-              <div
-                key={idx}
-                className="rounded-xl border border-teal-100 bg-white p-4 shadow-sm"
-              >
-                <Badge variant="outline" className="mb-2 text-xs">
-                  Lines {adj.targetLines.map((n) => n + 1).join(", ")}
-                </Badge>
-                <div className="grid gap-2 text-sm">
-                  <div className="rounded-lg bg-muted/80 p-3">
-                    <span className="text-xs text-foreground-muted">
-                      {t("current")}
-                    </span>
-                    <p className="text-foreground-secondary">{adj.currentText}</p>
-                  </div>
-                  <div className="rounded-lg border border-teal-200 bg-teal-50/50 p-3">
-                    <span className="text-xs text-teal-700">{t("suggested")}</span>
-                    <p className="font-medium text-foreground">{adj.suggestedText}</p>
-                  </div>
-                </div>
-                <p className="mt-2 text-sm text-foreground-muted">
-                  {adj.explanation}
-                </p>
-              </div>
-            ))}
-          </div>
-        )}
-
-      {r.personalize && (
-        <div className="space-y-3 rounded-xl bg-white/80 p-4 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-wider text-foreground-muted">
-            {t("personalizedIdeas")}
-          </p>
-          {r.personalize.insight?.observation && (
-            <p className="text-sm text-foreground-secondary">
-              {r.personalize.insight.observation}
-            </p>
-          )}
-          {r.personalize.suggestions?.map((s, idx) => (
-            <div key={idx} className="border-l-2 border-rose-200 pl-3">
-              <p className="text-sm font-medium text-foreground">{s.title}</p>
-              <p className="text-sm text-foreground-muted">{s.description}</p>
-            </div>
-          ))}
-          {r.personalize.encouragement && (
-            <p className="text-sm italic text-foreground-muted">
-              {r.personalize.encouragement}
-            </p>
-          )}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -447,7 +322,6 @@ function normalizeEntry(raw: DiaryResponse["items"][number]): DiaryEntry {
     notebook_notes: (raw.notebook_notes as DiaryEntry["notebook_notes"]) ?? null,
     translationInsights:
       (raw.translationInsights as DiaryTranslationInsights | null) ?? null,
-    refineRhyme: (raw.refineRhyme as DiaryRefineRhyme | null) ?? null,
   };
 }
 
@@ -462,13 +336,6 @@ function buildExportLabels(t: (key: string) => string): DiaryExportLabels {
     threadNote: t("threadNote"),
     lineNote: t("lineNote"),
     lineNotes: t("lineNotes"),
-    refineRhyme: t("refineRhyme"),
-    rhymeScheme: t("rhymeScheme"),
-    otherSoundPatterns: t("otherSoundPatterns"),
-    suggestedChanges: t("suggestedChanges"),
-    current: t("current"),
-    suggested: t("suggested"),
-    personalizedIdeas: t("personalizedIdeas"),
     translationInsights: t("translationInsights"),
     yourTranslationAims: t("yourTranslationAims"),
     suggestions: t("suggestions"),
@@ -645,15 +512,6 @@ function PoemEntry({
                   </div>
                 </>
               ) : null}
-            </DiarySection>
-
-            <DiarySection
-              id={`section-refineRhyme-${threadId}`}
-              title={t("refineRhyme")}
-              icon={Music2}
-              variant="teal"
-            >
-              <RefineRhymeContent refineRhyme={entry.refineRhyme} t={t} />
             </DiarySection>
 
             <DiarySection

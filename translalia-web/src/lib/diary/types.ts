@@ -1,9 +1,3 @@
-import type {
-  AdjustmentSuggestionsResponse,
-  FormalFeaturesAnalysis,
-  PersonalizedSuggestionsResponse,
-} from "@/types/notebookSuggestions";
-
 export type DiaryWorkshopLine = {
   original: string;
   translated: string;
@@ -21,13 +15,6 @@ export type DiaryTranslationInsights = {
   generated_at?: string;
 };
 
-export type DiaryRefineRhyme = {
-  formalFeatures?: FormalFeaturesAnalysis | null;
-  adjustments?: AdjustmentSuggestionsResponse | null;
-  personalize?: PersonalizedSuggestionsResponse | null;
-  updated_at?: string;
-};
-
 export type DiaryEntry = {
   thread_id: string;
   title: string;
@@ -40,7 +27,6 @@ export type DiaryEntry = {
   } | null;
   expressYourView: string | null;
   translationInsights: DiaryTranslationInsights | null;
-  refineRhyme: DiaryRefineRhyme | null;
   journey_summary_created_at: string | null;
   reflection_text: string | null;
   insights: string[] | null;
@@ -69,13 +55,6 @@ export type DiaryExportLabels = {
   threadNote: string;
   lineNote: string;
   lineNotes: string;
-  refineRhyme: string;
-  rhymeScheme: string;
-  otherSoundPatterns: string;
-  suggestedChanges: string;
-  current: string;
-  suggested: string;
-  personalizedIdeas: string;
   translationInsights: string;
   yourTranslationAims: string;
   suggestions: string;
