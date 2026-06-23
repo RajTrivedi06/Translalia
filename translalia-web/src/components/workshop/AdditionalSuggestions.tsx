@@ -14,6 +14,8 @@ export interface WordSuggestion {
   literalness?: number;
   use?: "replace" | "insert" | "opening" | "closing";
   fitsWith?: "A" | "B" | "C" | "any";
+  /** The line word this suggestion is an alternative for (line-level suggestions). */
+  targetsWord?: string | null;
 }
 
 interface AdditionalSuggestionsProps {
@@ -34,18 +36,25 @@ export function AdditionalSuggestions({
   onWordClick,
 }: AdditionalSuggestionsProps) {
   const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
+  // Group by the line word each suggestion replaces so coverage across the
+  // whole line is visible. Items without a targetsWord fall into "Other ideas".
+  const OTHER_GROUP = "__other__";
   const groupedSuggestions = React.useMemo(() => {
-    const groups: Record<string, WordSuggestion[]> = {
-      A: [],
-      B: [],
-      C: [],
-      any: [],
-    };
+    const order: string[] = [];
+    const groups = new Map<string, WordSuggestion[]>();
     suggestions.forEach((s) => {
-      const key = s.fitsWith && groups[s.fitsWith] ? s.fitsWith : "any";
-      groups[key].push(s);
+      const key = s.targetsWord?.trim() ? s.targetsWord.trim() : OTHER_GROUP;
+      if (!groups.has(key)) {
+        groups.set(key, []);
+        order.push(key);
+      }
+      groups.get(key)!.push(s);
     });
-    return groups;
+    // Keep the "Other ideas" bucket last.
+    order.sort((a, b) =>
+      a === OTHER_GROUP ? 1 : b === OTHER_GROUP ? -1 : 0
+    );
+    return order.map((key) => ({ key, items: groups.get(key)! }));
   }, [suggestions]);
 
   const handleRegenerate = (guidance: string) => {
@@ -120,20 +129,24 @@ export function AdditionalSuggestions({
             <div className="flex items-start gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200 mb-3">
               <Info className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
               <p className="text-xs text-blue-800">
-                Click any word to add it to your notebook. These suggestions
-                consider the surrounding lines for better flow.
+                Ideas span the whole line — grouped by the word they replace.
+                Click any word to add it to your notebook.
               </p>
             </div>
 
             <div className="space-y-3">
-              {(["A", "B", "C", "any"] as const).map((groupKey) => {
-                const groupItems = groupedSuggestions[groupKey];
+              {groupedSuggestions.map(({ key: groupKey, items: groupItems }) => {
                 if (groupItems.length === 0) return null;
                 return (
                   <div key={groupKey} className="space-y-2">
-                    {groupKey !== "any" && (
+                    {groupKey !== OTHER_GROUP ? (
                       <div className="text-xs font-semibold text-slate-600">
-                        Fits with {groupKey}
+                        Instead of{" "}
+                        <span className="text-slate-900">“{groupKey}”</span>
+                      </div>
+                    ) : (
+                      <div className="text-xs font-semibold text-slate-600">
+                        Other ideas
                       </div>
                     )}
                     <div className="flex flex-wrap gap-2">

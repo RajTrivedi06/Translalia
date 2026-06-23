@@ -9,6 +9,46 @@ export function getOpenAI() {
   return openai;
 }
 
+// DeepSeek is OpenAI-SDK compatible (same SDK, different baseURL + key).
+// Constructed lazily so a missing DEEPSEEK_API_KEY never throws at import for
+// OpenAI-only deployments; non-deepseek models keep using the `openai` singleton.
+const DEEPSEEK_BASE_URL = "https://api.deepseek.com";
+let deepseekClient: OpenAI | null = null;
+
+function getDeepSeekClient(): OpenAI {
+  if (!process.env.DEEPSEEK_API_KEY) throw new Error("DEEPSEEK_API_KEY missing");
+  if (!deepseekClient) {
+    deepseekClient = new OpenAI({
+      apiKey: process.env.DEEPSEEK_API_KEY,
+      baseURL: DEEPSEEK_BASE_URL,
+    });
+  }
+  return deepseekClient;
+}
+
+/**
+ * Provider-routing resolver for the Method 2 chat-completions path. Returns a
+ * DeepSeek-configured client for `deepseek*` model ids and the existing OpenAI
+ * singleton for everything else, so non-deepseek requests are byte-for-byte
+ * unchanged.
+ */
+export function getClientForModel(model: string): OpenAI {
+  return model.startsWith("deepseek") ? getDeepSeekClient() : openai;
+}
+
+/**
+ * DeepSeek-only request-body extras for the Method 2 chat-completions path.
+ * DeepSeek disables its thinking/reasoning mode via a top-level `thinking` field
+ * on the request body (the OpenAI Node SDK has no `extra_body`, so call sites
+ * spread this in and cast the params object). Returns `{}` for non-deepseek
+ * models, so OpenAI request bodies are byte-for-byte unchanged.
+ */
+export function deepSeekRequestExtras(
+  model: string
+): { thinking: { type: "disabled" } } | Record<string, never> {
+  return model.startsWith("deepseek") ? { thinking: { type: "disabled" } } : {};
+}
+
 export type AuditContext = {
   createdBy?: string; // user.id
   projectId?: string | null;

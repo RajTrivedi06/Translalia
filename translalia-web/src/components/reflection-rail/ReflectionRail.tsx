@@ -7,13 +7,17 @@ import { ReflectionHeader } from "@/components/reflection-rail/ReflectionHeader"
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, Loader2, BookOpen, Lightbulb, CheckCircle2, Music2, ChevronDown, ChevronUp, Check } from "lucide-react";
+import { Sparkles, Loader2, BookOpen, Lightbulb, CheckCircle2, Music2, ChevronDown, ChevronUp } from "lucide-react";
 import { useWorkshopStore } from "@/store/workshopSlice";
 import { useGuideStore } from "@/store/guideSlice";
 import { useNotebookStore } from "@/store/notebookSlice";
+import { JourneySummaryDisplay } from "@/components/journey/JourneySummaryDisplay";
 import { CongratulationsModal } from "@/components/workshop/CongratulationsModal";
 import { NotebookAISuggestions } from "@/components/notebook/NotebookAISuggestions";
+import { ExpressYourViewCard } from "@/components/reflection-rail/ExpressYourViewCard";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNotebookNotes } from "@/lib/hooks/useNotebookNotes";
+import { useReflectionArtifacts } from "@/lib/hooks/useReflectionArtifacts";
 
 interface ReflectionRailProps {
   showHeaderTitle?: boolean;
@@ -43,6 +47,7 @@ export function ReflectionRail({
   showHeaderTitle = true,
 }: ReflectionRailProps) {
   const t = useTranslations("Thread");
+  const tDiary = useTranslations("Diary");
   const params = useParams();
   const threadId = params?.threadId as string;
 
@@ -55,6 +60,8 @@ export function ReflectionRail({
   const threadNote = useNotebookStore((s) => s.threadNote);
   const lineNotes = useNotebookStore((s) => s.lineNotes);
   const { data: notebookNotes } = useNotebookNotes();
+  const { data: savedArtifacts } = useReflectionArtifacts();
+  const queryClient = useQueryClient();
 
   const [aiSuggestions, setAISuggestions] =
     React.useState<AIAssistStepCResponse | null>(null);
@@ -70,6 +77,8 @@ export function ReflectionRail({
   const [showRefineRhyme, setShowRefineRhyme] = React.useState(false);
   const [showInsights, setShowInsights] = React.useState(true);
   const [showJourney, setShowJourney] = React.useState(true);
+  const [hasHydratedArtifacts, setHasHydratedArtifacts] =
+    React.useState(false);
   const completedCount = Object.keys(completedLines).length;
   const allLinesCompleted = completedCount === poemLines.length && poemLines.length > 0;
   const hasNotes =
@@ -90,13 +99,44 @@ export function ReflectionRail({
     setLoadingSuggestions(false);
     setLoadingJourney(false);
 
-    // Reset collapse state
+    // Reset collapse state and hydration gate
     setShowRefineRhyme(false);
     setShowInsights(true);
     setShowJourney(true);
-
-    console.log('[ReflectionRail] State reset for thread:', threadId);
+    setHasHydratedArtifacts(false);
   }, [threadId]);
+
+  // Restore persisted AI artifacts after refresh or thread navigation
+  React.useEffect(() => {
+    if (!savedArtifacts || hasHydratedArtifacts) return;
+
+    if (savedArtifacts.translationInsights) {
+      setAISuggestions({
+        aims: savedArtifacts.translationInsights.aims,
+        suggestions: savedArtifacts.translationInsights.suggestions,
+        confidence:
+          savedArtifacts.translationInsights.confidence ?? undefined,
+      });
+      setShowInsights(true);
+    }
+
+    if (savedArtifacts.journeySummary) {
+      setJourneyReflection({
+        reflection: savedArtifacts.journeySummary.reflection ?? undefined,
+        insights: savedArtifacts.journeySummary.insights,
+        strengths: savedArtifacts.journeySummary.strengths,
+        challenges: savedArtifacts.journeySummary.challenges,
+        recommendations: savedArtifacts.journeySummary.recommendations,
+      });
+      setShowJourney(true);
+    }
+
+    if (savedArtifacts.refineRhyme) {
+      setShowRefineRhyme(true);
+    }
+
+    setHasHydratedArtifacts(true);
+  }, [savedArtifacts, hasHydratedArtifacts]);
 
   // Handler for applying AI suggestion adjustments
   const handleApplyAdjustment = React.useCallback(
@@ -127,6 +167,9 @@ export function ReflectionRail({
 
       const data: AIAssistStepCResponse = await response.json();
       setAISuggestions(data);
+      queryClient.invalidateQueries({
+        queryKey: ["reflection-artifacts", threadId],
+      });
     } catch (error) {
       console.error("[ReflectionRail] AI suggestions error:", error);
       setErrorSuggestions(
@@ -173,6 +216,9 @@ export function ReflectionRail({
       console.log("[Journey] API response:", data);
       console.log("[Journey] reflection data:", data.reflection);
       setJourneyReflection(data.reflection);
+      queryClient.invalidateQueries({
+        queryKey: ["reflection-artifacts", threadId],
+      });
     } catch (error) {
       console.error("[ReflectionRail] Journey reflection error:", error);
       setErrorJourney(
@@ -221,7 +267,7 @@ export function ReflectionRail({
               </button>
 
               <p className="text-sm text-foreground-muted">
-                Get help making your translation rhyme
+                {t("refineRhymeSubtitle")}
               </p>
 
               {showRefineRhyme && completedCount > 0 && (
@@ -237,7 +283,7 @@ export function ReflectionRail({
 
               {showRefineRhyme && completedCount === 0 && (
                 <p className="text-sm text-warning mt-2">
-                  Complete at least one translation line to use this feature.
+                  {t("refineRhymeCompleteOneLine")}
                 </p>
               )}
             </div>
@@ -401,131 +447,36 @@ export function ReflectionRail({
               )}
 
               {journeyReflection && (
-                <div className="mt-4 space-y-4">
-                  {(() => {
-                    const hasBullets =
-                      (journeyReflection?.insights?.length ?? 0) +
-                      (journeyReflection?.strengths?.length ?? 0) +
-                      (journeyReflection?.challenges?.length ?? 0) +
-                      (journeyReflection?.recommendations?.length ?? 0) >
-                      0;
-
-                    if (hasBullets) {
-                      return (
-                        <>
-                          {journeyReflection.insights &&
-                            journeyReflection.insights.length > 0 && (
-                              <div className="p-3 bg-surface rounded-lg border border-card-purple-border">
-                                <h4 className="text-sm font-medium text-foreground-secondary mb-2">
-                                  Key Insights:
-                                </h4>
-                                <ul className="space-y-1 text-sm text-foreground-muted">
-                                  {journeyReflection.insights.map(
-                                    (insight, idx) => (
-                                      <li
-                                        key={idx}
-                                        className="flex items-start gap-2"
-                                      >
-                                        <span className="text-accent mt-1">
-                                          •
-                                        </span>
-                                        <span>{insight}</span>
-                                      </li>
-                                    )
-                                  )}
-                                </ul>
-                              </div>
-                            )}
-
-                          {journeyReflection.strengths &&
-                            journeyReflection.strengths.length > 0 && (
-                              <div className="p-3 bg-surface rounded-lg border border-card-green-border">
-                                <h4 className="text-sm font-medium text-foreground-secondary mb-2">
-                                  Strengths:
-                                </h4>
-                                <ul className="space-y-1 text-sm text-foreground-muted">
-                                  {journeyReflection.strengths.map(
-                                    (strength, idx) => (
-                                      <li
-                                        key={idx}
-                                        className="flex items-start gap-2"
-                                      >
-                                        <Check className="w-4 h-4 text-success mt-0.5 flex-shrink-0" />
-                                        <span>{strength}</span>
-                                      </li>
-                                    )
-                                  )}
-                                </ul>
-                              </div>
-                            )}
-
-                          {journeyReflection.challenges &&
-                            journeyReflection.challenges.length > 0 && (
-                              <div className="p-3 bg-surface rounded-lg border border-card-orange-border">
-                                <h4 className="text-sm font-medium text-foreground-secondary mb-2">
-                                  Challenges:
-                                </h4>
-                                <ul className="space-y-1 text-sm text-foreground-muted">
-                                  {journeyReflection.challenges.map(
-                                    (challenge, idx) => (
-                                      <li
-                                        key={idx}
-                                        className="flex items-start gap-2"
-                                      >
-                                        <span className="text-warning mt-1">
-                                          !
-                                        </span>
-                                        <span>{challenge}</span>
-                                      </li>
-                                    )
-                                  )}
-                                </ul>
-                              </div>
-                            )}
-
-                          {journeyReflection.recommendations &&
-                            journeyReflection.recommendations.length > 0 && (
-                              <div className="p-3 bg-surface rounded-lg border border-card-amber-border">
-                                <h4 className="text-sm font-medium text-foreground-secondary mb-2">
-                                  To Explore Further:
-                                </h4>
-                                <ul className="space-y-1 text-sm text-foreground-muted">
-                                  {journeyReflection.recommendations.map(
-                                    (rec, idx) => (
-                                      <li
-                                        key={idx}
-                                        className="flex items-start gap-2"
-                                      >
-                                        <span className="text-warning mt-1">
-                                          →
-                                        </span>
-                                        <span>{rec}</span>
-                                      </li>
-                                    )
-                                  )}
-                                </ul>
-                              </div>
-                            )}
-                        </>
-                      );
-                    } else {
-                      // Fallback: show narrative text if arrays are empty
-                      return (
-                        <div className="p-3 bg-surface rounded-lg border border-card-purple-border">
-                          <div className="whitespace-pre-wrap text-sm text-foreground-muted leading-relaxed">
-                            {journeyReflection.reflection ||
-                              "No reflection text returned."}
-                          </div>
-                        </div>
-                      );
-                    }
-                  })()}
+                <div className="mt-4">
+                  <JourneySummaryDisplay
+                    density="compact"
+                    data={{
+                      reflection: journeyReflection.reflection,
+                      insights: journeyReflection.insights,
+                      strengths: journeyReflection.strengths,
+                      challenges: journeyReflection.challenges,
+                      recommendations: journeyReflection.recommendations,
+                    }}
+                    labels={{
+                      atAGlance: tDiary("journeyAtAGlance"),
+                      overview: tDiary("journeyOverview"),
+                      readMore: tDiary("journeyReadMore"),
+                      readLess: tDiary("journeyReadLess"),
+                      keyInsights: tDiary("keyInsights"),
+                      strengths: tDiary("strengths"),
+                      challenges: tDiary("challenges"),
+                      toExploreFurther: tDiary("toExploreFurther"),
+                    }}
+                  />
                 </div>
               )}
                 </div>
               )}
             </div>
           </Card>
+
+          {/* Express Your View - student's post-AI critical reflection */}
+          <ExpressYourViewCard threadId={threadId} />
 
           {/* Finish Button - Show when all lines are completed */}
           {allLinesCompleted && (

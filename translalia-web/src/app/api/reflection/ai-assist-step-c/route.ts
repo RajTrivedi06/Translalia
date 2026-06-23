@@ -14,6 +14,7 @@ import { GuideAnswers } from "@/store/guideSlice";
 import { z } from "zod";
 import { maskPrompts } from "@/server/audit/mask";
 import { insertPromptAudit } from "@/server/audit/insertPromptAudit";
+import { patchThreadStateField } from "@/server/guide/updateGuideState";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -244,6 +245,14 @@ export async function POST(req: NextRequest) {
     }
 
     const result = validatedResult.data;
+
+    // Persist latest Translation Insights snapshot for diary (fire-and-forget)
+    patchThreadStateField(threadId, ["translation_insights"], {
+      aims: result.aims,
+      suggestions: result.suggestions,
+      confidence: result.confidence ?? null,
+      generated_at: new Date().toISOString(),
+    }).catch((e) => log("persist_translation_insights_failed", e));
 
     // Log audit asynchronously
     const auditDuration = Date.now() - started;

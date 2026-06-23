@@ -13,6 +13,10 @@ export const WordSuggestionSchema = z.object({
   word: z.string().min(1),
   use: SuggestionUseSchema.optional().default("insert"),
   fitsWith: FitsWithSchema.optional().default("any"),
+  // The word in the current line this suggestion is an alternative for.
+  // Used by line-level suggestions to spread ideas across the whole line and
+  // group results by the word they replace. Optional: token suggestions omit it.
+  targetsWord: z.string().optional().nullable(),
   register: z.string().optional().default("neutral"),
   literalness: z.number().min(0).max(1).optional().default(0.5),
   reasoning: z.string().optional().default(""),

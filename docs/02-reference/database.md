@@ -48,6 +48,9 @@ Only entities and RPCs directly referenced by code or migrations are documented 
 | `translation_job` | Background translation queue/progress state. |
 | `workshop_lines` | Saved line translations and verification payloads. |
 | `notebook_notes` | Thread note plus line notes. |
+| `express_your_view` | Student's post-AI "Express Your View" reflection (single string). Autosaved, distinct from `notebook_notes`. |
+| `translation_insights` | Latest Translation Insights snapshot from reflection rail step-c (`aims`, `suggestions`, `confidence`, `generated_at`). |
+| `refine_rhyme` | Refine & Rhyme artifacts: optional `formalFeatures`, `adjustments`, `personalize` sub-objects plus `updated_at`. Steps persist independently. |
 | `variant_recipes_v3` | Current cached method-2 recipe bundle by mode. |
 | `variant_recipes_v2` | Legacy recipe cache; read for backward compatibility and migrated to v3. |
 | `variant_recipes_v1` | Legacy recipe cache; read-only fallback in `variantRecipes.ts`. |
@@ -60,7 +63,7 @@ Only entities and RPCs directly referenced by code or migrations are documented 
 | `exec_sql` | `supabase/migrations/20240117_add_exec_sql_rpc.sql` | Parameterized SQL execution for atomic JSONB patching. |
 | `patch_thread_state_field` | `supabase/migrations/20240117_add_exec_sql_rpc.sql` | Dedicated atomic patch helper for `chat_threads.state`. |
 | `append_method2_audit` | `supabase/migrations/20240117_add_exec_sql_rpc.sql` | **Deprecated.** Legacy RPC for `state.method2_audit`; production writes use the `translation_audits` table via `src/lib/ai/audit.ts`. |
-| `diary_completed_poems` | `supabase/migrations/20260121_diary_completed_poems.sql` | Return completed poems for the authenticated user. |
+| `diary_completed_poems` | `supabase/migrations/20260121_diary_completed_poems.sql`; extended by `20260621_diary_express_your_view.sql` and `20260622_diary_ai_artifacts.sql` | Return completed poems for the authenticated user (includes `express_your_view`, `translation_insights`, `refine_rhyme`, journey summary). |
 
 ## Ownership and Access
 - Project ownership is checked via `projects.owner_id`.

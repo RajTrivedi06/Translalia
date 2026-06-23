@@ -39,6 +39,7 @@ import {
   generateFallbackAdjustments,
   generateFallbackPersonalized,
 } from "@/lib/ai/notebookSuggestionsPrompts";
+import { patchThreadStateField } from "@/server/guide/updateGuideState";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -164,9 +165,45 @@ export async function POST(req: NextRequest) {
         return err(400, "INVALID_STEP", `Unknown step: ${body.step}`);
     }
 
-    // 7) Cache and return
+    // 7) Cache, persist refine_rhyme sub-field for diary, and return
     if (result.ok) {
       await cacheSet(cacheKey, result, CACHE_TTL_SECONDS);
+
+      const updatedAt = new Date().toISOString();
+      if (body.step === "identify" && result.formalFeatures) {
+        patchThreadStateField(
+          body.threadId,
+          ["refine_rhyme", "formalFeatures"],
+          result.formalFeatures
+        ).catch((e) => log("persist_refine_rhyme_identify_failed", e));
+        patchThreadStateField(
+          body.threadId,
+          ["refine_rhyme", "updated_at"],
+          updatedAt
+        ).catch((e) => log("persist_refine_rhyme_updated_at_failed", e));
+      } else if (body.step === "adjust" && result.adjustments) {
+        patchThreadStateField(
+          body.threadId,
+          ["refine_rhyme", "adjustments"],
+          result.adjustments
+        ).catch((e) => log("persist_refine_rhyme_adjust_failed", e));
+        patchThreadStateField(
+          body.threadId,
+          ["refine_rhyme", "updated_at"],
+          updatedAt
+        ).catch((e) => log("persist_refine_rhyme_updated_at_failed", e));
+      } else if (body.step === "personalize" && result.personalized) {
+        patchThreadStateField(
+          body.threadId,
+          ["refine_rhyme", "personalize"],
+          result.personalized
+        ).catch((e) => log("persist_refine_rhyme_personalize_failed", e));
+        patchThreadStateField(
+          body.threadId,
+          ["refine_rhyme", "updated_at"],
+          updatedAt
+        ).catch((e) => log("persist_refine_rhyme_updated_at_failed", e));
+      }
     }
 
     log("success", {
@@ -303,18 +340,6 @@ async function processAdjustStep(
     selectedLines: body.selectedLines,
     selectedCount: body.selectedLines?.length ?? 0,
   });
-
-  // Require formal features from previous step
-  if (!body.formalFeatures) {
-    return {
-      ok: false,
-      step: "adjust",
-      error: {
-        code: "MISSING_FEATURES",
-        message: "Formal features analysis is required for this step",
-      },
-    };
-  }
 
   // Require at least one selected line
   if (!body.selectedLines || body.selectedLines.length === 0) {

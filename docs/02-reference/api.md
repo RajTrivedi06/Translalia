@@ -49,7 +49,7 @@ Route catalog for the current Next.js API surface. Use this before opening route
 | notebook | `GET` | `/api/notebook/notes` | public | Fetch notebook notes for a thread. |
 | notebook | `POST` | `/api/notebook/notes` | public | Save merged notebook notes for a thread. |
 | notebook | `POST` | `/api/notebook/notes/line` | public | Save a single line note atomically. |
-| notebook | `POST` | `/api/notebook/suggestions` | public | Run identify/adjust/personalize notebook suggestion steps. |
+| notebook | `POST` | `/api/notebook/suggestions` | public | Run identify/adjust/personalize notebook suggestion steps; persists each step to `state.refine_rhyme`. |
 | notebook | `POST` | `/api/notebook/ai-assist` | public | Notebook-side AI assist. |
 | notebook | `POST` | `/api/notebook/poem-suggestions` | public | Whole-poem suggestions. |
 | notebook | `POST` | `/api/notebook/prismatic` | internal | Notebook-side prismatic generation route. |
@@ -57,7 +57,10 @@ Route catalog for the current Next.js API surface. Use this before opening route
 | journey | `POST` | `/api/journey/save-reflection` | public | Save reflection text. |
 | journey | `POST` | `/api/journey/generate-reflection` | public | Generate reflection and summary artifacts. |
 | journey | `POST` | `/api/journey/generate-brief-feedback` | public | Generate short journey feedback. |
-| reflection | `POST` | `/api/reflection/ai-assist-step-c` | public | Reflection-rail contextual suggestions. |
+| reflection | `GET` | `/api/reflection/artifacts` | public | Load persisted editing-rail AI artifacts (`translation_insights`, `refine_rhyme`, latest journey summary). |
+| reflection | `GET` | `/api/reflection/express-your-view` | public | Fetch the student's post-AI reflection (`state.express_your_view`). |
+| reflection | `POST` | `/api/reflection/express-your-view` | public | Save the student's post-AI reflection to `state.express_your_view`. |
+| reflection | `POST` | `/api/reflection/ai-assist-step-c` | public | Reflection-rail contextual suggestions; persists latest snapshot to `state.translation_insights`. |
 | verification | `POST` | `/api/verification/grade-line` | public | Grade one saved line (Track A). |
 | verification | `POST` | `/api/verification/context-notes` | public | Generate context notes (Track B). |
 | verification | `POST` | `/api/verification/feedback` | internal | Persist verification feedback. |

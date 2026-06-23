@@ -129,21 +129,11 @@ Do NOT include any text before or after the JSON.`;
 export function buildAdjustTranslationUserPrompt(
   sourcePoem: string,
   translationPoem: string,
-  formalFeatures: FormalFeaturesAnalysis,
+  formalFeatures: FormalFeaturesAnalysis | null | undefined,
   sourceLanguage?: string,
   targetLanguage?: string,
   selectedLines?: number[]
 ): string {
-  const rhymeInfo = formalFeatures.rhymeScheme
-    ? `RHYME SCHEME: ${formalFeatures.rhymeScheme}\n${formalFeatures.rhymeSchemeDescription || ""}`
-    : "No rhyme scheme detected in source";
-
-  const otherFeatures = formalFeatures.otherFeatures.length > 0
-    ? formalFeatures.otherFeatures.map(
-        (f) => `${f.name}: ${f.description} (examples: ${f.examples.join(", ")})`
-      ).join("\n")
-    : "None identified";
-
   // Get the source and translation lines
   const sourceLines = sourcePoem.split("\n");
   const translationLines = translationPoem.split("\n");
@@ -169,6 +159,38 @@ Find a rhyming sound that works for all/most of them, and rewrite each line to u
 `;
   }
 
+  let rhymeContext = "";
+  if (formalFeatures) {
+    const rhymeInfo = formalFeatures.rhymeScheme
+      ? `RHYME SCHEME: ${formalFeatures.rhymeScheme}\n${formalFeatures.rhymeSchemeDescription || ""}`
+      : "No rhyme scheme detected in source";
+
+    const otherFeatures =
+      formalFeatures.otherFeatures.length > 0
+        ? formalFeatures.otherFeatures
+            .map(
+              (f) =>
+                `${f.name}: ${f.description} (examples: ${f.examples.join(", ")})`
+            )
+            .join("\n")
+        : "None identified";
+
+    rhymeContext = `
+OPTIONAL CONTEXT (whole-poem rhyme analysis the student already ran):
+ORIGINAL POEM'S ${rhymeInfo}
+
+OTHER SOUND FEATURES:
+${otherFeatures}
+
+SUMMARY: ${formalFeatures.summary}
+`;
+  } else {
+    rhymeContext = `
+No whole-poem rhyme analysis has been run. Focus only on the selected lines above.
+Infer any useful rhyme patterns from those source lines, then suggest coordinated rewrites so the selected translation lines rhyme together.
+`;
+  }
+
   return `The student is translating a poem and needs help making specific lines RHYME TOGETHER.
 
 ${sourceLanguage ? `SOURCE LANGUAGE: ${sourceLanguage}` : ""}
@@ -181,13 +203,7 @@ STUDENT'S FULL TRANSLATION:
 ${translationPoem}
 
 ${selectedLinesInfo}
-
-ORIGINAL POEM'S ${rhymeInfo}
-
-OTHER SOUND FEATURES:
-${otherFeatures}
-
-SUMMARY: ${formalFeatures.summary}
+${rhymeContext}
 
 INSTRUCTIONS:
 1. Look at the selected lines as a GROUP

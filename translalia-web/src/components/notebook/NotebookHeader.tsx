@@ -31,6 +31,8 @@ interface NotebookHeaderProps {
   notesButtonLabel?: string;
   /** Ref for returning focus when the notes sheet closes */
   notesButtonRef?: React.RefObject<HTMLButtonElement | null>;
+  /** Optional on-demand help affordance rendered beside the notes button */
+  notesHelp?: React.ReactNode;
 }
 
 /**
@@ -49,6 +51,7 @@ export function NotebookHeader({
   lineNotesCount = 0,
   notesButtonLabel = "Notes",
   notesButtonRef,
+  notesHelp,
 }: NotebookHeaderProps) {
   const hasUnsaved = draftCount > 0;
 
@@ -105,25 +108,28 @@ export function NotebookHeader({
           </AnimatePresence>
 
           {onOpenNotes && (
-            <Button
-              ref={notesButtonRef}
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs"
-              onClick={onOpenNotes}
-            >
-              <StickyNote className="w-3.5 h-3.5 mr-1.5" />
-              {notesButtonLabel}
-              {lineNotesCount > 0 && (
-                <Badge
-                  variant="secondary"
-                  className="ml-1.5 h-4 min-w-[1rem] px-1 text-[10px] leading-none"
-                >
-                  {lineNotesCount}
-                </Badge>
-              )}
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button
+                ref={notesButtonRef}
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={onOpenNotes}
+              >
+                <StickyNote className="w-3.5 h-3.5 mr-1.5" />
+                {notesButtonLabel}
+                {lineNotesCount > 0 && (
+                  <Badge
+                    variant="secondary"
+                    className="ml-1.5 h-4 min-w-[1rem] px-1 text-[10px] leading-none"
+                  >
+                    {lineNotesCount}
+                  </Badge>
+                )}
+              </Button>
+              {notesHelp}
+            </div>
           )}
 
           {onOpenFullEditor && (

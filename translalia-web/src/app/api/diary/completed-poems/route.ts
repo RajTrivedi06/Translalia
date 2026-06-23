@@ -51,13 +51,16 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const items = (data || []) as Array<{
+    const rows = (data || []) as Array<{
       thread_id: string;
       title: string;
       thread_created_at: string;
       raw_poem: string | null;
       workshop_lines: unknown;
       notebook_notes: unknown;
+      express_your_view: string | null;
+      translation_insights: unknown;
+      refine_rhyme: unknown;
       journey_summary_created_at: string | null;
       reflection_text: string | null;
       insights: string[] | null;
@@ -65,6 +68,15 @@ export async function GET(req: NextRequest) {
       challenges: string[] | null;
       recommendations: string[] | null;
     }>;
+
+    const items = rows.map(
+      ({ express_your_view, translation_insights, refine_rhyme, ...rest }) => ({
+        ...rest,
+        expressYourView: express_your_view ?? null,
+        translationInsights: translation_insights ?? null,
+        refineRhyme: refine_rhyme ?? null,
+      })
+    );
 
     // 4) Derive next cursor if we got a full page
     let nextCursor: { beforeCreatedAt: string; beforeId: string } | undefined;

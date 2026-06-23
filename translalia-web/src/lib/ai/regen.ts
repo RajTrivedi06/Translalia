@@ -7,7 +7,7 @@
  */
 
 import { z } from "zod";
-import { openai } from "./openai";
+import { openai, getClientForModel, deepSeekRequestExtras } from "./openai";
 import { buildSamplingParams } from "./buildSamplingParams";
 import {
   chatCompletionsWithRetry,
@@ -641,12 +641,13 @@ export async function regenerateVariantWithSalvage(
             // ISS-017: Pass instrumentation for OpenAI call tracking
             // ISS-018: Pass metadata for raw output logging
             completion = await chatCompletionsWithRetry(
-              openai,
+              getClientForModel(modelToUse),
               {
                 model: modelToUse,
                 ...buildSamplingParams(modelToUse, { temperature: 0.9 }),
                 response_format: { type: "json_object" },
                 ...getTokenLimitParam(modelToUse, regenMaxOutputTokens),
+                ...deepSeekRequestExtras(modelToUse),
                 messages: [
                   {
                     role: "system",
@@ -654,7 +655,7 @@ export async function regenerateVariantWithSalvage(
                   },
                   { role: "user", content: promptText },
                 ],
-              },
+              } as Parameters<typeof chatCompletionsWithRetry>[1],
               parseCallback, // ISS-013: Pass parse callback for fallback retry
               undefined, // ISS-017: Pass instrumentation (not available in this context)
               "regen", // ISS-017: Call kind
@@ -780,10 +781,11 @@ export async function regenerateVariantWithSalvage(
           }
           
           try {
-            const completion = await chatCompletionsWithRetry(openai, {
+            const completion = await chatCompletionsWithRetry(getClientForModel(modelToUse), {
               model: modelToUse,
               response_format: { type: "json_object" },
               ...getTokenLimitParam(modelToUse, regenMaxOutputTokens),
+              ...deepSeekRequestExtras(modelToUse),
               messages: [
                 {
                   role: "system",
@@ -791,7 +793,7 @@ export async function regenerateVariantWithSalvage(
                 },
                 { role: "user", content: promptText },
               ],
-            });
+            } as Parameters<typeof chatCompletionsWithRetry>[1]);
 
             // ISS-001: Safety logging for regen (parallel case)
             const completionTokens = completion.usage?.completion_tokens;

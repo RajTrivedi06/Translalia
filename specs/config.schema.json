@@ -36,6 +36,10 @@
       "$ref": "#/$defs/non_empty",
       "description": "Required OpenAI API key used by translation, notebook, journey, and verification routes."
     },
+    "DEEPSEEK_API_KEY": {
+      "type": "string",
+      "description": "Optional DeepSeek API key. Required only when a deepseek-* model is selected on the Method 2 chat-completions path (provider-routed via getClientForModel in src/lib/ai/openai.ts; base URL https://api.deepseek.com). Unused for OpenAI-only deployments."
+    },
     "NEXT_PUBLIC_SUPABASE_URL": {
       "$ref": "#/$defs/non_empty",
       "description": "Required Supabase project URL used by browser, server, auth, and middleware code."

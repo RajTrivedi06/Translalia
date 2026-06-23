@@ -749,7 +749,7 @@ function countLensDiffs(a: Lens, b: Lens): number {
 import { lockHelper, sleep, cacheGet, cacheSet } from "./cache";
 import { patchThreadStateField } from "@/server/guide/updateGuideState";
 import { supabaseServer } from "@/lib/supabaseServer";
-import { openai } from "./openai";
+import { getClientForModel } from "./openai";
 import { TRANSLATOR_MODEL } from "@/lib/models";
 import { trackCallStart, trackCallEnd } from "./openaiInstrumentation";
 import { createRetryTelemetryCollector, noOpRetryTelemetry } from "@/lib/telemetry/retryTelemetry";
@@ -842,7 +842,7 @@ async function generateRecipesLLM(
     }
     
     const completion = isGpt5
-      ? await openai.chat.completions.create({
+      ? await getClientForModel(modelToUse).chat.completions.create({
           model: modelToUse,
           response_format: { type: "json_object" },
           messages: [
@@ -850,7 +850,7 @@ async function generateRecipesLLM(
             { role: "user", content: userPrompt },
           ],
         })
-      : await openai.chat.completions.create({
+      : await getClientForModel(modelToUse).chat.completions.create({
           model: modelToUse,
           temperature,
           response_format: { type: "json_object" },

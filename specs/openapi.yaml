@@ -621,6 +621,61 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GenericObject"
+  /api/reflection/artifacts:
+    get:
+      tags: [reflection]
+      summary: Load persisted editing-rail AI artifacts for page hydration
+      x-classification: public
+      parameters:
+        - in: query
+          name: threadId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Translation insights, refine & rhyme steps, and latest journey summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
+  /api/reflection/express-your-view:
+    get:
+      tags: [reflection]
+      summary: Fetch the student's post-AI "Express Your View" reflection
+      x-classification: public
+      parameters:
+        - in: query
+          name: threadId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Express Your View reflection (state.express_your_view)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
+    post:
+      tags: [reflection]
+      summary: Save the student's "Express Your View" reflection
+      x-classification: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenericObject"
+      responses:
+        "200":
+          description: Updated reflection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenericObject"
   /api/journey/save-reflection:
     post:
       tags: [journey]
@@ -1254,6 +1309,21 @@ components:
           oneOf:
             - type: "null"
             - type: object
+              additionalProperties: true
+        expressYourView:
+          type: [string, "null"]
+          description: Student post-AI reflection from state.express_your_view.
+        translationInsights:
+          oneOf:
+            - type: "null"
+            - type: object
+              description: Latest step-c snapshot from state.translation_insights.
+              additionalProperties: true
+        refineRhyme:
+          oneOf:
+            - type: "null"
+            - type: object
+              description: Refine & Rhyme artifacts from state.refine_rhyme.
               additionalProperties: true
         journey_summary_created_at:
           type: [string, "null"]

@@ -20,9 +20,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { useTranslations } from "next-intl";
 import { useWorkshopStore } from "@/store/workshopSlice";
 import { useThreadId } from "@/hooks/useThreadId";
+import { useQueryClient } from "@tanstack/react-query";
 import { useGuideStore } from "@/store/guideSlice";
+import { useReflectionArtifacts } from "@/lib/hooks/useReflectionArtifacts";
 
 import type {
   SuggestionStep,
@@ -54,7 +57,10 @@ export function NotebookAISuggestions({
   className,
   hideHeader = false,
 }: NotebookAISuggestionsProps) {
+  const t = useTranslations("Thread");
   const threadId = useThreadId();
+  const queryClient = useQueryClient();
+  const { data: savedArtifacts } = useReflectionArtifacts();
   const poemLines = useWorkshopStore((s) => s.poemLines);
   const completedLines = useWorkshopStore((s) => s.completedLines);
   const targetLanguage = useGuideStore((s) => s.answers.targetLanguage);
@@ -91,6 +97,42 @@ export function NotebookAISuggestions({
   const [expandedSteps, setExpandedSteps] = React.useState<Set<SuggestionStep>>(
     () => new Set()
   );
+  const [hasHydratedRefineRhyme, setHasHydratedRefineRhyme] =
+    React.useState(false);
+
+  React.useEffect(() => {
+    setFormalFeatures(null);
+    setAdjustments(null);
+    setPersonalized(null);
+    setExpandedSteps(new Set());
+    setHasHydratedRefineRhyme(false);
+    setErrors({ identify: null, adjust: null, personalize: null });
+  }, [threadId]);
+
+  React.useEffect(() => {
+    if (!savedArtifacts || hasHydratedRefineRhyme) return;
+
+    const refineRhyme = savedArtifacts.refineRhyme;
+    if (refineRhyme) {
+      const {
+        formalFeatures: savedFeatures,
+        adjustments: savedAdjustments,
+        personalized: savedPersonalized,
+      } = refineRhyme;
+
+      if (savedFeatures) setFormalFeatures(savedFeatures);
+      if (savedAdjustments) setAdjustments(savedAdjustments);
+      if (savedPersonalized) setPersonalized(savedPersonalized);
+
+      const steps = new Set<SuggestionStep>();
+      if (savedFeatures) steps.add("identify");
+      if (savedAdjustments) steps.add("adjust");
+      if (savedPersonalized) steps.add("personalize");
+      if (steps.size > 0) setExpandedSteps(steps);
+    }
+
+    setHasHydratedRefineRhyme(true);
+  }, [savedArtifacts, hasHydratedRefineRhyme]);
 
   const toggleStepExpanded = React.useCallback((step: SuggestionStep) => {
     setExpandedSteps((prev) => {
@@ -170,9 +212,12 @@ export function NotebookAISuggestions({
 
       // For adjust step, include selected lines in the request
       const selectedLinesArray = Array.from(selectedLines).sort((a, b) => a - b);
+      // Whole-poem analysis (identify) is optional context for adjust/personalize.
       const featuresToUse =
         options?.formalFeaturesOverride ??
-        (step === "adjust" || step === "personalize" ? formalFeatures : undefined);
+        (step === "adjust" || step === "personalize"
+          ? formalFeatures ?? undefined
+          : undefined);
 
       try {
         const response = await fetch("/api/notebook/suggestions", {
@@ -213,6 +258,9 @@ export function NotebookAISuggestions({
         }
 
         expandStep(step);
+        queryClient.invalidateQueries({
+          queryKey: ["reflection-artifacts", threadId],
+        });
         return data;
       } catch (e) {
         const message =
@@ -232,6 +280,8 @@ export function NotebookAISuggestions({
       lineNotes,
       formalFeatures,
       selectedLines,
+      expandStep,
+      queryClient,
     ]
   );
 
@@ -248,121 +298,25 @@ export function NotebookAISuggestions({
           </div>
           <div>
             <h3 className="text-lg font-bold text-slate-800">Refine & Rhyme</h3>
-            <p className="text-sm text-slate-500">
-              Get help making your translation rhyme
-            </p>
+            <p className="text-sm text-slate-500">{t("refineRhymeSubtitle")}</p>
           </div>
         </div>
       )}
 
-      {/* Line Selection Section */}
-      <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-        <div className="flex items-center justify-between mb-3">
-          <h4 className="text-sm font-semibold text-slate-700">
-            Which lines need to rhyme together?
-          </h4>
-          <div className="flex gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={selectAllLines}
-              className="text-xs h-9"
-            >
-              Select all
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={clearSelection}
-              className="text-xs h-9"
-              disabled={selectedLines.size === 0}
-            >
-              Clear
-            </Button>
-          </div>
-        </div>
-        
-        <p className="text-xs text-slate-500 mb-3">
-          Select the lines you want help with. We'll give you coordinated suggestions so they rhyme together.
-        </p>
+      <p className="text-sm text-slate-600">{t("refineRhymeIntro")}</p>
 
-        <div className="space-y-1 max-h-[300px] overflow-y-auto">
-          {poemLines.map((sourceLine, idx) => {
-            const translatedLine = completedLines[idx] || draftLines[idx] || "";
-            const isSelected = selectedLines.has(idx);
-            const hasTranslation = translatedLine.trim().length > 0;
-
-            return (
-              <button
-                key={idx}
-                onClick={() => toggleLineSelection(idx)}
-                className={cn(
-                  "w-full flex items-start gap-3 p-3 rounded-lg text-left transition-all",
-                  isSelected
-                    ? "bg-violet-100 border-2 border-violet-400"
-                    : "bg-white border border-slate-200 hover:border-violet-300 hover:bg-violet-50/50"
-                )}
-              >
-                <div className="flex-shrink-0 mt-0.5">
-                  {isSelected ? (
-                    <CheckSquare className="h-5 w-5 text-violet-600" />
-                  ) : (
-                    <Square className="h-5 w-5 text-slate-300" />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Badge variant="outline" className="text-xs">
-                      Line {idx + 1}
-                    </Badge>
-                    {!hasTranslation && (
-                      <Badge variant="secondary" className="text-xs text-amber-600 bg-amber-50">
-                        No translation yet
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-2 gap-3 text-sm">
-                    <div>
-                      <span className="text-xs text-slate-400 block">Source:</span>
-                      <span className="text-slate-600 line-clamp-1">{sourceLine}</span>
-                    </div>
-                    <div>
-                      <span className="text-xs text-slate-400 block">Your translation:</span>
-                      <span className={cn(
-                        "line-clamp-1",
-                        hasTranslation ? "text-slate-800" : "text-slate-400 italic"
-                      )}>
-                        {hasTranslation ? translatedLine : "Not translated yet"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-
-        {selectedLines.size > 0 && (
-          <div className="mt-4 pt-4 border-t border-slate-200">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-slate-600">
-                <strong>{selectedLines.size}</strong> line{selectedLines.size !== 1 ? "s" : ""} selected
-              </span>
-              <Badge className="bg-violet-600">
-                Lines {Array.from(selectedLines).sort((a, b) => a - b).map(l => l + 1).join(", ")}
-              </Badge>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Step 1: Identify Rhyme Scheme */}
+      {/* Option 1: Whole-poem rhyme scheme (independent) */}
       <SuggestionPromptCard
         icon={Search}
         iconColor="text-blue-600"
         iconBg="bg-blue-50"
-        prompt="First, let me identify the rhyme scheme of your source text. I'll show you which lines rhyme and what sounds to use."
-        buttonText="Analyze the rhyme scheme"
+        title={t("refineRhymeWholePoemTitle")}
+        prompt={t("refineRhymeWholePoemPrompt")}
+        buttonText={t("refineRhymeWholePoemButton")}
+        analyzingLabel={t("refineRhymeAnalyzing")}
+        doneShowLabel={t("refineRhymeDoneShow")}
+        doneHideLabel={t("refineRhymeDoneHide")}
+        tryAgainLabel={t("refineRhymeTryAgain")}
         isLoading={loading.identify}
         error={errors.identify}
         hasResult={!!formalFeatures}
@@ -376,68 +330,216 @@ export function NotebookAISuggestions({
         )}
       </SuggestionPromptCard>
 
-      {/* Step 2: Suggest Rhyme Adjustments - always visible, clickable when lines selected */}
-      <SuggestionPromptCard
-        icon={Wand2}
-        iconColor="text-violet-600"
-        iconBg="bg-violet-50"
-        prompt={
-          selectedLines.size > 0
-            ? `Now I'll suggest how to make your ${selectedLines.size} selected line${selectedLines.size !== 1 ? "s" : ""} rhyme together.`
-            : "Select lines above, then I'll suggest how to make them rhyme together."
-        }
-        buttonText={
-          selectedLines.size > 0
-            ? `Get rhyme suggestions for ${selectedLines.size} line${selectedLines.size !== 1 ? "s" : ""}`
-            : "Get rhyme suggestions"
-        }
-        isLoading={loading.identify || loading.adjust}
-        error={errors.adjust}
-        hasResult={!!adjustments}
-        isExpanded={expandedSteps.has("adjust")}
-        onToggleExpand={() => toggleStepExpanded("adjust")}
-        onAction={async () => {
-          if (selectedLines.size === 0) return;
-          let features = formalFeatures;
-          if (!features) {
-            const identifyData = await fetchSuggestions("identify");
-            features = identifyData?.formalFeatures;
-            if (!features) return;
-          }
-          await fetchSuggestions("adjust", { formalFeaturesOverride: features });
-        }}
-        onRetry={() => fetchSuggestions("adjust")}
-        disabled={selectedLines.size === 0}
-      >
-        {adjustments && (
-          <AdjustmentsDisplay
-            adjustments={adjustments}
-            onApply={onApplyAdjustment}
-          />
-        )}
-      </SuggestionPromptCard>
+      {/* Option 2: Selected-lines rhyme suggestions (independent) */}
+      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm">
+        <div className="border-b border-slate-100 bg-slate-50/80 px-4 py-3">
+          <div className="flex items-center gap-2">
+            <div className="rounded-lg bg-violet-50 p-2">
+              <Wand2 className="h-5 w-5 text-violet-600" />
+            </div>
+            <div>
+              <h4 className="text-sm font-semibold text-slate-800">
+                {t("refineRhymeSelectedTitle")}
+              </h4>
+              <p className="text-xs text-slate-500">
+                {t("refineRhymeSelectedIntro")}
+              </p>
+            </div>
+          </div>
+        </div>
 
-      {/* Step 3: Personalized Suggestions (only if step 1 complete) */}
-      {formalFeatures && (
-        <SuggestionPromptCard
-          icon={Heart}
-          iconColor="text-rose-600"
-          iconBg="bg-rose-50"
-          prompt="Want more ideas? I'll look at your translation diary and give you personalized suggestions for your rhyming choices."
-          buttonText="Give me personalized ideas"
-          isLoading={loading.personalize}
-          error={errors.personalize}
-          hasResult={!!personalized}
-          isExpanded={expandedSteps.has("personalize")}
-          onToggleExpand={() => toggleStepExpanded("personalize")}
-          onAction={() => fetchSuggestions("personalize")}
-          onRetry={() => fetchSuggestions("personalize")}
-        >
-          {personalized && (
-            <PersonalizedDisplay personalized={personalized} />
-          )}
-        </SuggestionPromptCard>
-      )}
+        <div className="space-y-4 p-4">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h5 className="text-sm font-semibold text-slate-700">
+                {t("refineRhymeLinePickerTitle")}
+              </h5>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={selectAllLines}
+                  className="h-9 text-xs"
+                >
+                  {t("refineRhymeSelectAll")}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearSelection}
+                  className="h-9 text-xs"
+                  disabled={selectedLines.size === 0}
+                >
+                  {t("refineRhymeClear")}
+                </Button>
+              </div>
+            </div>
+
+            <div className="max-h-[300px] space-y-1 overflow-y-auto">
+              {poemLines.map((sourceLine, idx) => {
+                const translatedLine =
+                  completedLines[idx] || draftLines[idx] || "";
+                const isSelected = selectedLines.has(idx);
+                const lineHasTranslation = translatedLine.trim().length > 0;
+
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => toggleLineSelection(idx)}
+                    className={cn(
+                      "flex w-full items-start gap-3 rounded-lg p-3 text-left transition-all",
+                      isSelected
+                        ? "border-2 border-violet-400 bg-violet-100"
+                        : "border border-slate-200 bg-white hover:border-violet-300 hover:bg-violet-50/50"
+                    )}
+                  >
+                    <div className="mt-0.5 flex-shrink-0">
+                      {isSelected ? (
+                        <CheckSquare className="h-5 w-5 text-violet-600" />
+                      ) : (
+                        <Square className="h-5 w-5 text-slate-300" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-1 flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">
+                          Line {idx + 1}
+                        </Badge>
+                        {!lineHasTranslation && (
+                          <Badge
+                            variant="secondary"
+                            className="bg-amber-50 text-xs text-amber-600"
+                          >
+                            {t("refineRhymeNoTranslationYet")}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <span className="block text-xs text-slate-400">
+                            {t("refineRhymeSourceLabel")}
+                          </span>
+                          <span className="line-clamp-1 text-slate-600">
+                            {sourceLine}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="block text-xs text-slate-400">
+                            {t("refineRhymeTranslationLabel")}
+                          </span>
+                          <span
+                            className={cn(
+                              "line-clamp-1",
+                              lineHasTranslation
+                                ? "text-slate-800"
+                                : "italic text-slate-400"
+                            )}
+                          >
+                            {lineHasTranslation
+                              ? translatedLine
+                              : t("refineRhymeNotTranslatedYet")}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {selectedLines.size > 0 && (
+              <div className="mt-4 border-t border-slate-200 pt-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-slate-600">
+                    {selectedLines.size === 1
+                      ? t("refineRhymeLineSelected")
+                      : t("refineRhymeLinesSelected", {
+                          count: selectedLines.size,
+                        })}
+                  </span>
+                  <Badge className="bg-violet-600">
+                    {t("refineRhymeLinesLabel", {
+                      lines: Array.from(selectedLines)
+                        .sort((a, b) => a - b)
+                        .map((l) => l + 1)
+                        .join(", "),
+                    })}
+                  </Badge>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <SuggestionPromptCard
+            embedded
+            icon={Wand2}
+            iconColor="text-violet-600"
+            iconBg="bg-violet-50"
+            prompt={
+              selectedLines.size > 0
+                ? t("refineRhymeSelectedPrompt", {
+                    count: selectedLines.size,
+                  })
+                : t("refineRhymeSelectedPromptEmpty")
+            }
+            buttonText={
+              selectedLines.size > 0
+                ? t("refineRhymeSelectedButton", {
+                    count: selectedLines.size,
+                  })
+                : t("refineRhymeSelectedButtonDisabled")
+            }
+            analyzingLabel={t("refineRhymeAnalyzing")}
+            doneShowLabel={t("refineRhymeDoneShow")}
+            doneHideLabel={t("refineRhymeDoneHide")}
+            tryAgainLabel={t("refineRhymeTryAgain")}
+            isLoading={loading.adjust}
+            error={errors.adjust}
+            hasResult={!!adjustments}
+            isExpanded={expandedSteps.has("adjust")}
+            onToggleExpand={() => toggleStepExpanded("adjust")}
+            onAction={() => {
+              if (selectedLines.size === 0) return;
+              fetchSuggestions("adjust");
+            }}
+            onRetry={() => fetchSuggestions("adjust")}
+            disabled={selectedLines.size === 0}
+          >
+            {adjustments && (
+              <AdjustmentsDisplay
+                adjustments={adjustments}
+                onApply={onApplyAdjustment}
+              />
+            )}
+          </SuggestionPromptCard>
+        </div>
+      </div>
+
+      {/* Option 3: Personalized suggestions (optional; uses whole-poem context when available) */}
+      <SuggestionPromptCard
+        icon={Heart}
+        iconColor="text-rose-600"
+        iconBg="bg-rose-50"
+        title={t("refineRhymePersonalizedTitle")}
+        prompt={t("refineRhymePersonalizedPrompt")}
+        buttonText={t("refineRhymePersonalizedButton")}
+        analyzingLabel={t("refineRhymeAnalyzing")}
+        doneShowLabel={t("refineRhymeDoneShow")}
+        doneHideLabel={t("refineRhymeDoneHide")}
+        tryAgainLabel={t("refineRhymeTryAgain")}
+        isLoading={loading.personalize}
+        error={errors.personalize}
+        hasResult={!!personalized}
+        isExpanded={expandedSteps.has("personalize")}
+        onToggleExpand={() => toggleStepExpanded("personalize")}
+        onAction={() => fetchSuggestions("personalize")}
+        onRetry={() => fetchSuggestions("personalize")}
+      >
+        {personalized && <PersonalizedDisplay personalized={personalized} />}
+      </SuggestionPromptCard>
     </div>
   );
 }
@@ -450,8 +552,13 @@ interface SuggestionPromptCardProps {
   icon: React.ComponentType<{ className?: string }>;
   iconColor: string;
   iconBg: string;
+  title?: string;
   prompt: string;
   buttonText: string;
+  analyzingLabel?: string;
+  doneShowLabel?: string;
+  doneHideLabel?: string;
+  tryAgainLabel?: string;
   isLoading: boolean;
   error: string | null;
   hasResult: boolean;
@@ -460,6 +567,8 @@ interface SuggestionPromptCardProps {
   onAction: () => void;
   onRetry: () => void;
   disabled?: boolean;
+  /** When true, omit outer card chrome (used inside a parent section). */
+  embedded?: boolean;
   children?: React.ReactNode;
 }
 
@@ -467,8 +576,13 @@ function SuggestionPromptCard({
   icon: Icon,
   iconColor,
   iconBg,
+  title,
   prompt,
   buttonText,
+  analyzingLabel = "Working…",
+  doneShowLabel = "Done! Click to show results",
+  doneHideLabel = "Done! Click to hide results",
+  tryAgainLabel = "Try again",
   isLoading,
   error,
   hasResult,
@@ -477,80 +591,102 @@ function SuggestionPromptCard({
   onAction,
   onRetry,
   disabled,
+  embedded = false,
   children,
 }: SuggestionPromptCardProps) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm">
-      {/* Prompt Header */}
-      <div className="p-4">
-        <div className="flex items-start gap-3">
-          <div className={cn("p-2 rounded-lg", iconBg)}>
+  const content = (
+    <>
+      <div className={cn("flex items-start gap-3", embedded ? "" : "p-4")}>
+        {!embedded && (
+          <div className={cn("rounded-lg p-2", iconBg)}>
             <Icon className={cn("h-5 w-5", iconColor)} />
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm text-slate-700">{prompt}</p>
+        )}
+        <div className="min-w-0 flex-1">
+          {title && (
+            <h4 className="mb-1 text-sm font-semibold text-slate-800">{title}</h4>
+          )}
+          <p className="text-sm text-slate-700">{prompt}</p>
 
-            {/* Action button or status */}
-            <div className="mt-3">
-              {isLoading ? (
-                <div className="flex items-center gap-2 text-sm text-slate-500">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Analyzing...</span>
+          {/* Action button or status */}
+          <div className="mt-3">
+            {isLoading ? (
+              <div className="flex items-center gap-2 text-sm text-slate-500">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>{analyzingLabel}</span>
+              </div>
+            ) : error ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm text-red-600">
+                  <AlertCircle className="h-4 w-4" />
+                  <span>{error}</span>
                 </div>
-              ) : error ? (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 text-sm text-red-600">
-                    <AlertCircle className="h-4 w-4" />
-                    <span>{error}</span>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={onRetry}
-                    className="text-xs"
-                  >
-                    <RefreshCw className="h-3 w-3 mr-1" />
-                    Try again
-                  </Button>
-                </div>
-              ) : hasResult ? (
-                <button
-                  onClick={onToggleExpand}
-                  className="flex items-center gap-2 text-sm text-slate-600 hover:text-slate-800"
-                >
-                  <Check className="h-4 w-4 text-emerald-600" />
-                  <span className="font-medium">Done! Click to {isExpanded ? "hide" : "show"} results</span>
-                  {isExpanded ? (
-                    <ChevronUp className="h-4 w-4" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4" />
-                  )}
-                </button>
-              ) : (
                 <Button
+                  type="button"
                   variant="outline"
                   size="sm"
-                  onClick={onAction}
-                  disabled={disabled}
-                  className={cn(
-                    "bg-slate-50 hover:bg-slate-100",
-                    disabled && "opacity-50 cursor-not-allowed"
-                  )}
+                  onClick={onRetry}
+                  className="text-xs"
                 >
-                  {buttonText}
+                  <RefreshCw className="mr-1 h-3 w-3" />
+                  {tryAgainLabel}
                 </Button>
-              )}
-            </div>
+              </div>
+            ) : hasResult ? (
+              <button
+                type="button"
+                onClick={onToggleExpand}
+                className="flex items-center gap-2 text-sm text-slate-600 hover:text-slate-800"
+              >
+                <Check className="h-4 w-4 text-emerald-600" />
+                <span className="font-medium">
+                  {isExpanded ? doneHideLabel : doneShowLabel}
+                </span>
+                {isExpanded ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+              </button>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onAction}
+                disabled={disabled}
+                className={cn(
+                  "bg-slate-50 hover:bg-slate-100",
+                  disabled && "cursor-not-allowed opacity-50"
+                )}
+              >
+                {buttonText}
+              </Button>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Expanded Results */}
       {hasResult && isExpanded && (
-        <div className="border-t border-slate-100 bg-slate-50/50 p-4">
+        <div
+          className={cn(
+            "border-t border-slate-100 bg-slate-50/50 p-4",
+            embedded && "mt-3 rounded-lg border border-slate-200"
+          )}
+        >
           {children}
         </div>
       )}
+    </>
+  );
+
+  if (embedded) {
+    return <div>{content}</div>;
+  }
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      {content}
     </div>
   );
 }

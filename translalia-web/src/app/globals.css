@@ -63,6 +63,75 @@
   }
 }
 
+/* Congratulations modal animations */
+@keyframes congrats-float-particle {
+  0% {
+    opacity: 0;
+    transform: translateY(0) scale(0);
+  }
+  10% {
+    opacity: 1;
+    transform: translateY(-20px) scale(1);
+  }
+  90% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-200px) scale(0.5) rotate(180deg);
+  }
+}
+
+@keyframes congrats-confetti-fall {
+  0% {
+    opacity: 1;
+    transform: translateY(-20px) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(400px) rotate(720deg);
+  }
+}
+
+@keyframes congrats-ring-pulse {
+  0% {
+    opacity: 0.6;
+    transform: translate(-50%, -50%) scale(0.8);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.4);
+  }
+}
+
+@keyframes congrats-sparkle-float {
+  0%,
+  100% {
+    opacity: 0.7;
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-8px) rotate(10deg);
+  }
+}
+
+.animate-congrats-float-particle {
+  animation: congrats-float-particle ease-out forwards;
+}
+
+.animate-congrats-confetti-fall {
+  animation: congrats-confetti-fall 2.5s ease-in forwards;
+}
+
+.animate-congrats-ring-pulse {
+  animation: congrats-ring-pulse 2s ease-out infinite;
+}
+
+.animate-congrats-sparkle-float {
+  animation: congrats-sparkle-float 2s ease-in-out infinite;
+}
+
 /* Pulse animation for notifications */
 @keyframes pulse-subtle {
   0%,

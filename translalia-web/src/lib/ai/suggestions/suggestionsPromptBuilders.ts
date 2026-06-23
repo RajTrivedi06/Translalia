@@ -78,6 +78,52 @@ TARGET-LANGUAGE ANCHORS (use these to stay in the target language)
 `.trim();
 }
 
+function pickPrimaryTargetLine(params: {
+  targetLineDraft?: string | null;
+  variantFullTexts?: { A?: string | null; B?: string | null; C?: string | null } | null;
+  selectedVariant?: 1 | 2 | 3 | null;
+}): string {
+  const variants = params.variantFullTexts;
+  const bySelection =
+    params.selectedVariant === 1
+      ? variants?.A
+      : params.selectedVariant === 2
+      ? variants?.B
+      : params.selectedVariant === 3
+      ? variants?.C
+      : null;
+  const candidates = [
+    bySelection,
+    params.targetLineDraft,
+    variants?.A,
+    variants?.B,
+    variants?.C,
+  ];
+  for (const candidate of candidates) {
+    if (candidate && candidate.trim()) return candidate.trim();
+  }
+  return "";
+}
+
+function buildCoverageSection(primaryTargetLine: string): {
+  section: string;
+  wordCount: number;
+} {
+  const words = tokenize(primaryTargetLine).filter((w) => w.length > 1);
+  // Keep the list bounded so the prompt stays small on long lines.
+  const unique = Array.from(new Set(words)).slice(0, 12);
+  if (unique.length === 0) {
+    return { section: "", wordCount: 0 };
+  }
+  return {
+    section: [
+      "WORDS IN THE CURRENT LINE (cover a spread of these, not just the first ones):",
+      unique.map((w) => `"${w}"`).join(", "),
+    ].join("\n"),
+    wordCount: unique.length,
+  };
+}
+
 function buildPersonalitySection(guideAnswers: unknown): string {
   const personality = buildTranslatorPersonality(guideAnswers);
   return `
@@ -122,6 +168,15 @@ export function buildLineSuggestionsPrompt(params: {
   const forbiddenTokens = buildForbiddenTokenList(anchors);
   const personalitySection = buildPersonalitySection(guideAnswers);
   const guardrails = buildTargetLanguageGuardrails(targetLanguage);
+  const primaryTargetLine = pickPrimaryTargetLine({
+    targetLineDraft: request.targetLineDraft,
+    variantFullTexts: request.variantFullTexts,
+    selectedVariant: request.selectedVariant,
+  });
+  const { section: coverageSection, wordCount: coverageWordCount } =
+    buildCoverageSection(primaryTargetLine);
+  // Aim for ~2 alternatives per covered word, spread across the line.
+  const distinctWordTarget = Math.min(Math.max(coverageWordCount, 3), 6);
 
   const system = `
 You are a poetry translation assistant generating word suggestions.
@@ -151,25 +206,30 @@ ${buildAnchorSection({
 
 ${targetExamples}
 ${forbiddenTokens}
+${coverageSection}
 
 TASK:
-Generate 9 suggestions total, split evenly by archetype.
-- 3 suggestions with fitsWith = "A"
-- 3 suggestions with fitsWith = "B"
-- 3 suggestions with fitsWith = "C"
+Suggest alternative word choices that cover the WHOLE line — not just the opening words.
+- Choose at least ${distinctWordTarget} DIFFERENT words from across the line (beginning, middle, AND end).
+- For each chosen word, give 1-2 alternative renderings in ${targetLanguage}.
+- Set "targetsWord" to the exact line word each suggestion is an alternative for.
+- Do NOT cluster every suggestion on the same one or two words.
+- Aim for 9-12 suggestions total.
 
 Constraints:
 - Suggestions must fit the local line context and translator personality.
 - Suggestions must be 1-3 words max.
 - Use: replace | insert | opening | closing (pick the best use per suggestion).
+- "fitsWith" tags which draft/variant the idea harmonizes with ("A" | "B" | "C" | "any").
 
 Output JSON only:
 {
   "suggestions": [
     {
       "word": "…",
+      "targetsWord": "the line word this replaces",
       "use": "replace",
-      "fitsWith": "A",
+      "fitsWith": "any",
       "register": "poetic|neutral|colloquial|archaic|…",
       "literalness": 0.0-1.0,
       "reasoning": "optional short reason"

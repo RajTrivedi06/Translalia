@@ -13,7 +13,7 @@
  * - Returns identical structure to /translate-line for seamless integration
  */
 
-import { openai } from "@/lib/ai/openai";
+import { getClientForModel, deepSeekRequestExtras } from "@/lib/ai/openai";
 import { buildSamplingParams } from "@/lib/ai/buildSamplingParams";
 import {
   chatCompletionsWithRetry,
@@ -281,7 +281,7 @@ export async function translateLineWithRecipesInternal({
       try {
         // ISS-012: Use safe sampling params with retry-on-unsupported-param
         completion = await chatCompletionsWithRetry(
-          openai,
+          getClientForModel(model),
           {
             model,
             ...buildSamplingParams(model, { temperature: 0.7 }),
@@ -294,11 +294,12 @@ export async function translateLineWithRecipesInternal({
               },
             },
             ...getTokenLimitParam(model, mainGenMaxOutputTokens),
+            ...deepSeekRequestExtras(model),
             messages: [
               { role: "system", content: systemPrompt },
               { role: "user", content: userPrompt },
             ],
-          },
+          } as Parameters<typeof chatCompletionsWithRetry>[1],
           parseCallback // ISS-013: Pass parse callback for fallback retry
         );
         
@@ -332,17 +333,18 @@ export async function translateLineWithRecipesInternal({
           // ISS-017: Pass instrumentation for OpenAI call tracking
           // ISS-018: Pass metadata for raw output logging
           completion = await chatCompletionsWithRetry(
-            openai,
+            getClientForModel(model),
             {
               model,
               ...buildSamplingParams(model, { temperature: 0.7 }),
               response_format: { type: "json_object" },
               ...getTokenLimitParam(model, mainGenMaxOutputTokens),
+              ...deepSeekRequestExtras(model),
               messages: [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: userPrompt },
               ],
-            },
+            } as Parameters<typeof chatCompletionsWithRetry>[1],
             parseCallback, // ISS-013: Pass parse callback for fallback retry
             undefined, // ISS-017: Pass instrumentation (not available in this context)
             "mainGen", // ISS-017: Call kind
@@ -369,17 +371,18 @@ export async function translateLineWithRecipesInternal({
       // ISS-017: Pass instrumentation for OpenAI call tracking
       // ISS-018: Pass metadata for raw output logging
       completion = await chatCompletionsWithRetry(
-        openai,
+        getClientForModel(model),
         {
           model,
           ...buildSamplingParams(model, { temperature: 0.7 }),
           response_format: { type: "json_object" },
           ...getTokenLimitParam(model, mainGenMaxOutputTokens),
+          ...deepSeekRequestExtras(model),
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt },
           ],
-        },
+        } as Parameters<typeof chatCompletionsWithRetry>[1],
         parseCallback, // ISS-013: Pass parse callback for fallback retry
         undefined, // ISS-017: Pass instrumentation (not available in this context)
         "mainGen", // ISS-017: Call kind

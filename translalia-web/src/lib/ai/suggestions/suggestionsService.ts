@@ -119,8 +119,14 @@ export async function generateLineSuggestions(params: {
     });
   }
 
-  if (!gate.needsRepair) {
-    return { ok: gate.ok, suggestions: gate.suggestions };
+  // Only language problems (English leakage / wrong script) are worth a repair
+  // pass — repair rewrites words, it can't add missing ones. For count/quality
+  // shortfalls we degrade gracefully and return whatever valid ideas we have
+  // rather than surfacing a generic error to the student.
+  const isLanguageProblem =
+    gate.reason === "english_leakage" || gate.reason === "non_english_script";
+  if (!isLanguageProblem) {
+    return { ok: gate.suggestions.length > 0, suggestions: gate.suggestions };
   }
 
   console.info("[suggestions][line] Repair attempt triggered:", gate.reason);
@@ -157,7 +163,12 @@ export async function generateLineSuggestions(params: {
     });
   }
 
-  if (!repairedGate.ok) {
+  // After repair, only a remaining language problem is a hard failure; a count
+  // shortfall still returns whatever survived.
+  const repairLanguageProblem =
+    repairedGate.reason === "english_leakage" ||
+    repairedGate.reason === "non_english_script";
+  if (repairLanguageProblem || repairedGate.suggestions.length === 0) {
     return { ok: false, reason: repairedGate.reason ?? "repair_failed" };
   }
 

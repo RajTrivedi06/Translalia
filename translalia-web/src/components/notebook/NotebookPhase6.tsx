@@ -3,7 +3,8 @@
 import * as React from "react";
 import { useDndMonitor } from "@dnd-kit/core";
 import { motion, AnimatePresence } from "framer-motion";
-import { FileText, X, Pencil, Info } from "lucide-react";
+import { FileText, X, Pencil } from "lucide-react";
+import { HelpHint } from "@/components/ui/help-hint";
 import { useTranslations } from "next-intl";
 
 import { useWorkshopStore } from "@/store/workshopSlice";
@@ -536,6 +537,21 @@ export default function NotebookPhase6({
         lineNotesCount={lineNotesCount}
         notesButtonLabel={t("notesTitle", { defaultValue: "Notes" })}
         notesButtonRef={notesButtonRef}
+        notesHelp={
+          <HelpHint
+            align="end"
+            label={t("notesButtonHelpLabel", {
+              defaultValue: "What the Notes button does",
+            })}
+            title={t("notesTitle", { defaultValue: "Notes" })}
+            items={[
+              t("notesButtonHelp", {
+                defaultValue:
+                  "Notes opens every comment you've added to your lines in one place. Lines with a note show a small marker — select it to view or edit that note.",
+              }),
+            ]}
+          />
+        }
       />
 
       {/* Column headers + notes instruction (muted; keeps action header uncluttered) */}
@@ -552,20 +568,17 @@ export default function NotebookPhase6({
               defaultValue: "Right-click a line to add a note.",
             })}
           </p>
-          <button
-            type="button"
-            className="shrink-0 rounded p-0.5 text-foreground-muted hover:text-foreground-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
-            title={t("notesInstructionLong", {
-              defaultValue:
-                "You can right-click any line to add a note. Lines with notes show a small marker. Use the Notes button (or press ⌘N / Ctrl+N) to see all notes together. Press ⌘. (Ctrl+. on Windows) while editing a line to open its note.",
-            })}
-            aria-label={t("notesInstructionLong", {
-              defaultValue:
-                "You can right-click any line to add a note. Lines with notes show a small marker. Use the Notes button (or press ⌘N / Ctrl+N) to see all notes together. Press ⌘. (Ctrl+. on Windows) while editing a line to open its note.",
-            })}
-          >
-            <Info className="h-3.5 w-3.5" aria-hidden="true" />
-          </button>
+          <HelpHint
+            align="start"
+            label={t("notesHelpLabel", { defaultValue: "How notes work" })}
+            title={t("notesTitle", { defaultValue: "Notes" })}
+            items={[
+              t("notesInstructionLong", {
+                defaultValue:
+                  "You can right-click any line to add a note. Lines with notes show a small marker. Use the Notes button (or press ⌘N / Ctrl+N) to see all notes together. Press ⌘. (Ctrl+. on Windows) while editing a line to open its note.",
+              }),
+            ]}
+          />
         </div>
       </div>
 

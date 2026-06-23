@@ -28,6 +28,9 @@ import { TokenSuggestionsPopover } from "@/components/workshop/TokenSuggestionsP
 import { FullTranslationEditor } from "@/components/notebook/FullTranslationEditor";
 import { CongratulationsModal } from "@/components/workshop/CongratulationsModal";
 import { Sparkles } from "lucide-react";
+import { useTranslations } from "next-intl";
+import { HelpHint } from "@/components/ui/help-hint";
+import { TokenSuggestButton } from "@/components/workshop-rail/TokenSuggestButton";
 
 /**
  * Map all suggestion failure reasons to user-friendly messages
@@ -173,7 +176,7 @@ function DraggableSourceWord({
       {...listeners}
       style={style}
       className={cn(
-        "px-3 py-1.5 bg-accent-light/30 border border-accent/30 rounded-md text-sm font-medium",
+        "relative group px-3 py-1.5 bg-accent-light/30 border border-accent/30 rounded-md text-sm font-medium",
         "cursor-pointer hover:bg-accent-light/50 hover:border-accent/50 transition-all duration-fast",
         "select-none touch-none",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2",
@@ -245,6 +248,20 @@ function DraggableSourceWord({
       }}
     >
       {word}
+      {onSuggest ? (
+        <TokenSuggestButton
+          word={word}
+          onSuggest={() =>
+            onSuggest({
+              word,
+              originalWord: word,
+              partOfSpeech: "neutral",
+              position: index,
+              sourceType: "source",
+            })
+          }
+        />
+      ) : null}
     </div>
   );
 }
@@ -260,6 +277,7 @@ interface WordGridProps {
 }
 
 export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
+  const t = useTranslations("Workshop");
   const threadHook = useThreadId();
   const thread = pThreadId || threadHook || undefined;
   const currentLineIndex = useWorkshopStore((s) => s.currentLineIndex);
@@ -1005,6 +1023,27 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
           </div>
         </div>
 
+        <div className="mb-3 flex items-center gap-1.5">
+          <HelpHint
+            align="start"
+            triggerText={t("wordHelpTrigger", { defaultValue: "Word tips" })}
+            label={t("wordHelpLabel", {
+              defaultValue: "How to work with words",
+            })}
+            title={t("wordHelpTitle", { defaultValue: "Working with words" })}
+            items={[
+              t("wordHelpClick", {
+                defaultValue:
+                  "Click or tap a word to move it to your notebook.",
+              }),
+              t("wordHelpSuggest", {
+                defaultValue:
+                  "Want other options? Hover a word and choose the ✨ (or right-click, or long-press on touch) to ask for more suggestions.",
+              }),
+            ]}
+          />
+        </div>
+
         <SourceWordsPalette
           sourceWords={sourceWords}
           lineNumber={currentLineIndex}
@@ -1146,7 +1185,7 @@ function SourceWordsPalette({
         <p className="text-sm font-semibold text-blue-900">Source text words</p>
       </div>
       <p className="text-xs text-blue-700 mb-3">
-        Drag these to keep the original words in your translation
+        Click, tap, or drag a word to keep the original in your translation
       </p>
       <div className="flex flex-wrap gap-2">
         {sourceWords.map((word, idx) => (
@@ -1372,7 +1411,7 @@ function DraggableVariantToken({
       {...listeners}
       style={style}
       className={cn(
-        "px-3 py-2 rounded-lg border text-sm font-medium transition-all bg-white shadow-sm flex flex-col",
+        "relative group px-3 py-2 rounded-lg border text-sm font-medium transition-all bg-white shadow-sm flex flex-col",
         "select-none touch-none",
         !disabled && "cursor-pointer hover:-translate-y-0.5 hover:shadow",
         isDragging && "opacity-60 scale-95 cursor-grabbing",
@@ -1462,6 +1501,21 @@ function DraggableVariantToken({
       <span className="text-foreground pointer-events-none">
         {token.translation || "…"}
       </span>
+      {onSuggest && !disabled && token.translation ? (
+        <TokenSuggestButton
+          word={token.translation}
+          onSuggest={() =>
+            onSuggest({
+              word: token.translation,
+              originalWord: token.original || token.translation,
+              partOfSpeech: pos,
+              position: token.position ?? 0,
+              sourceType: "variant",
+              variantId,
+            })
+          }
+        />
+      ) : null}
     </div>
   );
 }
