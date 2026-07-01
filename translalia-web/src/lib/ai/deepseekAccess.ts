@@ -9,11 +9,26 @@
  * (403 / thrown), never silently downgraded.
  */
 
+// Invisible characters that routinely survive copy-paste into env-var
+// dashboards and defeat an exact string match: zero-width space/joiner
+// (U+200B–U+200D), word joiner (U+2060), BOM/ZWNBSP (U+FEFF), and non-breaking
+// space (U+00A0). Standard whitespace is handled separately by `.trim()`.
+const INVISIBLE_CHARS = /[​‌‍⁠﻿ ]/g;
+
+/**
+ * Normalize an email token for comparison: strip invisible characters, trim
+ * whitespace, lowercase. Without this, a pasted allowlist value can look
+ * identical to the login email yet fail an exact match.
+ */
+function normalizeEmail(value: string): string {
+  return value.replace(INVISIBLE_CHARS, "").trim().toLowerCase();
+}
+
 /** Parsed, normalized allowlist from `DEEPSEEK_ALLOWED_EMAILS`. */
 export function getAllowedDeepSeekEmails(): string[] {
   return (process.env.DEEPSEEK_ALLOWED_EMAILS ?? "")
     .split(",")
-    .map((e) => e.trim().toLowerCase())
+    .map(normalizeEmail)
     .filter(Boolean);
 }
 
@@ -25,10 +40,10 @@ export function isDeepSeekModel(model: string | null | undefined): boolean {
   return typeof model === "string" && model.startsWith("deepseek");
 }
 
-/** Case-insensitive, trimmed membership test against the allowlist. */
+/** Case-insensitive membership test against the allowlist (invisible-safe). */
 export function isDeepSeekAllowed(email: string | null | undefined): boolean {
   if (!email) return false;
-  const normalized = email.trim().toLowerCase();
+  const normalized = normalizeEmail(email);
   if (!normalized) return false;
   return getAllowedDeepSeekEmails().includes(normalized);
 }

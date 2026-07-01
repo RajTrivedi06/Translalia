@@ -32,8 +32,14 @@ export async function GET(req: Request) {
   const diagnostic = wantsDiag
     ? {
         callerEmail: user.email ?? null,
+        callerEmailLength: (user.email ?? "").length,
         allowlistEnvPresent: process.env.DEEPSEEK_ALLOWED_EMAILS !== undefined,
         allowlistSize: getAllowedDeepSeekEmails().length,
+        // Lengths only (never the addresses). If an entry length equals
+        // callerEmailLength but `allowed` is false, it's a homoglyph, not an
+        // invisible char (which the parser now strips).
+        allowlistEntryLengths: getAllowedDeepSeekEmails().map((e) => e.length),
+        rawEnvLength: (process.env.DEEPSEEK_ALLOWED_EMAILS ?? "").length,
       }
     : undefined;
 
