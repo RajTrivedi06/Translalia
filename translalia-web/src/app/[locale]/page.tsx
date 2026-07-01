@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "@/i18n/routing";
 import { useSupabaseUser } from "@/hooks/useSupabaseUser";
 import { Highlighter } from "@/components/ui/highlighter";
+import { TranslaliaLogo } from "@/components/brand/TranslaliaLogo";
 
 export default function Home() {
   const router = useRouter();
@@ -132,12 +133,10 @@ export default function Home() {
           </div>
 
           <h1
-            className="font-serif text-[clamp(3.5rem,12vw,10rem)] font-light leading-[0.85] tracking-[-0.03em] text-slate-900"
+            className="origin-left"
             style={{ animation: "fadeSlideUp 1.2s ease-out 0.4s both" }}
           >
-            <span className="block">
-              Trans<span className="italic text-sky-600">lalia</span>
-            </span>
+            <TranslaliaLogo size="hero" animateMark />
           </h1>
 
           <div
@@ -583,6 +582,37 @@ export default function Home() {
           opacity: 0.35;
         }
 
+        .translalia-hero-selector,
+        .translalia-hero-selector-glow {
+          transform-box: fill-box;
+          transform-origin: center;
+          animation: translaliaSelectorTravel 3000ms cubic-bezier(0.25, 1, 0.5, 1) 1000ms both;
+        }
+
+        .translalia-hero-selector-glow {
+          opacity: 0;
+          animation:
+            translaliaSelectorTravel 3000ms cubic-bezier(0.25, 1, 0.5, 1) 1000ms both,
+            translaliaSelectorGlow 3000ms cubic-bezier(0.22, 1, 0.36, 1) 1000ms both;
+        }
+
+        .translalia-hero-line-highlight {
+          opacity: 0;
+        }
+
+        .translalia-hero-line-highlight-top {
+          animation: translaliaTopLineHighlight 3000ms cubic-bezier(0.22, 1, 0.36, 1) 1000ms both;
+        }
+
+        .translalia-hero-line-highlight-middle {
+          opacity: 1;
+          animation: translaliaMiddleLineHighlight 3000ms cubic-bezier(0.22, 1, 0.36, 1) 1000ms both;
+        }
+
+        .translalia-hero-line-highlight-bottom {
+          animation: translaliaBottomLineHighlight 3000ms cubic-bezier(0.22, 1, 0.36, 1) 1000ms both;
+        }
+
         .spin-slow {
           animation: slowSpin 18s linear infinite;
         }
@@ -644,6 +674,100 @@ export default function Home() {
           }
         }
 
+        @keyframes translaliaSelectorTravel {
+          0%,
+          8%,
+          100% {
+            transform: translate3d(0, 0, 0);
+          }
+
+          20%,
+          36% {
+            transform: translate3d(0, -27px, 0);
+          }
+
+          48%,
+          56% {
+            transform: translate3d(0, 0, 0);
+          }
+
+          68%,
+          84% {
+            transform: translate3d(0, 27px, 0);
+          }
+
+          96% {
+            transform: translate3d(0, 0, 0);
+          }
+        }
+
+        @keyframes translaliaSelectorGlow {
+          0%,
+          8%,
+          96%,
+          100% {
+            opacity: 0;
+          }
+
+          16%,
+          42%,
+          62%,
+          88% {
+            opacity: 0.16;
+          }
+
+          24%,
+          76% {
+            opacity: 0.24;
+          }
+        }
+
+        @keyframes translaliaTopLineHighlight {
+          0%,
+          10%,
+          44%,
+          100% {
+            opacity: 0;
+          }
+
+          20%,
+          36% {
+            opacity: 1;
+          }
+        }
+
+        @keyframes translaliaMiddleLineHighlight {
+          0%,
+          8%,
+          48%,
+          56%,
+          96%,
+          100% {
+            opacity: 1;
+          }
+
+          16%,
+          42%,
+          62%,
+          88% {
+            opacity: 0;
+          }
+        }
+
+        @keyframes translaliaBottomLineHighlight {
+          0%,
+          58%,
+          92%,
+          100% {
+            opacity: 0;
+          }
+
+          68%,
+          84% {
+            opacity: 1;
+          }
+        }
+
 
         @media (prefers-reduced-motion: reduce) {
           [data-reveal] {
@@ -654,8 +778,21 @@ export default function Home() {
           }
 
           .spin-slow,
-          .pulse-glow {
+          .pulse-glow,
+          .translalia-hero-selector,
+          .translalia-hero-selector-glow,
+          .translalia-hero-line-highlight {
             animation: none;
+          }
+
+          .translalia-hero-selector-glow,
+          .translalia-hero-line-highlight-top,
+          .translalia-hero-line-highlight-bottom {
+            opacity: 0;
+          }
+
+          .translalia-hero-line-highlight-middle {
+            opacity: 1;
           }
         }
       `}</style>

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/requireUser";
 import { openai } from "@/lib/ai/openai";
+import { isDeepSeekBlocked } from "@/lib/ai/deepseekAccess";
 import { TRANSLATOR_MODEL } from "@/lib/models";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { cacheGet, cacheSet } from "@/lib/ai/cache";
@@ -128,14 +129,23 @@ export async function POST(req: Request) {
     // Extract guide answers from columns (with JSONB fallback for legacy data)
     const state = (thread.state as any) || {};
     const guideAnswers: GuideAnswers = {
+      // Legacy fields from JSONB first, so the resolved values below always win.
+      ...(state.guide_answers || {}),
       translationModel: thread.translation_model ?? state.guide_answers?.translationModel ?? null,
       translationMethod: thread.translation_method ?? state.guide_answers?.translationMethod ?? "method-2",
       translationIntent: thread.translation_intent ?? state.guide_answers?.translationIntent ?? null,
       translationZone: thread.translation_zone ?? state.guide_answers?.translationZone ?? null,
       sourceLanguageVariety: thread.source_language_variety ?? state.guide_answers?.sourceLanguageVariety ?? null,
-      // Legacy fields from JSONB if needed
-      ...(state.guide_answers || {}),
     };
+
+    // Cost gate: DeepSeek is restricted to allowlisted accounts. Reject rather
+    // than silently downgrade so the caller sees a clear authorization error.
+    if (isDeepSeekBlocked(guideAnswers.translationModel, user.email)) {
+      return NextResponse.json(
+        { error: "You are not authorized to use the DeepSeek model." },
+        { status: 403 }
+      );
+    }
 
     // Build prompts
     const prompt = buildAIAssistPrompt({

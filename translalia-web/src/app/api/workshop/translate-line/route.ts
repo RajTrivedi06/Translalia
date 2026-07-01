@@ -10,6 +10,7 @@ import type { GuideAnswers } from "@/store/guideSlice";
 import type { LineTranslationResponse } from "@/types/lineTranslation";
 import { translateLineInternal } from "@/lib/workshop/translateLineInternal";
 import { buildTranslatorPersonality } from "@/lib/ai/translatorPersonality";
+import { isDeepSeekBlocked } from "@/lib/ai/deepseekAccess";
 
 const RequestSchema = z.object({
   threadId: z.string().uuid(),
@@ -83,6 +84,8 @@ export async function POST(req: Request) {
     const guideAnswersState =
       (state as { guide_answers?: GuideAnswers }).guide_answers ?? {};
     const guideAnswers: GuideAnswers = {
+      // Legacy fields from JSONB first, so the resolved values below always win.
+      ...(guideAnswersState || {}),
       translationModel:
         thread.translation_model ?? guideAnswersState.translationModel ?? null,
       translationMethod:
@@ -97,9 +100,16 @@ export async function POST(req: Request) {
         thread.source_language_variety ??
         guideAnswersState.sourceLanguageVariety ??
         null,
-      // Legacy fields from JSONB if needed
-      ...(guideAnswersState || {}),
     };
+
+    // Cost gate: DeepSeek is restricted to allowlisted accounts. Reject rather
+    // than silently downgrade so the caller sees a clear authorization error.
+    if (isDeepSeekBlocked(guideAnswers.translationModel, user.email)) {
+      return NextResponse.json(
+        { error: "You are not authorized to use the DeepSeek model." },
+        { status: 403 }
+      );
+    }
     const poemAnalysis = (state.poem_analysis as { language?: string }) || {};
     const poemStanzas = state.poem_stanzas as
       | { stanzas: Array<{ startLineIndex: number }> }

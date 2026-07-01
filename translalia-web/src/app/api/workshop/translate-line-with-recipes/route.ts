@@ -7,6 +7,7 @@ import { supabaseServer } from "@/lib/supabaseServer";
 import { checkDailyLimit } from "@/lib/ratelimit/redis";
 import type { GuideAnswers } from "@/store/guideSlice";
 import { translateLineWithRecipesInternal } from "@/lib/translation/method2/translateLineWithRecipesInternal";
+import { isDeepSeekBlocked } from "@/lib/ai/deepseekAccess";
 
 const RequestSchema = z.object({
   threadId: z.string().uuid(),
@@ -91,6 +92,8 @@ export async function POST(req: Request) {
     const guideAnswersState =
       (state as { guide_answers?: GuideAnswers }).guide_answers ?? {};
     const guideAnswers: GuideAnswers = {
+      // Legacy fields from JSONB first, so the resolved values below always win.
+      ...(guideAnswersState || {}),
       // Use modelOverride from client if provided, otherwise fall back to DB/state
       translationModel:
         modelOverride ?? thread.translation_model ?? guideAnswersState.translationModel ?? null,
@@ -106,9 +109,16 @@ export async function POST(req: Request) {
         thread.source_language_variety ??
         guideAnswersState.sourceLanguageVariety ??
         null,
-      // Legacy fields from JSONB if needed
-      ...(guideAnswersState || {}),
     };
+
+    // Cost gate: DeepSeek is restricted to allowlisted accounts. Reject rather
+    // than silently downgrade so the caller sees a clear authorization error.
+    if (isDeepSeekBlocked(guideAnswers.translationModel, user.email)) {
+      return NextResponse.json(
+        { error: "You are not authorized to use the DeepSeek model." },
+        { status: 403 }
+      );
+    }
     const poemAnalysis = (state.poem_analysis as { language?: string }) || {};
     const rawPoem = (thread.raw_poem ?? state.raw_poem ?? fullPoem ?? "") as string;
 

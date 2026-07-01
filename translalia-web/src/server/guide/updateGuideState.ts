@@ -67,7 +67,14 @@ const GuideAnswersSchema = z
       .enum(["focused", "balanced", "adventurous"])
       .optional(),
     translationModel: z
-      .enum(["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-5", "gpt-5-mini"])
+      .enum([
+        "gpt-4o",
+        "gpt-4o-mini",
+        "gpt-4-turbo",
+        "gpt-5",
+        "gpt-5-mini",
+        "deepseek-v4-flash",
+      ])
       .optional(),
     translationMethod: z.enum(["method-1", "method-2"]).optional(),
     targetLanguage: TargetLanguageSchema.optional(),
@@ -159,13 +166,13 @@ export async function updateGuideState(
     // Merge updates with existing guide_answers (from columns, with JSONB fallback for legacy)
     const currentState = (thread.state as any) || {};
     const currentAnswers: GuideAnswers = {
+      // Legacy fields from JSONB first, so the resolved values below always win.
+      ...(currentState.guide_answers || {}),
       translationModel: thread.translation_model ?? currentState.guide_answers?.translationModel ?? null,
       translationMethod: thread.translation_method ?? currentState.guide_answers?.translationMethod ?? "method-2",
       translationIntent: thread.translation_intent ?? currentState.guide_answers?.translationIntent ?? null,
       translationZone: thread.translation_zone ?? currentState.guide_answers?.translationZone ?? null,
       sourceLanguageVariety: thread.source_language_variety ?? currentState.guide_answers?.sourceLanguageVariety ?? null,
-      // Legacy fields from JSONB if needed
-      ...(currentState.guide_answers || {}),
     };
     const mergedAnswers: GuideAnswers = {
       ...currentAnswers,
@@ -278,13 +285,13 @@ export async function getGuideState(
     // Read from columns (with JSONB fallback for legacy data)
     const currentState = (thread.state as any) || {};
     const answers: GuideAnswers = {
+      // Legacy fields from JSONB first, so the resolved values below always win.
+      ...(currentState.guide_answers || {}),
       translationModel: thread.translation_model ?? currentState.guide_answers?.translationModel ?? null,
       translationMethod: thread.translation_method ?? currentState.guide_answers?.translationMethod ?? "method-2",
       translationIntent: thread.translation_intent ?? currentState.guide_answers?.translationIntent ?? null,
       translationZone: thread.translation_zone ?? currentState.guide_answers?.translationZone ?? null,
       sourceLanguageVariety: thread.source_language_variety ?? currentState.guide_answers?.sourceLanguageVariety ?? null,
-      // Legacy fields from JSONB if needed
-      ...(currentState.guide_answers || {}),
     };
 
     return { success: true, answers };
@@ -442,12 +449,13 @@ export async function getFullThreadState(
     // Build guide answers from columns (with JSONB fallback)
     const legacyAnswers = (currentState.guide_answers as Record<string, unknown>) || {};
     const answers: GuideAnswers = {
+      // Legacy fields from JSONB first, so the resolved values below always win.
+      ...legacyAnswers,
       translationModel: thread.translation_model ?? (legacyAnswers.translationModel as string) ?? null,
       translationMethod: (thread.translation_method ?? (legacyAnswers.translationMethod as string) ?? "method-2") as GuideAnswers["translationMethod"],
       translationIntent: thread.translation_intent ?? (legacyAnswers.translationIntent as string) ?? null,
       translationZone: thread.translation_zone ?? (legacyAnswers.translationZone as string) ?? null,
       sourceLanguageVariety: thread.source_language_variety ?? (legacyAnswers.sourceLanguageVariety as string) ?? null,
-      ...legacyAnswers,
     };
 
     // Extract poem stanzas from JSONB state

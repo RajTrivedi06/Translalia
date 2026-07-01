@@ -7,6 +7,8 @@ import { routing } from "@/i18n/routing";
 import { Geist, Geist_Mono } from "next/font/google";
 import type { ReactNode } from "react";
 import { Link } from "@/i18n/routing";
+import { TranslaliaLogo } from "@/components/brand/TranslaliaLogo";
+import { cn } from "@/lib/utils";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -61,11 +63,15 @@ export default async function LocaleLayout({
                 <div className="mx-auto flex h-full max-w-screen-2xl items-center justify-between px-4 py-2">
                   <Link
                     href="/"
-                    className="font-serif text-xl font-light leading-[0.85] tracking-[-0.03em] text-foreground hover:text-foreground transition-colors duration-fast cursor-pointer"
+                    aria-label="Translalia home"
+                    className={cn(
+                      "group inline-flex items-center rounded-sm outline-none",
+                      "transition-opacity duration-300 ease-out",
+                      "hover:opacity-80",
+                      "focus-visible:ring-2 focus-visible:ring-accent/25 focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
+                    )}
                   >
-                    <span>
-                      Trans<span className="italic text-accent">lalia</span>
-                    </span>
+                    <TranslaliaLogo size="sm" />
                   </Link>
                   <div className="flex items-center gap-3">
                     <AuthNav />

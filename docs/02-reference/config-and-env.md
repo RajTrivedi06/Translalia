@@ -18,6 +18,7 @@ Most flags are string env vars, not booleans. The code distinguishes between:
 ### Auth and Core Services
 - `OPENAI_API_KEY`: required for all LLM-backed routes.
 - `DEEPSEEK_API_KEY`: optional; required only when a `deepseek-*` model is selected on the Method 2 chat-completions path. Provider-routed via `getClientForModel` (`src/lib/ai/openai.ts`) against base URL `https://api.deepseek.com`. OpenAI behavior is byte-for-byte unchanged when no deepseek model is used.
+- `DEEPSEEK_ALLOWED_EMAILS`: comma-separated email allowlist gating DeepSeek to approved accounts. Compared case-insensitively/trimmed against the authenticated user's email. Enforced server-side (403, no silent downgrade) at every generation route and inside `runTranslationTick` via the central `isDeepSeekAllowed`/`isDeepSeekBlocked` helpers (`src/lib/ai/deepseekAccess.ts`). Also backs `GET /api/features/deepseek` `{ allowed }` for the picker's conditional render, so the allowlist never ships to the client bundle. Unset/empty ⇒ DeepSeek is blocked for everyone.
 - `NEXT_PUBLIC_SUPABASE_URL`: required by client, server, middleware, and auth fallbacks.
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: required by client, server, middleware, and auth fallbacks.
 - `SUPABASE_SERVICE_ROLE_KEY`: optional; only needed for privileged server-side operations.

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireUser } from "@/lib/auth/requireUser";
 import { getServerClient } from "@/lib/supabaseServer";
 import { openai } from "@/lib/ai/openai";
+import { isDeepSeekBlocked } from "@/lib/ai/deepseekAccess";
 import { CONTEXT_MODEL } from "@/lib/models";
 import {
   buildContextNotesPrompt,
@@ -183,6 +184,8 @@ export async function POST(request: NextRequest) {
     const guideAnswersState =
       (state as { guide_answers?: GuideAnswersState }).guide_answers ?? {};
     const guide_answers: Record<string, unknown> = {
+      // Legacy fields from JSONB first, so the resolved values below always win.
+      ...(guideAnswersState as Record<string, unknown>),
       translationModel:
         thread.translation_model ?? guideAnswersState.translationModel ?? null,
       translationMethod:
@@ -197,9 +200,21 @@ export async function POST(request: NextRequest) {
         thread.source_language_variety ??
         guideAnswersState.sourceLanguageVariety ??
         null,
-      // Legacy fields from JSONB if needed
-      ...(guideAnswersState as Record<string, unknown>),
     };
+
+    // Cost gate: DeepSeek is restricted to allowlisted accounts. Reject rather
+    // than silently downgrade so the caller sees a clear authorization error.
+    if (
+      isDeepSeekBlocked(
+        guide_answers.translationModel as string | null | undefined,
+        user.email
+      )
+    ) {
+      return NextResponse.json(
+        { error: "You are not authorized to use the DeepSeek model." },
+        { status: 403 }
+      );
+    }
     const poem_analysis = (
       state as {
         poem_analysis?: { source_lines?: string[]; detected_language?: string };

@@ -7,6 +7,7 @@
  */
 
 import { z } from "zod";
+import type OpenAI from "openai";
 import { openai, getClientForModel, deepSeekRequestExtras } from "./openai";
 import { buildSamplingParams } from "./buildSamplingParams";
 import {
@@ -515,12 +516,13 @@ export async function regenerateVariantWithSalvage(
       
       let completion;
       try {
-        completion = await openai.chat.completions.create({
+        completion = await getClientForModel(modelToUse).chat.completions.create({
           model: modelToUse,
           ...buildSamplingParams(modelToUse, { temperature: 0.9 }), // Higher for diversity
           n: K,
           response_format: { type: "json_object" },
           ...getTokenLimitParam(modelToUse, regenMaxOutputTokens),
+          ...deepSeekRequestExtras(modelToUse),
           messages: [
             {
               role: "system",
@@ -528,7 +530,9 @@ export async function regenerateVariantWithSalvage(
             },
             { role: "user", content: promptText },
           ],
-        });
+          // DeepSeek's `thinking` extra is not in the OpenAI SDK param type; cast
+          // to the non-streaming param type (no `stream`, so a ChatCompletion is returned).
+        } as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming);
 
         // ISS-001: Safety logging for regen (n=K case)
         const completionTokens = completion.usage?.completion_tokens;

@@ -60,7 +60,9 @@ export async function POST(req: Request) {
     );
   }
 
-  const context = await loadThreadContext(threadId);
+  const context = await loadThreadContext(threadId, {
+    authorizedEmail: user.email,
+  });
 
   // Safety limit: reject poems that are too large for translation
   const MAX_POEM_LINES = parseInt(
@@ -175,6 +177,7 @@ export async function POST(req: Request) {
     );
     tickResult = await runTranslationTick(threadId, {
       maxProcessingTimeMs: 500, // Small budget, returns fast, quality-safe
+      authorizedEmail: user.email,
     });
   }
 

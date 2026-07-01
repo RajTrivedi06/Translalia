@@ -118,6 +118,7 @@ export async function POST(req: Request) {
     try {
       tickResult = await runTranslationTick(threadId, {
         maxProcessingTimeMs: 4000,
+        authorizedEmail: user.email,
       });
     } catch (error) {
       console.error(

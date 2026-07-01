@@ -8,6 +8,7 @@ import { useTranslations } from "next-intl";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
+import { TranslaliaLogo } from "@/components/brand/TranslaliaLogo";
 
 export default function SignInPage() {
   const router = useRouter();
@@ -49,15 +50,15 @@ export default function SignInPage() {
       <div className="relative z-10 w-full max-w-[420px]">
         {/* Branding header */}
         <div className="mb-10 text-center">
-          <div className="mb-6 flex items-center justify-center gap-3 text-[10px] tracking-[0.4em] text-slate-400">
+          <div className="mb-8 flex justify-center">
+            <TranslaliaLogo size="md" />
+          </div>
+          <div className="mb-4 flex items-center justify-center gap-3 text-[10px] tracking-[0.4em] text-slate-400">
             <div className="h-px w-8 bg-slate-300" />
             <span>WELCOME BACK</span>
             <div className="h-px w-8 bg-slate-300" />
           </div>
-          <h1 className="font-serif text-4xl font-light tracking-tight text-slate-900">
-            Trans<span className="italic text-sky-600">lalia</span>
-          </h1>
-          <p className="mt-3 text-sm text-slate-500">
+          <p className="text-sm text-slate-500">
             {t("signInTitle")}
           </p>
         </div>

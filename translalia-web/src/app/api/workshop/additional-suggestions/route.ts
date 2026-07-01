@@ -8,6 +8,7 @@ import {
   type LineSuggestionsRequest,
 } from "@/lib/ai/suggestions/suggestionsSchemas";
 import { generateLineSuggestions } from "@/lib/ai/suggestions/suggestionsService";
+import { isDeepSeekBlocked } from "@/lib/ai/deepseekAccess";
 
 type GuideAnswersState = {
   translationModel?: string | null;
@@ -96,6 +97,8 @@ export async function POST(req: Request) {
     const guideAnswersState =
       (state as { guide_answers?: GuideAnswersState }).guide_answers ?? {};
     const guideAnswers: Record<string, unknown> = {
+      // Legacy fields from JSONB first, so the resolved values below always win.
+      ...(guideAnswersState as Record<string, unknown>),
       translationModel:
         thread.translation_model ?? guideAnswersState.translationModel ?? null,
       translationMethod:
@@ -110,9 +113,21 @@ export async function POST(req: Request) {
         thread.source_language_variety ??
         guideAnswersState.sourceLanguageVariety ??
         null,
-      // Legacy fields from JSONB if needed
-      ...(guideAnswersState as Record<string, unknown>),
     };
+
+    // Cost gate: DeepSeek is restricted to allowlisted accounts. Reject rather
+    // than silently downgrade so the caller sees a clear authorization error.
+    if (
+      isDeepSeekBlocked(
+        guideAnswers.translationModel as string | null | undefined,
+        user.email
+      )
+    ) {
+      return NextResponse.json(
+        { error: "You are not authorized to use the DeepSeek model." },
+        { status: 403 }
+      );
+    }
     const poemAnalysis = (state.poem_analysis as Record<string, unknown>) || {};
 
     const sourceLanguage =

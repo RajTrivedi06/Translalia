@@ -72,6 +72,9 @@ export async function chatCompletionsWithRetry(
   metadata?: { threadId?: string; lineIndex?: number; stanzaIndex?: number }
 ): Promise<ChatCompletion> {
   const debugSampling = process.env.DEBUG_SAMPLING === "1";
+  // [DEBUG_LATENCY] Off by default. Set DEBUG_LATENCY=1 to log the raw provider
+  // round-trip + which client (baseURL) actually served each call. Strippable.
+  const debugLatency = process.env.DEBUG_LATENCY === "1";
   const model = params.model || "unknown";
   const callStartTime = Date.now();
   
@@ -126,10 +129,23 @@ export async function chatCompletionsWithRetry(
   
   try {
     // First attempt: with all params (including sampling and stop sequences)
+    const rawApiStart = debugLatency ? Date.now() : 0;
     const result = await openai.chat.completions.create(nonStreamingParams);
-    
+
     // Type assertion: we know it's non-streaming because stream=false
     const completion = result as ChatCompletion;
+
+    // [DEBUG_LATENCY] Isolate provider round-trip from orchestration, and record
+    // which client (baseURL) served the call so DeepSeek vs OpenAI routing is visible.
+    if (debugLatency) {
+      const baseURL =
+        (openai as unknown as { baseURL?: string }).baseURL ?? "unknown";
+      console.log(
+        `[DEBUG_LATENCY] raw_api kind=${callKind ?? "?"} model=${model} ` +
+          `baseURL=${baseURL} ms=${Date.now() - rawApiStart} ` +
+          `tokens=${completion.usage?.completion_tokens ?? "?"}/${completion.usage?.prompt_tokens ?? "?"}`,
+      );
+    }
     
     // ISS-013: Log stop sequences if debug enabled
     if (debugStopSequences) {

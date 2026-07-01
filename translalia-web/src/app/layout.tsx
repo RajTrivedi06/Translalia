@@ -6,7 +6,6 @@ export const metadata: Metadata = {
   title: "Translalia",
   description:
     "A decolonial, AI-assisted creative poetry translation workspace.",
-  icons: { icon: "/favicon.ico" },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

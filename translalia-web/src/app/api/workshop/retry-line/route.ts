@@ -19,6 +19,7 @@ import {
 import { translateLineInternal } from "@/lib/workshop/translateLineInternal";
 import { translateLineWithRecipesInternal } from "@/lib/translation/method2/translateLineWithRecipesInternal";
 import type { GuideAnswers } from "@/store/guideSlice";
+import { isDeepSeekBlocked } from "@/lib/ai/deepseekAccess";
 import type { StanzaDetectionResult } from "@/lib/poem/stanzaDetection";
 import type { LineQualityMetadata } from "@/types/translationJob";
 
@@ -105,6 +106,8 @@ export async function POST(req: Request) {
     const guideAnswersState =
       (state as { guide_answers?: GuideAnswers }).guide_answers ?? {};
     const guideAnswers: GuideAnswers = {
+      // Legacy fields from JSONB first, so the resolved values below always win.
+      ...(guideAnswersState || {}),
       translationModel:
         thread.translation_model ?? guideAnswersState.translationModel ?? null,
       translationMethod:
@@ -119,9 +122,16 @@ export async function POST(req: Request) {
         thread.source_language_variety ??
         guideAnswersState.sourceLanguageVariety ??
         null,
-      // Legacy fields from JSONB if needed
-      ...(guideAnswersState || {}),
     };
+
+    // Cost gate: DeepSeek is restricted to allowlisted accounts. Reject rather
+    // than silently downgrade so the caller sees a clear authorization error.
+    if (isDeepSeekBlocked(guideAnswers.translationModel, user.email)) {
+      return NextResponse.json(
+        { error: "You are not authorized to use the DeepSeek model." },
+        { status: 403 }
+      );
+    }
     const stanzaResult = state.poem_stanzas as
       | StanzaDetectionResult
       | undefined;

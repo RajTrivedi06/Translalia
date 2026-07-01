@@ -39,7 +39,8 @@ export interface GuideAnswers {
     | "gpt-4o-mini"
     | "gpt-4-turbo"
     | "gpt-5"
-    | "gpt-5-mini";
+    | "gpt-5-mini"
+    | "deepseek-v4-flash";
 
   /**
    * Translation method selection.
@@ -119,7 +120,8 @@ export interface GuideState {
     | "gpt-4o-mini"
     | "gpt-4-turbo"
     | "gpt-5"
-    | "gpt-5-mini";
+    | "gpt-5-mini"
+    | "deepseek-v4-flash";
   // Translation method selection (experimental)
   translationMethod: "method-1" | "method-2";
 
@@ -143,7 +145,13 @@ export interface GuideState {
   submitTranslationIntent: () => void;
   setTranslationRangeMode: (mode: "focused" | "balanced" | "adventurous") => void;
   setTranslationModel: (
-    model: "gpt-4o" | "gpt-4o-mini" | "gpt-4-turbo" | "gpt-5" | "gpt-5-mini"
+    model:
+      | "gpt-4o"
+      | "gpt-4o-mini"
+      | "gpt-4-turbo"
+      | "gpt-5"
+      | "gpt-5-mini"
+      | "deepseek-v4-flash"
   ) => void;
   setTranslationMethod: (method: "method-1" | "method-2") => void;
   mergeAnswers: (updates: Partial<GuideAnswers>) => void;
@@ -386,7 +394,13 @@ export const useGuideStore = create<GuideState>()(
         })),
 
       setTranslationModel: (
-        model: "gpt-4o" | "gpt-4o-mini" | "gpt-4-turbo" | "gpt-5" | "gpt-5-mini"
+        model:
+          | "gpt-4o"
+          | "gpt-4o-mini"
+          | "gpt-4-turbo"
+          | "gpt-5"
+          | "gpt-5-mini"
+          | "deepseek-v4-flash"
       ) =>
         set((state) => ({
           translationModel: model,
@@ -544,6 +558,14 @@ export const useGuideStore = create<GuideState>()(
           ...p,
           hydrated: true,
           meta: { threadId: tid ?? p.meta?.threadId ?? null },
+          // Restore the model selection so the picker matches the persisted
+          // backend choice after reload. Prefer the persisted top-level value,
+          // then the answers copy (the source of truth the routes read), then
+          // the current default.
+          translationModel:
+            p.translationModel ??
+            p.answers?.translationModel ??
+            current.translationModel,
           currentStep: normalizeLegacyStep(p.currentStep),
           poem: {
             text: p.poem?.text ?? current.poem.text ?? "",
@@ -591,6 +613,9 @@ export const useGuideStore = create<GuideState>()(
         // ADD CRITICAL FIELDS:
         isWorkshopUnlocked: state.isWorkshopUnlocked,
         isCollapsed: state.isCollapsed,
+        // Persist the model selection so it survives reload (previously only
+        // answers.translationModel persisted, leaving the picker on its default).
+        translationModel: state.translationModel,
       }),
     }
   )

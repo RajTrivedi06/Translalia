@@ -145,6 +145,25 @@ export function GuideRail({
   const [validationError, setValidationError] = useState<string | null>(null);
   const [showSegmentEditor, setShowSegmentEditor] = useState(false);
 
+  // DeepSeek is gated to allowlisted accounts. The endpoint keeps the allowlist
+  // server-side; everyone else never sees the picker option. Enforcement is
+  // still server-side, so this only controls visibility.
+  const [deepSeekAllowed, setDeepSeekAllowed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/features/deepseek")
+      .then((r) => (r.ok ? r.json() : { allowed: false }))
+      .then((d) => {
+        if (!cancelled) setDeepSeekAllowed(Boolean(d?.allowed));
+      })
+      .catch(() => {
+        if (!cancelled) setDeepSeekAllowed(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const poemTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   // =========================================================================
@@ -706,7 +725,13 @@ export function GuideRail({
   };
 
   const handleSaveTranslationModel = async (
-    nextModel: "gpt-4o" | "gpt-4o-mini" | "gpt-4-turbo" | "gpt-5" | "gpt-5-mini"
+    nextModel:
+      | "gpt-4o"
+      | "gpt-4o-mini"
+      | "gpt-4-turbo"
+      | "gpt-5"
+      | "gpt-5-mini"
+      | "deepseek-v4-flash"
   ) => {
     if (!threadId) return;
 
@@ -1254,7 +1279,18 @@ export function GuideRail({
                   "gpt-4-turbo",
                   "gpt-5",
                   "gpt-5-mini",
-                ] as const
+                  // DeepSeek only appears for allowlisted accounts.
+                  ...(deepSeekAllowed
+                    ? (["deepseek-v4-flash"] as const)
+                    : []),
+                ] as Array<
+                  | "gpt-4o"
+                  | "gpt-4o-mini"
+                  | "gpt-4-turbo"
+                  | "gpt-5"
+                  | "gpt-5-mini"
+                  | "deepseek-v4-flash"
+                >
               ).map((model) => (
                 <button
                   key={model}
@@ -1276,8 +1312,15 @@ export function GuideRail({
                   aria-pressed={translationModel === model}
                 >
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span className="font-semibold">{model}</span>
+                    <span className="font-semibold">
+                      {model === "deepseek-v4-flash" ? "DeepSeek" : model}
+                    </span>
 
+                    {model === "deepseek-v4-flash" && (
+                      <span className="text-xs opacity-80">
+                        (experimental)
+                      </span>
+                    )}
                     {model === "gpt-4o" && (
                       <span className="text-xs opacity-80">
                         (default)

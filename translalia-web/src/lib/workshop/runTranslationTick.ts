@@ -1,4 +1,6 @@
+import { createClient } from "@supabase/supabase-js";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { isDeepSeekModel, isDeepSeekAllowed } from "@/lib/ai/deepseekAccess";
 import type { StanzaDetectionResult } from "@/lib/poem/stanzaDetection";
 import type { GuideAnswers } from "@/store/guideSlice";
 import type {
@@ -28,6 +30,12 @@ export interface RunTranslationTickOptions {
   maxProcessingTimeMs?: number;
   maxStanzasPerTick?: number;
   chunkConcurrency?: number; // ISS-006: Bounded concurrency for stanzas
+  /**
+   * The authenticated caller's email (auth email). Callers verify the caller
+   * owns the thread, so this is the authoritative identity for the DeepSeek
+   * gate. Passed through to loadThreadContext.
+   */
+  authorizedEmail?: string | null;
 }
 
 // ✅ C) Instrumentation: Track timing and OpenAI call counts
@@ -84,8 +92,43 @@ interface ThreadContext {
   projectId: string | null;
 }
 
+/**
+ * Resolve the thread owner's authoritative email for the DeepSeek gate.
+ * Priority: the caller-supplied authorized email (the auth email of a
+ * verified owner) → the owner's auth email via service-role admin →
+ * profiles.email. profiles.email can be null/unsynced, so it is only a last
+ * resort — relying on it alone false-blocks legitimate allowlisted owners.
+ */
+async function resolveOwnerEmailForGate(
+  supabase: Awaited<ReturnType<typeof supabaseServer>>,
+  ownerId: string,
+  authorizedEmail?: string | null
+): Promise<string | null> {
+  if (authorizedEmail) return authorizedEmail;
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (url && serviceKey) {
+    try {
+      const admin = createClient(url, serviceKey);
+      const { data } = await admin.auth.admin.getUserById(ownerId);
+      if (data?.user?.email) return data.user.email;
+    } catch {
+      // Fall through to the profiles lookup.
+    }
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("email")
+    .eq("id", ownerId)
+    .single();
+  return profile?.email ?? null;
+}
+
 export async function loadThreadContext(
   threadId: string,
+  opts: { authorizedEmail?: string | null } = {},
 ): Promise<ThreadContext> {
   const supabase = await supabaseServer();
   const { data, error } = await supabase
@@ -106,6 +149,8 @@ export async function loadThreadContext(
   const guideAnswersState =
     (state as { guide_answers?: GuideAnswers }).guide_answers ?? {};
   const guideAnswers: GuideAnswers = {
+    // Legacy fields from JSONB first, so the resolved values below always win.
+    ...(guideAnswersState || {}),
     translationModel:
       data.translation_model ?? guideAnswersState.translationModel ?? null,
     translationMethod:
@@ -120,9 +165,24 @@ export async function loadThreadContext(
       data.source_language_variety ??
       guideAnswersState.sourceLanguageVariety ??
       null,
-    // Legacy fields from JSONB if needed
-    ...(guideAnswersState || {}),
   };
+
+  // Cost gate: DeepSeek is restricted to allowlisted accounts. This is the
+  // single chokepoint for every background tick trigger. The thread owner is
+  // whoever chose the model, so we authorize against their email. Reject (throw)
+  // rather than silently downgrade.
+  if (isDeepSeekModel(guideAnswers.translationModel)) {
+    const ownerEmail = await resolveOwnerEmailForGate(
+      supabase,
+      data.created_by,
+      opts.authorizedEmail
+    );
+    if (!isDeepSeekAllowed(ownerEmail)) {
+      throw new Error(
+        `[runTranslationTick] Thread owner is not authorized to use the DeepSeek model (thread ${threadId})`
+      );
+    }
+  }
   const stanzaResult = state.poem_stanzas as StanzaDetectionResult | undefined;
   const rawPoem = (data.raw_poem ?? state.raw_poem ?? "") as string;
   const poemAnalysis = (state.poem_analysis as { language?: string }) || {};
@@ -516,7 +576,9 @@ export async function runTranslationTick(
     }
 
     diag.mark("load-context-start");
-    const context = await loadThreadContext(threadId);
+    const context = await loadThreadContext(threadId, {
+      authorizedEmail: options.authorizedEmail,
+    });
     diag.mark("load-context-end");
     const { stanzaResult, rawPoem, guideAnswers, sourceLanguage, createdBy } =
       context;

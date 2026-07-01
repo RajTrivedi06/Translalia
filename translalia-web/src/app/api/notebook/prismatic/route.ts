@@ -4,6 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 import { z } from "zod";
 import OpenAI from "openai";
 import { TRANSLATOR_MODEL } from "@/lib/models";
+import { isDeepSeekBlocked } from "@/lib/ai/deepseekAccess";
 import { checkRateLimit } from "@/lib/ratelimit/redis";
 import {
   getOrCreateVariantRecipes,
@@ -138,6 +139,8 @@ export async function POST(req: NextRequest) {
     const guideAnswersState =
       (state as { guide_answers?: GuideAnswers }).guide_answers ?? {};
     const guideAnswers: GuideAnswers = {
+      // Legacy fields from JSONB first, so the resolved values below always win.
+      ...(guideAnswersState || {}),
       translationModel:
         thread.translation_model ?? guideAnswersState.translationModel ?? null,
       translationMethod:
@@ -152,9 +155,16 @@ export async function POST(req: NextRequest) {
         thread.source_language_variety ??
         guideAnswersState.sourceLanguageVariety ??
         null,
-      // Legacy fields from JSONB if needed
-      ...(guideAnswersState || {}),
     };
+
+    // Cost gate: DeepSeek is restricted to allowlisted accounts. Reject rather
+    // than silently downgrade so the caller sees a clear authorization error.
+    if (isDeepSeekBlocked(guideAnswers.translationModel, user.email)) {
+      return NextResponse.json(
+        { error: "You are not authorized to use the DeepSeek model." },
+        { status: 403 }
+      );
+    }
     const notebookCells = (state.notebook_cells || {}) as Record<
       number,
       { translation?: { text?: string } }

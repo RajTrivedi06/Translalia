@@ -156,7 +156,10 @@ export async function POST(req: Request) {
 
     // Optionally trigger a translation tick immediately
     try {
-      await runTranslationTick(threadId, { maxProcessingTimeMs: 4000 });
+      await runTranslationTick(threadId, {
+        maxProcessingTimeMs: 4000,
+        authorizedEmail: user.email,
+      });
     } catch (tickError) {
       console.warn(
         "[retry-stanza] runTranslationTick failed, but chunk was queued:",

@@ -13,6 +13,11 @@ export const revalidate = 0;
 const ADVANCE_SPLIT_ENABLED =
   process.env.ENABLE_STATUS_READ_ADVANCE_SPLIT === "1";
 
+// [DEBUG_LATENCY] Module-scoped flag: false until the first request warms this
+// serverless instance. Lets prod logs distinguish cold-start invocations.
+// Reset whenever Vercel spins up a new instance. Strippable.
+let INSTANCE_WARM = false;
+
 const QuerySchema = z.object({
   threadId: z.string().uuid(),
   advance: z.enum(["true", "false"]).optional().default("true"),
@@ -23,6 +28,13 @@ export async function GET(req: NextRequest) {
   const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
   
   console.log(`[translation-status] ${requestId} start`);
+  // [DEBUG_LATENCY] Cold-start probe: true on the first request a fresh instance sees.
+  if (process.env.DEBUG_LATENCY === "1") {
+    console.log(
+      `[DEBUG_LATENCY] ${requestId} coldStart=${!INSTANCE_WARM}`,
+    );
+    INSTANCE_WARM = true;
+  }
   const { user, response, sb } = await requireUser();
   if (!user) return response;
 
@@ -100,6 +112,7 @@ export async function GET(req: NextRequest) {
     const tickPromise = runTranslationTick(threadId, {
       maxProcessingTimeMs: TICK_TIME_BUDGET_MS,
       maxStanzasPerTick,
+      authorizedEmail: user.email,
     });
 
     // Race between tick completion and HTTP timeout
@@ -134,12 +147,29 @@ export async function GET(req: NextRequest) {
         
         // Continue tick in background (fire-and-forget)
         // Note: In serverless, this may be cut off, but that's okay - next poll will trigger again
-        tickPromise.catch((error) => {
-          console.error(
-            `[translation-status] ${requestId} background tick error:`,
-            error instanceof Error ? error.message : String(error)
-          );
-        });
+        // [DEBUG_LATENCY] Decisive probe: in prod, the serverless instance freezes
+        // once this response is sent, so this resolution log will be MISSING for most
+        // "tick scheduled" lines if the background tick is being cut off. Locally
+        // (long-lived dev server) it should fire shortly after, confirming the tick
+        // completed in the background.
+        const bgStart = Date.now();
+        tickPromise
+          .then((r) => {
+            if (process.env.DEBUG_LATENCY === "1") {
+              console.log(
+                `[DEBUG_LATENCY] ${requestId} bg_tick_resolved ` +
+                  `ms=${Date.now() - bgStart} ` +
+                  `completed=${r?.completedChunks?.length ?? 0} ` +
+                  `hasWorkRemaining=${r?.hasWorkRemaining ?? "?"}`,
+              );
+            }
+          })
+          .catch((error) => {
+            console.error(
+              `[translation-status] ${requestId} background tick error:`,
+              error instanceof Error ? error.message : String(error)
+            );
+          });
       }
     } catch (error) {
       // Tick failed quickly - log but don't block response
