@@ -222,17 +222,39 @@ export async function updateGuideState(
       .update(updatePayload)
       .eq("id", threadId);
     
-    // If guide_answers exists in state JSONB, remove it atomically to prevent legacy issues
+    // If guide_answers exists in state JSONB, remove it atomically so the
+    // legacy copy cannot be mistaken for the source of truth (the columns are).
+    //
+    // F-04-007: this was ineffective in three separate ways, all fixed here.
+    //   1. It called a 3-arg signature that did not exist — the only
+    //      patch_thread_state_field was 4-arg — so PostgREST could not resolve
+    //      it. Migration 20260816_02 adds the 3-arg overload and a delete
+    //      primitive.
+    //   2. It passed p_value: "null", which is the JSON *string* "null", not
+    //      JSON null. Moot now: removal does not take a value.
+    //   3. jsonb_set SETS a key. Even had it resolved, guide_answers would
+    //      have remained present holding a null. `#-`, via
+    //      delete_thread_state_field, actually removes it.
+    // And the error was never read: supabase.rpc() RETURNS an error object
+    // rather than throwing, so the surrounding try/catch could not fire and
+    // the failure was invisible for as long as it existed.
     if (currentState.guide_answers) {
-      // Use jsonb_set to remove guide_answers without clobbering other state fields
-      try {
-        await supabase.rpc("patch_thread_state_field", {
+      const { error: clearError } = await supabase.rpc(
+        "delete_thread_state_field",
+        {
           p_thread_id: threadId,
-          p_path: "{guide_answers}",
-          p_value: "null",
-        });
-      } catch {
-        // Silently ignore if RPC doesn't exist - columns are the source of truth now
+          p_path: ["guide_answers"],
+        }
+      );
+
+      // Non-fatal: the columns are authoritative, so a stale JSONB copy is
+      // untidy rather than incorrect. But it is logged now instead of
+      // swallowed, which is how this stayed invisible.
+      if (clearError) {
+        console.warn(
+          `[updateGuideState] Failed to clear legacy state.guide_answers for ` +
+            `thread ${threadId}: ${clearError.message} (code ${clearError.code ?? "none"})`
+        );
       }
     }
 
@@ -533,47 +555,60 @@ export async function patchThreadStateField(
       return { success: false, error: "Unauthenticated" };
     }
 
-    // Convert field path to PostgreSQL format: ['variant_recipes_v1'] -> '{variant_recipes_v1}'
-    const pathStr = `{${fieldPath.join(",")}}`;
-    const valueJson = JSON.stringify(value);
+    // Dedicated RPC, not exec_sql.
+    //
+    // exec_sql takes a caller-supplied SQL string and runs it under SECURITY
+    // DEFINER, which makes it an arbitrary-SQL-execution primitive for anyone
+    // holding the `authenticated` grant (F-04-005). This call site was the
+    // last thing keeping that grant necessary.
+    //
+    // The ownership check also moves server-side: the 3-arg overload derives
+    // the owner from auth.uid() rather than accepting it as a parameter, so a
+    // forged user id is no longer expressible (F-04-012).
+    const { data: patched, error: updateError } = await supabase.rpc(
+      "patch_thread_state_field",
+      {
+        p_thread_id: threadId,
+        p_path: fieldPath,
+        p_value: value ?? null,
+      }
+    );
 
-    // Use raw SQL with jsonb_set for atomic patch (no read-modify-write)
-    // COALESCE handles null state gracefully
-    const { error: updateError } = await supabase.rpc("exec_sql", {
-      query: `
-        UPDATE chat_threads
-        SET state = jsonb_set(COALESCE(state, '{}'::jsonb), $1::text[], $2::jsonb)
-        WHERE id = $3::uuid AND created_by = $4::uuid
-      `,
-      params: [pathStr, valueJson, threadId, user.id],
-    });
-
-    // ✅ PRIORITY 0 FIX: Hard-fail when RPC isn't available
-    // The fallback was silently clobbering translation_job state during concurrent writes.
-    // We now FAIL FAST instead of silently corrupting data.
+    // Hard-fail when the RPC is missing rather than falling back to a
+    // read-modify-write, which silently clobbered concurrent translation_job
+    // writes. PostgREST reports an unresolvable function as PGRST202; Postgres
+    // itself uses 42883.
     if (
-      updateError?.message?.includes("function") ||
-      updateError?.code === "42883"
+      updateError?.code === "PGRST202" ||
+      updateError?.code === "42883" ||
+      updateError?.message?.toLowerCase().includes("could not find the function")
     ) {
-      const errorMsg =
-        "[patchThreadStateField] CRITICAL: exec_sql RPC not available. " +
-        "This would cause state clobber. Create the RPC function in Supabase or use direct jsonb_set. " +
-        `Path: ${fieldPath.join(".")}`;
-      console.error(errorMsg);
-
-      // In production, fail hard to prevent data corruption
-      // In development, also fail but with more context
+      console.error(
+        "[patchThreadStateField] CRITICAL: patch_thread_state_field(uuid, text[], jsonb) " +
+          `not available. Apply supabase/migrations/20260816_02_patch_thread_state_field_authuid.sql. ` +
+          `Path: ${fieldPath.join(".")}`
+      );
       throw new Error(
-        `ATOMIC_PATCH_UNAVAILABLE: The exec_sql RPC function is not available in your Supabase project. ` +
-        `This is REQUIRED to prevent state corruption. ` +
-        `Please create the RPC function or use the Supabase migration provided. ` +
-        `Attempted path: ${fieldPath.join(".")}`
+        `ATOMIC_PATCH_UNAVAILABLE: the 3-arg patch_thread_state_field RPC is missing. ` +
+          `It is REQUIRED to prevent state corruption. Apply migration ` +
+          `20260816_02_patch_thread_state_field_authuid.sql. ` +
+          `Attempted path: ${fieldPath.join(".")}`
       );
     }
 
     if (updateError) {
       console.error("[patchThreadStateField] Update error:", updateError);
       return { success: false, error: "Failed to patch state field" };
+    }
+
+    // The RPC returns false when no row matched — thread missing, or owned by
+    // somebody else. That is a real failure and must not read as success.
+    if (patched === false) {
+      console.warn(
+        `[patchThreadStateField] No row updated for thread ${threadId} ` +
+          `(not found, or not owned by the caller). Path: ${fieldPath.join(".")}`
+      );
+      return { success: false, error: "Thread not found or not owned by caller" };
     }
 
     return { success: true };

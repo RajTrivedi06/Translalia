@@ -14,14 +14,41 @@ const feedbackSchema = z.object({
 /**
  * Collect user feedback on context notes quality
  * Helps improve prompt engineering for Track B
+ *
+ * F-05-003: authentication was present but ownership was not. Any signed-in
+ * user could POST any threadId and have a row written into prompt_audits
+ * against that thread — a write IDOR. `created_by` was stamped with the
+ * caller's id, so the rows even looked legitimate while attributing feedback
+ * to a thread the caller had never seen. The ownership check below closes it.
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user, response } = await requireUser();
+    const { user, response, sb } = await requireUser();
     if (!user) return response;
 
     const body = await request.json();
     const feedback = feedbackSchema.parse(body);
+
+    // Ownership check BEFORE any write. Uses the caller's session client, so
+    // RLS applies too — a thread the caller cannot see reads as not found.
+    const { data: thread, error: threadError } = await sb
+      .from("chat_threads")
+      .select("id, created_by")
+      .eq("id", feedback.threadId)
+      .single();
+
+    if (threadError || !thread) {
+      return NextResponse.json(
+        { error: { code: "THREAD_NOT_FOUND", message: "Thread not found" } },
+        { status: 404 }
+      );
+    }
+    if (thread.created_by !== user.id) {
+      return NextResponse.json(
+        { error: { code: "FORBIDDEN_THREAD", message: "Not your thread" } },
+        { status: 403 }
+      );
+    }
 
     const supabase = await getServerClient();
 
