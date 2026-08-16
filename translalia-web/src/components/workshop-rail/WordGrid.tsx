@@ -31,6 +31,126 @@ import { Sparkles } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { HelpHint } from "@/components/ui/help-hint";
 import { TokenSuggestButton } from "@/components/workshop-rail/TokenSuggestButton";
+import {
+  segmentText,
+  joinSegments,
+  separatorForScript,
+} from "@/lib/text/segmentText";
+import { detectScript } from "@/lib/text/script";
+
+/**
+ * A renderable token in a translation variant card.
+ *
+ * Unifies the two sources the card can draw from:
+ *  - `variant.words` (Method 1 threads, model-supplied alignment)
+ *  - `segmentText(variant.fullText)` (Method 2, where `words` is always empty —
+ *    see docs/04-investigations/cjk-segmentation-recon.md §6)
+ *
+ * so that one render path serves both.
+ */
+export interface VariantToken {
+  /** Target-language text: what is displayed, dragged, and appended. */
+  text: string;
+  /** Source word this came from, when known. Empty on the segmented path. */
+  original: string;
+  partOfSpeech: string;
+  /**
+   * Legacy whitespace-token index. Still sent in the suggestions payload for
+   * older-server compatibility. For Latin this equals the segment index, so
+   * behaviour is unchanged; for CJK it is advisory only and `start`/`end` are
+   * what the server actually uses.
+   */
+  position: number;
+  /** Character offsets into the string this token was segmented from. */
+  start: number | null;
+  end: number | null;
+  /** False for punctuation: rendered inline as text, never draggable. */
+  wordLike: boolean;
+}
+
+/**
+ * Resolve character offsets that are valid *for the string the server will
+ * apply them to*.
+ *
+ * This matters because the server marks the focused span in
+ * `targetLineDraft`, not in the variant's `fullText` that the chip came from
+ * (`suggestionsPromptBuilders.ts`, `buildTokenSuggestionsPrompt`). Handing it
+ * raw `fullText` offsets could mark a plausible-but-wrong span in a
+ * differently-shaped draft.
+ *
+ * So: use the offsets only when they demonstrably identify the same text in
+ * the target string, or when the token occurs there exactly once. Otherwise
+ * return nulls and let the server fall back to the existing index path —
+ * i.e. exactly today's behaviour, never worse.
+ */
+export function offsetsForTarget(
+  target: string | null | undefined,
+  tokenText: string,
+  start: number | null,
+  end: number | null
+): { start: number | null; end: number | null } {
+  if (!target || !tokenText) return { start: null, end: null };
+
+  if (
+    start !== null &&
+    end !== null &&
+    end <= target.length &&
+    target.slice(start, end) === tokenText
+  ) {
+    return { start, end };
+  }
+
+  const first = target.indexOf(tokenText);
+  if (first !== -1 && target.indexOf(tokenText, first + 1) === -1) {
+    return { start: first, end: first + tokenText.length };
+  }
+
+  return { start: null, end: null };
+}
+
+/**
+ * Build the renderable tokens for a translation variant.
+ *
+ * Two branches, and the first one must stay exactly as it was:
+ *
+ *  - `variant.words` non-empty — a Method 1 thread where the model returned an
+ *    alignment. Passed through unchanged, no offsets, every token draggable.
+ *  - `variant.words` empty — every Method 2 thread. Segment `fullText`.
+ *    For Latin, `segmentText` is byte-identical to the `fullText.split(/\s+/)`
+ *    this replaced (guaranteed by the golden test in
+ *    `src/lib/text/__tests__/segmentText.test.ts`), so Latin threads render
+ *    exactly as before. For CJK it is what turns one unsegmented block into
+ *    real tokens.
+ *
+ * Exported for tests: this is where the Latin no-op guarantee lives.
+ */
+export function buildVariantTokens(
+  variant: Pick<LineTranslationVariant, "words" | "fullText">
+): VariantToken[] {
+  if (variant.words.length > 0) {
+    return variant.words.map((w, idx) => ({
+      text: w.translation,
+      original: w.original,
+      partOfSpeech: w.partOfSpeech || "neutral",
+      position: w.position ?? idx,
+      start: null,
+      end: null,
+      wordLike: true,
+    }));
+  }
+
+  return segmentText(variant.fullText).map((seg, idx) => ({
+    text: seg.text,
+    // The old fallback set original === translation. Keep that: it is what the
+    // tooltip and the suggestions `originalWord` field expect.
+    original: seg.text,
+    partOfSpeech: "neutral",
+    position: idx,
+    start: seg.start,
+    end: seg.end,
+    wordLike: seg.wordLike,
+  }));
+}
 
 /**
  * Map all suggestion failure reasons to user-friendly messages
@@ -316,6 +436,9 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
     originalWord: string;
     partOfSpeech: string;
     position: number;
+    /** Character offsets, when they can be resolved. See offsetsForTarget. */
+    start?: number | null;
+    end?: number | null;
     sourceType: "variant" | "source";
     variantId?: number;
   } | null>(null);
@@ -763,6 +886,10 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
               originalWord: tokenFocus.originalWord,
               partOfSpeech: tokenFocus.partOfSpeech,
               position: tokenFocus.position,
+              // Additive: the server prefers these and falls back to
+              // `position` when they are absent or out of bounds.
+              start: tokenFocus.start ?? null,
+              end: tokenFocus.end ?? null,
               sourceType: tokenFocus.sourceType,
               variantId: tokenFocus.variantId ?? null,
             },
@@ -846,6 +973,8 @@ export function WordGrid({ threadId: pThreadId, lineContext }: WordGridProps) {
       originalWord: string;
       partOfSpeech: string;
       position: number;
+      start?: number | null;
+      end?: number | null;
       sourceType: "variant" | "source";
       variantId?: number;
     }) => {
@@ -1230,32 +1359,32 @@ function TranslationVariantCard({
   const setCurrentLineIndex = useWorkshopStore((s) => s.setCurrentLineIndex);
   const appendToDraft = useWorkshopStore((s) => s.appendToDraft);
 
-  const tokens = React.useMemo(() => {
-    if (variant.words.length > 0) {
-      return variant.words;
-    }
-    return variant.fullText
-      .split(/\s+/)
-      .filter(Boolean)
-      .map((word, idx) => ({
-        original: word,
-        translation: word,
-        partOfSpeech: "neutral",
-        position: idx,
-      }));
-  }, [variant]);
+  /** Script of this variant's target text. Drives joining and separators. */
+  const script = React.useMemo(
+    () => detectScript(variant.fullText),
+    [variant.fullText]
+  );
+
+  /**
+   * Separator used when appending this variant's tokens to the draft.
+   * "" for unspaced scripts so chip-by-chip assembly does not yield `词 词 词`.
+   */
+  const appendSeparator = separatorForScript(script);
+
+  const tokens = React.useMemo(() => buildVariantTokens(variant), [variant]);
 
   // Handler to add all tokens from this variant to the draft
   const handleAddAllTokens = React.useCallback(() => {
-    // Collect all valid token translations
+    // Collect all valid token texts, punctuation included — dropping it here
+    // would silently rewrite the line the user is adding.
     const validTokens = tokens
-      .filter((token) => token.translation && token.translation.trim())
-      .map((token) => token.translation.trim());
+      .filter((token) => token.text && token.text.trim())
+      .map((token) => token.text.trim());
 
     if (validTokens.length === 0) return;
 
-    // Join tokens with spaces to form the complete variant text
-    const fullVariantText = validTokens.join(" ");
+    // Join for the detected script: " " for Latin (unchanged), "" for CJK.
+    const fullVariantText = joinSegments(validTokens, script);
 
     // Determine target line (use lineNumber from variant, or current line)
     const targetLine = lineNumber ?? currentLineIndex ?? 0;
@@ -1266,8 +1395,10 @@ function TranslationVariantCard({
     }
 
     // Add all tokens to draft
-    appendToDraft(targetLine, fullVariantText);
+    appendToDraft(targetLine, fullVariantText, appendSeparator);
   }, [
+    script,
+    appendSeparator,
     tokens,
     lineNumber,
     currentLineIndex,
@@ -1310,18 +1441,36 @@ function TranslationVariantCard({
           </div> */}
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {tokens.map((token, idx) => (
-            <DraggableVariantToken
-              key={`${variant.variant}-${token.position}-${idx}`}
-              token={token}
-              variantId={variant.variant}
-              lineNumber={lineNumber}
-              stanzaIndex={stanzaIndex}
-              disabled={!token.translation}
-              onSuggest={onSuggest}
-            />
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          {tokens.map((token, idx) =>
+            token.wordLike ? (
+              <DraggableVariantToken
+                // Offsets are unique within a line; `position` is not once a
+                // token repeats (e.g. 看 twice in 你站在桥上看风景，看风景的…).
+                // `idx` remains as the tiebreaker for the words[] path, where
+                // start is null.
+                key={`${variant.variant}-${token.start ?? `p${token.position}`}-${idx}`}
+                token={token}
+                variantId={variant.variant}
+                lineNumber={lineNumber}
+                stanzaIndex={stanzaIndex}
+                disabled={!token.text}
+                targetText={variant.fullText}
+                appendSeparator={appendSeparator}
+                onSuggest={onSuggest}
+              />
+            ) : (
+              // Punctuation: present so the line reads correctly, but not a
+              // chip — nothing to drag, nothing to ask for alternatives for.
+              <span
+                key={`${variant.variant}-punct-${token.start ?? idx}-${idx}`}
+                aria-hidden="true"
+                className="text-sm text-foreground-muted select-none"
+              >
+                {token.text}
+              </span>
+            )
+          )}
         </div>
 
         <div className="flex flex-wrap gap-2 mt-2">
@@ -1345,16 +1494,22 @@ function TranslationVariantCard({
 }
 
 interface DraggableVariantTokenProps {
-  token: LineTranslationVariant["words"][number];
+  token: VariantToken;
   variantId: number;
   lineNumber: number;
   stanzaIndex?: number;
   disabled?: boolean;
+  /** The variant text this token was segmented from. Used to resolve offsets. */
+  targetText: string;
+  /** "" for unspaced scripts, " " otherwise. */
+  appendSeparator: string;
   onSuggest?: (payload: {
     word: string;
     originalWord: string;
     partOfSpeech: string;
     position: number;
+    start?: number | null;
+    end?: number | null;
     sourceType: "variant";
     variantId: number;
   }) => void;
@@ -1366,6 +1521,8 @@ function DraggableVariantToken({
   lineNumber,
   stanzaIndex,
   disabled,
+  targetText,
+  appendSeparator,
   onSuggest,
 }: DraggableVariantTokenProps) {
   const currentLineIndex = useWorkshopStore((s) => s.currentLineIndex);
@@ -1377,9 +1534,13 @@ function DraggableVariantToken({
 
   const pos = normalizePartOfSpeechTag(token.partOfSpeech);
   const dragData: DragData = {
-    id: `variant-${variantId}-line-${lineNumber}-${token.position}-${token.translation}`,
-    text: token.translation,
-    originalWord: token.original || token.translation || "",
+    // Offset, not position: two identical tokens in one line share a position
+    // under the words[] path and would collide on the dnd-kit id.
+    id: `variant-${variantId}-line-${lineNumber}-${
+      token.start ?? `p${token.position}`
+    }-${token.text}`,
+    text: token.text,
+    originalWord: token.original || token.text || "",
     partOfSpeech: pos,
     sourceLineNumber: lineNumber,
     position: token.position ?? 0,
@@ -1388,11 +1549,31 @@ function DraggableVariantToken({
     stanzaIndex,
   };
 
+  /** Payload for token suggestions, with offsets resolved against the target. */
+  const buildSuggestPayload = React.useCallback(() => {
+    const { start, end } = offsetsForTarget(
+      targetText,
+      token.text,
+      token.start,
+      token.end
+    );
+    return {
+      word: token.text,
+      originalWord: token.original || token.text,
+      partOfSpeech: pos,
+      position: token.position ?? 0,
+      start,
+      end,
+      sourceType: "variant" as const,
+      variantId,
+    };
+  }, [targetText, token, pos, variantId]);
+
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({
       id: dragData.id,
       data: dragData,
-      disabled: disabled || !token.translation,
+      disabled: disabled || !token.text,
     });
 
   React.useEffect(() => {
@@ -1422,14 +1603,14 @@ function DraggableVariantToken({
       )}
       title={
         token.original
-          ? `Original: ${token.original}\nTranslation: ${token.translation}`
-          : token.translation
+          ? `Original: ${token.original}\nTranslation: ${token.text}`
+          : token.text
       }
       aria-label={
         disabled
           ? undefined
-          : `Add "${token.translation}" (from "${
-              token.original || token.translation
+          : `Add "${token.text}" (from "${
+              token.original || token.text
             }") to notebook`
       }
       onPointerDown={() => {
@@ -1437,15 +1618,8 @@ function DraggableVariantToken({
         justDraggedRef.current = false;
         if (longPressRef.current) clearTimeout(longPressRef.current);
         longPressRef.current = window.setTimeout(() => {
-          if (disabled || !token.translation) return;
-          onSuggest?.({
-            word: token.translation,
-            originalWord: token.original || token.translation,
-            partOfSpeech: pos,
-            position: token.position ?? 0,
-            sourceType: "variant",
-            variantId,
-          });
+          if (disabled || !token.text) return;
+          onSuggest?.(buildSuggestPayload());
         }, 450);
       }}
       onPointerUp={() => {
@@ -1455,20 +1629,13 @@ function DraggableVariantToken({
         if (longPressRef.current) clearTimeout(longPressRef.current);
       }}
       onContextMenu={(e) => {
-        if (disabled || !token.translation) return;
+        if (disabled || !token.text) return;
         e.preventDefault();
-        onSuggest?.({
-          word: token.translation,
-          originalWord: token.original || token.translation,
-          partOfSpeech: pos,
-          position: token.position ?? 0,
-          sourceType: "variant",
-          variantId,
-        });
+        onSuggest?.(buildSuggestPayload());
       }}
       onClick={(e) => {
         e.stopPropagation();
-        if (disabled || !token.translation) return;
+        if (disabled || !token.text) return;
         // If the user just dragged, browsers can fire a click on mouseup—ignore once.
         if (justDraggedRef.current) {
           justDraggedRef.current = false;
@@ -1478,19 +1645,19 @@ function DraggableVariantToken({
         if (targetLine !== currentLineIndex) {
           setCurrentLineIndex(targetLine);
         }
-        appendToDraft(targetLine, dragData.text);
+        appendToDraft(targetLine, dragData.text, appendSeparator);
         setClicked(true);
         window.setTimeout(() => setClicked(false), 250);
       }}
       onKeyDown={(e) => {
-        if (disabled || !token.translation) return;
+        if (disabled || !token.text) return;
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           const targetLine = dragData.sourceLineNumber ?? currentLineIndex ?? 0;
           if (targetLine !== currentLineIndex) {
             setCurrentLineIndex(targetLine);
           }
-          appendToDraft(targetLine, dragData.text);
+          appendToDraft(targetLine, dragData.text, appendSeparator);
           setClicked(true);
           window.setTimeout(() => setClicked(false), 250);
         }
@@ -1499,21 +1666,12 @@ function DraggableVariantToken({
       tabIndex={disabled ? -1 : 0}
     >
       <span className="text-foreground pointer-events-none">
-        {token.translation || "…"}
+        {token.text || "…"}
       </span>
-      {onSuggest && !disabled && token.translation ? (
+      {onSuggest && !disabled && token.text ? (
         <TokenSuggestButton
-          word={token.translation}
-          onSuggest={() =>
-            onSuggest({
-              word: token.translation,
-              originalWord: token.original || token.translation,
-              partOfSpeech: pos,
-              position: token.position ?? 0,
-              sourceType: "variant",
-              variantId,
-            })
-          }
+          word={token.text}
+          onSuggest={() => onSuggest(buildSuggestPayload())}
         />
       ) : null}
     </div>
