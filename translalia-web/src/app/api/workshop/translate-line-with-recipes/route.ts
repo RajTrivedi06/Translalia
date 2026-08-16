@@ -9,6 +9,23 @@ import type { GuideAnswers } from "@/store/guideSlice";
 import { translateLineWithRecipesInternal } from "@/lib/translation/method2/translateLineWithRecipesInternal";
 import { isDeepSeekBlocked } from "@/lib/ai/deepseekAccess";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TEMPORARY ICU PROBE — REMOVE AFTER READING ONE DEPLOY LOG.
+//
+// Settles whether Vercel's Node runtime carries full ICU, which is what
+// `Intl.Segmenter` needs for the CJK word dictionary. Verified locally
+// (node v22.3.0, icu 75.1, full ICU) but not in production. Module scope, so
+// it logs exactly once per cold start, not per request.
+//
+// Expect: icu ≈ "7x.y" and segmenter "function". A missing `icu` field or a
+// small-icu build means we need a bundled segmenter instead.
+// Tracking: docs/04-investigations/cjk-segmentation-recon.md
+console.log("[ICU_PROBE]", {
+  icu: process.versions.icu ?? null,
+  segmenter: typeof Intl.Segmenter,
+});
+// ─────────────────────────────────────────────────────────────────────────────
+
 const RequestSchema = z.object({
   threadId: z.string().uuid(),
   lineIndex: z.number().int().min(0),

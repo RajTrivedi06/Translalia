@@ -6,6 +6,8 @@
  * on meaningful content words.
  */
 
+import { detectScript } from "@/lib/text/script";
+
 // =============================================================================
 // English Stopwords
 // =============================================================================
@@ -699,25 +701,97 @@ const LANGUAGE_PATTERNS: Array<{ pattern: RegExp; stopwords: Set<string> }> = [
  * @returns The appropriate stopword set (defaults to English)
  */
 export function pickStopwords(targetLanguageHint?: string): Set<string> {
-  if (!targetLanguageHint) {
-    return EN_STOPWORDS;
+  // Unchanged behaviour, kept for the call sites this phase does not own:
+  // an unmatched hint still falls back to English. Prefer
+  // `resolveStopwordsForText` in new code — it can tell "English" apart from
+  // "we have no idea".
+  return matchStopwordsByHint(targetLanguageHint) ?? EN_STOPWORDS;
+}
+
+/** Immutable empty set, returned when we have no usable stopword list. */
+const NO_STOPWORDS: ReadonlySet<string> = new Set<string>();
+
+export interface ResolvedStopwords {
+  stopwords: Set<string>;
+  /**
+   * False when the hint matched no known language AND the text is not written
+   * in a script our lists cover. Callers MUST skip stopword-dependent logic
+   * when this is false rather than run English stopwords against the text.
+   */
+  known: boolean;
+  /** Human-readable language label, or "unknown". */
+  language: string;
+}
+
+/**
+ * Resolve stopwords for a piece of TEXT, given a (possibly useless) language
+ * hint.
+ *
+ * Why text-aware rather than hint-only: in production the hint is the literal
+ * placeholder `"the target language"` for every thread, because nothing
+ * populates `answers.targetLanguage` (recon §5, ledger F-01-005). A hint-only
+ * "unknown → empty set" rule would therefore strip stopword filtering from
+ * EVERY thread including all the Latin ones, changing their content-token
+ * counts, their length-aware Jaccard thresholds, and so their gate outcomes.
+ * That would break the "Latin behaviour is frozen" guarantee this phase is
+ * held to.
+ *
+ * So the fallback is narrowed by script instead of widened by hint:
+ *
+ *  - hint matches a known language  → that list, known: true
+ *  - hint unknown, text is Latin    → English list, known: true
+ *                                     (unchanged from today — an imprecision
+ *                                     that predates this work, not the bug)
+ *  - hint unknown, text is CJK/Thai → EMPTY set, known: false
+ *
+ * Only the third case is new, and it is exactly the case that was broken:
+ * scoring Chinese against English stopwords, where nothing ever matches, so
+ * every Chinese function word (的 在 中) counted as a content token.
+ */
+export function resolveStopwordsForText(
+  text: string,
+  targetLanguageHint?: string
+): ResolvedStopwords {
+  const matched = matchStopwordsByHint(targetLanguageHint);
+  if (matched) {
+    return {
+      stopwords: matched,
+      known: true,
+      language: getStopwordsLanguage(matched),
+    };
   }
+
+  const script = detectScript(text);
+  if (script === "latin" || script === "other") {
+    // Preserve today's behaviour exactly for spaced scripts.
+    return { stopwords: EN_STOPWORDS, known: true, language: "English" };
+  }
+
+  return {
+    stopwords: NO_STOPWORDS as Set<string>,
+    known: false,
+    language: "unknown",
+  };
+}
+
+/**
+ * Hint-only match. Returns null when nothing matches, instead of silently
+ * defaulting to English — that default is applied by the callers above, where
+ * it can be made conditional.
+ */
+function matchStopwordsByHint(
+  targetLanguageHint?: string
+): Set<string> | null {
+  if (!targetLanguageHint) return null;
 
   const hint = targetLanguageHint.trim();
 
-  // First try matching the full hint
   for (const { pattern, stopwords } of LANGUAGE_PATTERNS) {
-    if (pattern.test(hint)) {
-      return stopwords;
-    }
+    if (pattern.test(hint)) return stopwords;
   }
 
-  // Handle BCP-47 tags like "es-MX", "pt-BR", "fr-CA"
-  // Extract the base language code before the hyphen
   const bcp47Match = hint.match(/^([a-z]{2,3})[-_]/i);
   if (bcp47Match) {
-    const baseCode = bcp47Match[1].toLowerCase();
-    // Map common base codes to languages
     const baseCodeMap: Record<string, Set<string>> = {
       fr: FR_STOPWORDS,
       es: ES_STOPWORDS,
@@ -725,7 +799,6 @@ export function pickStopwords(targetLanguageHint?: string): Set<string> {
       pt: PT_STOPWORDS,
       it: IT_STOPWORDS,
       en: EN_STOPWORDS,
-      // Also handle 3-letter codes
       fra: FR_STOPWORDS,
       spa: ES_STOPWORDS,
       deu: DE_STOPWORDS,
@@ -733,12 +806,10 @@ export function pickStopwords(targetLanguageHint?: string): Set<string> {
       ita: IT_STOPWORDS,
       eng: EN_STOPWORDS,
     };
-    if (baseCodeMap[baseCode]) {
-      return baseCodeMap[baseCode];
-    }
+    const mapped = baseCodeMap[bcp47Match[1].toLowerCase()];
+    if (mapped) return mapped;
   }
 
-  // Also try matching just the first 2-3 characters as a language code
   const shortCode = hint.slice(0, 3).toLowerCase();
   if (shortCode.startsWith("fr")) return FR_STOPWORDS;
   if (shortCode.startsWith("es")) return ES_STOPWORDS;
@@ -746,14 +817,14 @@ export function pickStopwords(targetLanguageHint?: string): Set<string> {
   if (shortCode.startsWith("pt")) return PT_STOPWORDS;
   if (shortCode.startsWith("it")) return IT_STOPWORDS;
 
-  // Default to English
-  return EN_STOPWORDS;
+  return null;
 }
 
 /**
  * Get the language name for a stopword set (for debugging)
  */
 export function getStopwordsLanguage(stopwords: Set<string>): string {
+  if (stopwords.size === 0) return "unknown";
   if (stopwords === FR_STOPWORDS) return "French";
   if (stopwords === ES_STOPWORDS) return "Spanish";
   if (stopwords === DE_STOPWORDS) return "German";

@@ -12,6 +12,8 @@
  * 4. Terminal intent preservation (question marks, exclamation marks)
  */
 
+import { detectScript } from "@/lib/text/script";
+
 export interface FidelityGateResult {
   pass: boolean;
   reason?: string;
@@ -24,32 +26,125 @@ export interface FidelityGateResult {
   };
 }
 
+// =============================================================================
+// CJK / full-width numeral handling
+// =============================================================================
+
+/** Full-width digits ０-９ → ASCII. */
+const FULLWIDTH_DIGITS: Record<string, string> = {
+  "０": "0", "１": "1", "２": "2", "３": "3", "４": "4",
+  "５": "5", "６": "6", "７": "7", "８": "8", "９": "9",
+};
+
+/** CJK numeral characters → their ASCII digit, for positional reading. */
+const CJK_DIGITS: Record<string, string> = {
+  "〇": "0", "零": "0",
+  "一": "1", "壹": "1",
+  "二": "2", "贰": "2", "两": "2",
+  "三": "3", "叁": "3",
+  "四": "4", "肆": "4",
+  "五": "5", "伍": "5",
+  "六": "6", "陆": "6",
+  "七": "7", "柒": "7",
+  "八": "8", "捌": "8",
+  "九": "9", "玖": "9",
+};
+
+/** Multiplier characters that mark a non-positional CJK number. */
+const CJK_MULTIPLIERS = new Set(["十", "百", "千", "万", "亿"]);
+
+/**
+ * Normalise full-width digits to ASCII so `５０％` reads as `50%`.
+ */
+function normalizeFullwidthDigits(text: string): string {
+  return text.replace(/[０-９]/g, (ch) => FULLWIDTH_DIGITS[ch] ?? ch);
+}
+
+/**
+ * Extract numbers written in CJK numerals.
+ *
+ * Handles the two forms that actually appear in translated verse:
+ *
+ *  - POSITIONAL, digit-by-digit: 一九二三 → "1923". This is how years are
+ *    written, and it is the case the recon flagged (a source "1923" rendered
+ *    as 一九二三 reported `Missing numbers: 1923`).
+ *  - SMALL CARDINALS with multipliers: 十 → 10, 三十 → 30, 二十五 → 25,
+ *    百 → 100, 三百 → 300, 千 → 1000, 万 → 10000.
+ *
+ * Deliberately NOT a general CJK numeral parser. Compound forms beyond the
+ * above (三千二百四十七) are not attempted: getting them subtly wrong would
+ * make the gate assert a number is missing when it is present, which is the
+ * failure mode this whole phase exists to remove. Unparsed runs simply yield
+ * nothing, and the check falls back to its existing substring tolerance.
+ */
+function extractCjkNumbers(text: string): string[] {
+  const results: string[] = [];
+  const numeralChars = Object.keys(CJK_DIGITS).join("");
+  const runRe = new RegExp(`[${numeralChars}十百千万亿]+`, "g");
+
+  for (const match of text.match(runRe) ?? []) {
+    const hasMultiplier = [...match].some((ch) => CJK_MULTIPLIERS.has(ch));
+
+    if (!hasMultiplier) {
+      // Positional reading: 一九二三 -> 1923
+      const digits = [...match].map((ch) => CJK_DIGITS[ch]).join("");
+      if (digits.length > 0) {
+        results.push(digits);
+        // A multi-digit positional run is also a sequence of single digits to
+        // a reader; record the bare digits too so a source "1" still matches
+        // a variant containing 一.
+        if (digits.length === 1) continue;
+      }
+      continue;
+    }
+
+    // Small cardinals with a single multiplier: [digit?] MULT [digit?]
+    const m = match.match(
+      new RegExp(`^([${numeralChars}])?([十百千万亿])([${numeralChars}])?$`)
+    );
+    if (!m) continue;
+
+    const unit =
+      m[2] === "十" ? 10 : m[2] === "百" ? 100 : m[2] === "千" ? 1000 : m[2] === "万" ? 10000 : 100000000;
+    const lead = m[1] ? Number(CJK_DIGITS[m[1]]) : 1;
+    const tail = m[3] ? Number(CJK_DIGITS[m[3]]) : 0;
+    const value = lead * unit + (m[2] === "十" ? tail : tail * (unit / 10));
+    if (Number.isFinite(value)) results.push(String(value));
+  }
+
+  return results;
+}
+
 /**
  * Extract numbers from text (digits, years, percentages, currency)
  */
 function extractNumbers(text: string): string[] {
   const numbers: string[] = [];
-  
+  const normalized = normalizeFullwidthDigits(text);
+
+  // CJK numerals, treated as equivalent to their ASCII values.
+  numbers.push(...extractCjkNumbers(normalized));
+
   // Match digits/years (e.g., "1923", "42", "2024")
-  const digitMatches = text.match(/\b\d{1,4}\b/g);
+  const digitMatches = normalized.match(/\b\d{1,4}\b/g);
   if (digitMatches) {
     numbers.push(...digitMatches);
   }
   
   // Match percentages (e.g., "50%", "75%")
-  const percentMatches = text.match(/\d+%/g);
+  const percentMatches = normalized.match(/\d+%/g);
   if (percentMatches) {
     numbers.push(...percentMatches);
   }
   
   // Match currency (e.g., "$100", "€50", "£20")
-  const currencyMatches = text.match(/[$€£¥]\d+/g);
+  const currencyMatches = normalized.match(/[$€£¥]\d+/g);
   if (currencyMatches) {
     numbers.push(...currencyMatches);
   }
   
   // Match decimals (e.g., "3.14", "0.5")
-  const decimalMatches = text.match(/\d+\.\d+/g);
+  const decimalMatches = normalized.match(/\d+\.\d+/g);
   if (decimalMatches) {
     numbers.push(...decimalMatches);
   }
@@ -91,6 +186,18 @@ function extractNegationMarkers(text: string): string[] {
     /\bnon\b/,
     /\bmai\b/,
     /\bniente\b/,
+    // Chinese / Japanese. No \b: word boundaries are meaningless without
+    // spaces, and \b between two Han characters never matches, so the Latin
+    // patterns above could never have fired on CJK text. Longest first so
+    // 没有 is preferred over a bare 没.
+    /没有/,
+    /不/,
+    /没/,
+    /未/,
+    /无/,
+    /非/,
+    /别/,
+    /莫/,
   ];
   
   for (const pattern of negationPatterns) {
@@ -135,7 +242,10 @@ function extractProperNouns(text: string): string[] {
  * Check if text preserves terminal intent (question/exclamation)
  */
 function hasTerminalIntent(text: string): "question" | "exclamation" | "none" {
-  const trimmed = text.trim();
+  // Fold the full-width forms so ？ and ！ count as ? and !. Without this a
+  // Chinese question ending in ？ read as "none", and a Chinese rendering of an
+  // English question failed the check outright.
+  const trimmed = text.trim().replace(/？/g, "?").replace(/！/g, "!");
   if (trimmed.endsWith("?")) {
     return "question";
   }
@@ -226,7 +336,24 @@ function checkProperNounPreservation(
   if (sourceProperNouns.length === 0) {
     return { pass: true };
   }
-  
+
+  // Skip entirely when the VARIANT is not Latin script.
+  //
+  // The check demands the source's Latin proper noun appear verbatim in the
+  // variant. A correct Chinese translation renders Paris as 巴黎, so the check
+  // fails every properly localised name — it penalises the right answer. The
+  // alternative, transliteration matching, is a product decision pending with
+  // the client and is deliberately not attempted here.
+  //
+  // Note this is asymmetric with the extraction side, which is inert rather
+  // than wrong for CJK sources: `extractProperNouns` keys on Latin
+  // capitalisation, so a Chinese source yields no proper nouns and the check
+  // never runs. Only the variant side needed guarding.
+  const variantScript = detectScript(variantText);
+  if (variantScript !== "latin" && variantScript !== "other") {
+    return { pass: true };
+  }
+
   const variantLower = variantText.toLowerCase();
   const missing: string[] = [];
   

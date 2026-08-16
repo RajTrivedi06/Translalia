@@ -89,7 +89,28 @@ export const TokenSuggestionsRequestSchema = z.object({
     word: z.string().min(1),
     originalWord: z.string().optional().nullable(),
     partOfSpeech: z.string().optional().nullable(),
+    /**
+     * Whitespace-token index of the focused word.
+     *
+     * Legacy identifier. The server re-resolves it against its OWN
+     * `split(/\s+/)` in `markTokenInText`, so it only works while both sides
+     * segment on whitespace and happen to agree. Kept unchanged for
+     * compatibility; prefer `start`/`end` below.
+     */
     position: z.number().int().min(0).optional().nullable(),
+    /**
+     * Character offset of the focused span, in UTF-16 code units, into the
+     * line the focus refers to (`sourceLine` for `sourceType: "source"`,
+     * `targetLineDraft` for `"variant"`).
+     *
+     * Additive and optional: clients that do not send it fall back to the
+     * `position` path, so older clients keep validating and behaving exactly
+     * as before. Sending it removes the re-resolution guess entirely, which is
+     * what makes non-whitespace (CJK) segmentation safe.
+     */
+    start: z.number().int().min(0).optional().nullable(),
+    /** End offset (exclusive) of the focused span, in UTF-16 code units. */
+    end: z.number().int().min(0).optional().nullable(),
     sourceType: z.enum(["variant", "source"]),
     variantId: z
       .union([z.literal(1), z.literal(2), z.literal(3)])

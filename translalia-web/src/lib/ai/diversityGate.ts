@@ -21,7 +21,9 @@ import { z } from "zod";
 import type { VariantRecipe } from "./variantRecipes";
 import { openai } from "./openai";
 import { TRANSLATOR_MODEL } from "@/lib/models";
-import { pickStopwords, getStopwordsLanguage } from "./stopwords";
+import { resolveStopwordsForText } from "./stopwords";
+import { detectScript } from "@/lib/text/script";
+import { segmentText } from "@/lib/text/segmentText";
 import {
   structuralSignature,
   openerType,
@@ -149,6 +151,35 @@ function getJaccardThreshold(
 // If openings/comparison templates repeat, fail even when Jaccard is low.
 const MIN_TOKENS_FOR_TEMPLATE_CHECK = 6;
 
+/**
+ * Punctuation that signals a structural difference between two short lines.
+ * Includes the CJK/full-width forms; the ASCII-only class this replaced could
+ * not see ，、。 and so reported "no structural difference" for any pair of
+ * Chinese lines.
+ */
+const STRUCTURAL_PUNCTUATION = /[,;:\-—，、。；：？！]/g;
+
+/**
+ * Strip to letters/digits/whitespace for character-level similarity.
+ *
+ * The `\w` this replaces is ASCII-only with no `u` flag, so it deleted every
+ * CJK character and then compared two empty strings — `union.size === 0`, so
+ * `charSimilarity` was 0 and the entire short-line patch was a silent no-op for
+ * Chinese. Measured on real variants after the fix:
+ *
+ *   genuinely different (real run, line 0):  0.000 / 0.000 / 0.000
+ *   genuinely different (real run, line 2):  0.143 / 0.000 / 0.000
+ *   near-identical (在蝉的痛苦中/里/中央):    0.600 / 0.800 / 0.500
+ *
+ * Character trigrams over Han therefore discriminate cleanly, so the check is
+ * kept for CJK rather than skipped — it is the mechanism that now catches
+ * near-duplicate Chinese, since shared function words (的 在 中) inflate token
+ * Jaccard enough to slip under the length-aware threshold.
+ */
+function stripForCharSimilarity(text: string): string {
+  return text.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, "");
+}
+
 const COMPARISON_MARKERS = [
   // English
   "like",
@@ -169,24 +200,28 @@ const COMPARISON_MARKERS = [
  * Simple word-level tokenization that works for most languages.
  */
 export function tokenize(text: string): Set<string> {
-  // Normalize: lowercase, remove punctuation, split on whitespace
-  const normalized = text
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
-    .trim();
-
-  // Split on whitespace and filter empty strings
-  const tokens = normalized.split(/\s+/).filter((t) => t.length > 0);
-
-  return new Set(tokens);
+  return new Set(tokenizeList(text));
 }
 
+/**
+ * Tokenize for overlap scoring, via the shared segmenter in `src/lib/text/`.
+ *
+ * For Latin this is byte-identical to the previous
+ * `replace(punctuation, " ").split(/\s+/)`: punctuation is still folded to a
+ * separator before segmentation, and `segmentText` splits spaced scripts on
+ * whitespace. For unspaced scripts it is the difference between a one-element
+ * set — which made Jaccard a binary exact-match test — and real token overlap.
+ */
 function tokenizeList(text: string): string[] {
   const normalized = text
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\s]/gu, " ")
     .trim();
-  return normalized.split(/\s+/).filter((t) => t.length > 0);
+
+  return segmentText(normalized)
+    .filter((s) => s.wordLike)
+    .map((s) => s.text)
+    .filter((t) => t.length > 0);
 }
 
 // pickStopwords is now imported from ./stopwords.ts
@@ -342,12 +377,30 @@ export function checkDistinctness(
   const openerTypes = signatures.map((s) => s.openerType);
   const signatureKeys = signatures.map((s) => s.signature);
 
+  /**
+   * True when we have no opener signal at all for this line.
+   *
+   * `UNKNOWN_SCRIPT` means "we have no lexicon here", not "we looked and found
+   * nothing" — see `OpenerType` in structureSignature.ts. When every variant
+   * is UNKNOWN_SCRIPT, three genuinely different openers are indistinguishable
+   * to us, and equality between them is an artefact of our own blindness. So
+   * the opener-equality checks below are SKIPPED rather than failed: fail
+   * open, stay silent where we cannot be confident.
+   *
+   * Observed cost of getting this wrong: three Chinese variants opening
+   * 在 / 在 / 在 all scored OTHER, the gate reported them identical, and regen
+   * was asked for a PREP opener four times — rejecting 在 as a mismatch each
+   * time, because 在 IS a PREP but the Latin lexicon could not see it.
+   */
+  const noOpenerSignal = openerTypes.every((o) => o === "UNKNOWN_SCRIPT");
+
   // Debug logging for Phase 2
   if (process.env.DEBUG_GATE === "1") {
     console.log("[DEBUG_GATE][phase2.signatures]", {
       mode,
       openerTypes,
       signatureKeys,
+      noOpenerSignal,
       variantTexts: variants.map((v) => v.text.slice(0, 60)),
     });
   }
@@ -372,8 +425,13 @@ export function checkDistinctness(
       };
     }
 
-    // Rule 2: Opener type distinctness with priority (C first, then B)
-    if (openerTypes[2] === openerTypes[0] || openerTypes[2] === openerTypes[1]) {
+    // Rule 2: Opener type distinctness with priority (C first, then B).
+    // Skipped entirely when no variant's opener could be classified — see
+    // `noOpenerSignal`.
+    if (
+      !noOpenerSignal &&
+      (openerTypes[2] === openerTypes[0] || openerTypes[2] === openerTypes[1])
+    ) {
       return {
         pass: false,
         worstIndex: 2,
@@ -390,7 +448,7 @@ export function checkDistinctness(
       };
     }
 
-    if (openerTypes[1] === openerTypes[0]) {
+    if (!noOpenerSignal && openerTypes[1] === openerTypes[0]) {
       return {
         pass: false,
         worstIndex: 1,
@@ -408,8 +466,10 @@ export function checkDistinctness(
 
   // Balanced mode: Lighter structural enforcement
   if (mode === "balanced") {
-    // If all three openers are the same, fail with priority (prefer C, then B)
+    // If all three openers are the same, fail with priority (prefer C, then B).
+    // Skipped when none could be classified — see `noOpenerSignal`.
     if (
+      !noOpenerSignal &&
       openerTypes[0] === openerTypes[1] &&
       openerTypes[1] === openerTypes[2]
     ) {
@@ -437,23 +497,58 @@ export function checkDistinctness(
   // Tokenize all variants
   const tokenSets = variants.map((v) => tokenize(v.text));
   const tokenLists = variants.map((v) => tokenizeList(v.text));
-  const stopwords = pickStopwords(opts?.targetLanguage);
+
+  // Resolve stopwords against the variant text, not the hint alone. In
+  // production the hint is the placeholder "the target language" for every
+  // thread (recon §5), so a hint-only lookup silently hands English stopwords
+  // to Chinese. `known: false` means we have no list for this script.
+  const resolved = resolveStopwordsForText(
+    variants[0].text,
+    opts?.targetLanguage
+  );
+  const stopwords = resolved.stopwords;
 
   // ========================================================================
   // PHASE 2: CALCULATE CONTENT TOKEN COUNTS (for length-aware thresholds)
   // ========================================================================
-  // Content tokens = tokens after stopword removal
-  const contentTokenCounts = tokenLists.map((toks) => {
-    const contentToks = toks.filter((t) => !stopwords.has(t));
-    return contentToks.length;
-  });
+  // Content tokens = tokens after stopword removal.
+  //
+  // When no stopword list applies, this degrades to a raw token count rather
+  // than filtering against the wrong language. That has a real consequence
+  // worth stating rather than burying: Chinese function words (的 在 中) are
+  // NOT removed, so a Chinese line's contentTokenCount runs systematically
+  // higher than a comparable Latin line's — measured on real variants, 5-9 for
+  // Chinese where the Italian source's English rendering gives 4-5. Thresholds
+  // are deliberately NOT retuned to compensate; see the note on
+  // `getLengthAwareThreshold` usage below.
+  const contentTokenCounts = tokenLists.map((toks) =>
+    resolved.known ? toks.filter((t) => !stopwords.has(t)).length : toks.length
+  );
 
   // Use average content token count for threshold calculation
   const avgContentTokenCount = Math.round(
     contentTokenCounts.reduce((sum, c) => sum + c, 0) / 3
   );
 
-  // Phase 2: Length-aware threshold
+  // Phase 2: Length-aware threshold.
+  //
+  // NOT retuned for CJK, on purpose. Re-derivation against the real run:
+  //
+  //   real-run line 2 (在蝉的痛苦中 / 在蝉的挣扎里 / 在绝望的鸣叫中)
+  //     contentTokenCount 5 -> threshold 0.90; max token Jaccard 0.429 -> PASS
+  //   real-run line 0 (风儿掠过… / 风儿轻轻掠过… / 在风的掠影中…)
+  //     contentTokenCount ~8 -> threshold 0.75; max token Jaccard 0.300 -> PASS
+  //   near-identical (在蝉的痛苦中 / …里 / …中央)
+  //     contentTokenCount 5 -> threshold 0.90; max token Jaccard 0.667 -> passes
+  //     Jaccard, and is instead caught by the short-line character check.
+  //
+  // So the existing thresholds already separate the cases correctly once
+  // tokens are real. The one systematic distortion — unstripped CJK function
+  // words inflating both the count and the overlap — pushes in the lenient
+  // direction, i.e. toward passing, which is the safe direction for a gate
+  // whose failure mode was rejecting correct work. Near-duplicate detection is
+  // carried by character trigrams instead, which measurement shows discriminate
+  // cleanly on Han. Retuning would be guesswork on three lines of evidence.
   const lengthAwareThreshold = getLengthAwareThreshold(mode, avgContentTokenCount);
 
   // Debug logging for gate initialization
@@ -464,7 +559,7 @@ export function checkDistinctness(
       avgContentTokenCount,
       contentTokenCounts,
       targetLanguage: opts?.targetLanguage,
-      stopwordsLanguage: getStopwordsLanguage(stopwords),
+      stopwordsLanguage: resolved.language,
       variantLengths: variants.map((v) => v.text.length),
     });
   }
@@ -486,10 +581,33 @@ export function checkDistinctness(
     }
   }
 
+  // ========================================================================
   // Template-aware checks (cheap, structure-focused).
-  // Guard for very short lines / stopword-heavy openers.
+  // ========================================================================
+  // Guarded on BOTH token count and script.
+  //
+  // The token-count guard alone used to keep these away from CJK by accident:
+  // an unsegmented Chinese line was one token, so `minLen` never reached 6.
+  // Now that tokens are real, `minLen` clears the bar and every check below
+  // would run against text it cannot read. All four are Latin-specific:
+  //
+  //  - detectSubjectOpener: en/fr/es pronoun regexes
+  //  - openingContentBigram: needs a stopword list we do not have for CJK
+  //  - comparison markers: like / as / comme / como / come
+  //  - walk verbs: walk / stroll / marcher / caminar
+  //
+  // Measured consequence of NOT gating on script: the three real-run line-0
+  // variants (风儿掠过… / 风儿轻轻掠过… / 在风的掠影中…) tokenize such that the
+  // first two both open 风 儿, so `openingContentBigram` reports a duplicate
+  // opening and fails the gate — trading silent skipping for confident
+  // nonsense, which is precisely what this phase exists to stop.
+  const variantScripts = variants.map((v) => detectScript(v.text));
+  const templateChecksApply = variantScripts.every(
+    (s) => s === "latin" || s === "other"
+  );
+
   const minLen = Math.min(...tokenLists.map((t) => t.length));
-  if (minLen >= MIN_TOKENS_FOR_TEMPLATE_CHECK) {
+  if (templateChecksApply && minLen >= MIN_TOKENS_FOR_TEMPLATE_CHECK) {
     // SHAPE CHECK 1: Subject opener repetition (balanced/adventurous)
     if (mode === "balanced" || mode === "adventurous") {
       const subjectOpeners = variants.map((v) => detectSubjectOpener(v.text));
@@ -638,8 +756,8 @@ export function checkDistinctness(
     // Check 1: Character-level similarity (trigram Jaccard)
     for (let i = 0; i < 3; i++) {
       for (let j = i + 1; j < 3; j++) {
-        const text1 = variants[i].text.toLowerCase().replace(/[^\w\s]/g, "");
-        const text2 = variants[j].text.toLowerCase().replace(/[^\w\s]/g, "");
+        const text1 = stripForCharSimilarity(variants[i].text);
+        const text2 = stripForCharSimilarity(variants[j].text);
         
         // Create trigram sets
         const getTrigrams = (text: string): Set<string> => {
@@ -714,8 +832,8 @@ export function checkDistinctness(
     // - Capitalization pattern
     const hasStructuralDifference = (text1: string, text2: string): boolean => {
       // Check punctuation differences
-      const punct1 = text1.match(/[,;:\-—]/g)?.length || 0;
-      const punct2 = text2.match(/[,;:\-—]/g)?.length || 0;
+      const punct1 = text1.match(STRUCTURAL_PUNCTUATION)?.length || 0;
+      const punct2 = text2.match(STRUCTURAL_PUNCTUATION)?.length || 0;
       if (Math.abs(punct1 - punct2) > 0) return true;
       
       // Check contraction differences
@@ -732,8 +850,8 @@ export function checkDistinctness(
       for (let j = i + 1; j < 3; j++) {
         if (!hasStructuralDifference(variants[i].text, variants[j].text)) {
           // If they also have high character similarity, fail
-          const text1 = variants[i].text.toLowerCase().replace(/[^\w\s]/g, "");
-          const text2 = variants[j].text.toLowerCase().replace(/[^\w\s]/g, "");
+          const text1 = stripForCharSimilarity(variants[i].text);
+          const text2 = stripForCharSimilarity(variants[j].text);
           const getTrigrams = (text: string): Set<string> => {
             const trigrams = new Set<string>();
             for (let k = 0; k <= text.length - 3; k++) {
@@ -1202,7 +1320,10 @@ export function checkLensCompliance(
 
   // Syntax: fragment should have shorter sentences
   if (recipe.lens.syntax === "fragment") {
-    const words = text.split(/\s+/).length;
+    // Via the shared tokenizer, so this is not a fourth way of counting words.
+    // (Dead under production config: `recipe.lens` is null for v6 simplified
+    // recipes, so the function returns before reaching here.)
+    const words = countNonPunctTokens(text);
     if (words > 15) {
       issues.push("Syntax=fragment but sentence is too long");
     }

@@ -29,6 +29,7 @@ import {
   type Anchor,
 } from "./anchorsValidation";
 import { pickStopwords } from "./stopwords";
+import { detectScript } from "@/lib/text/script";
 import {
   computeAnchorRealizations,
   compareRealizations,
@@ -40,6 +41,7 @@ import {
 import {
   openerType,
   structuralSignature,
+  CJK_REACHABLE_OPENERS,
   type OpenerType,
 } from "./structureSignature";
 import { normalizeForContainment, tokenize } from "./textNormalize";
@@ -397,6 +399,10 @@ export async function regenerateVariantWithSalvage(
   // ISS-007: Configurable K for GPT-5 vs default
   const modelToUse = model ?? TRANSLATOR_MODEL;
   const isGpt5 = modelToUse.startsWith("gpt-5");
+  // DeepSeek's chat API rejects n>1 ("Invalid n value; only n = 1 is
+  // supported"), so it must not use the n=K batch path — fall through to the
+  // per-candidate loop like GPT-5.
+  const isDeepSeek = modelToUse.startsWith("deepseek");
   const parallelRegenEnabled = process.env.ENABLE_GPT5_REGEN_PARALLEL !== "0";
   
   // Determine K based on mode and model - reduced defaults for faster response
@@ -430,7 +436,11 @@ export async function regenerateVariantWithSalvage(
   const desiredOpenerType = determineDesiredOpenerType(
     fixedOpeners,
     context.mode,
-    gateReason
+    gateReason,
+    // Steer within the opener set this script can actually produce. The fixed
+    // variants are target-language text, which is what the opener is judged
+    // on; fall back to the source line only if there are none.
+    fixedVariantsWithStructure[0]?.text ?? context.lineText
   );
 
   // Build targeted regen prompt
@@ -503,8 +513,9 @@ export async function regenerateVariantWithSalvage(
 
   try {
     // ISS-007: Attempt n=K if supported (GPT-4 supports n parameter)
-    // This path is unchanged - GPT-4 still uses efficient n=K batch generation
-    if (!isGpt5 && K > 1) {
+    // This path is unchanged - GPT-4 still uses efficient n=K batch generation.
+    // DeepSeek is excluded: its chat API only supports n = 1.
+    if (!isGpt5 && !isDeepSeek && K > 1) {
       const requestId = trackCallStart("regen");
       const regenStart = Date.now();
       
@@ -1175,20 +1186,38 @@ export async function regenerateVariantWithSalvage(
 function determineDesiredOpenerType(
   fixedOpeners: OpenerType[],
   mode: TranslationRangeMode,
-  gateReason: string
+  gateReason: string,
+  /**
+   * A sample of the target text, used only to decide which opener vocabulary
+   * is reachable. Omit to keep the original Latin behaviour.
+   */
+  sampleText?: string
 ): OpenerType | undefined {
   if (mode === "focused") {
     // Minimal constraints in focused
     return undefined;
   }
 
+  // Unspaced scripts are classified by the closed-class CJK lexicon, which can
+  // only ever yield PREP / PRON / DET. Steering toward NOUN_PHRASE or OTHER
+  // there asks for something `openerType` cannot confirm, so the request is
+  // unsatisfiable by construction and the mismatch is logged on every
+  // candidate. Restrict the target set to what the script can produce.
+  const script = sampleText ? detectScript(sampleText) : "latin";
+  const isUnspaced = script === "han" || script === "kana";
+
   // In adventurous/balanced: try to pick an opener not used by fixed variants
-  const allOpeners: OpenerType[] = ["PREP", "NOUN_PHRASE", "PRON", "OTHER"];
+  const allOpeners: OpenerType[] = isUnspaced
+    ? [...CJK_REACHABLE_OPENERS]
+    : ["PREP", "NOUN_PHRASE", "PRON", "OTHER"];
   const unusedOpeners = allOpeners.filter((o) => !fixedOpeners.includes(o));
 
   if (unusedOpeners.length > 0) {
-    // Prefer: PREP > NOUN_PHRASE > OTHER > PRON (PRON often too similar)
-    const priority = ["PREP", "NOUN_PHRASE", "OTHER", "PRON"];
+    // Prefer: PREP > NOUN_PHRASE > OTHER > PRON (PRON often too similar).
+    // For CJK the same intent, minus the unreachable types.
+    const priority = isUnspaced
+      ? ["PREP", "DET", "PRON"]
+      : ["PREP", "NOUN_PHRASE", "OTHER", "PRON"];
     for (const p of priority) {
       if (unusedOpeners.includes(p as OpenerType)) {
         return p as OpenerType;

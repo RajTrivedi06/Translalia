@@ -135,8 +135,59 @@ TRANSLATOR PERSONALITY
 `.trim();
 }
 
-function markTokenInText(text: string, position?: number | null): string {
-  if (!text || position === null || position === undefined) return text;
+/**
+ * Wrap the focused token in `[[ ]]` so the model can see which word is meant.
+ *
+ * Two paths, offsets preferred:
+ *
+ *  1. OFFSET PATH — `start`/`end` present and in bounds. Slices the span
+ *     directly out of `text`. No splitting, so it is correct for any
+ *     segmentation the client used, including CJK where tokens are
+ *     multi-character with no surrounding whitespace.
+ *
+ *  2. INDEX PATH — the original behaviour, unchanged. Re-splits on `/\s+/`
+ *     and marks token `position`. Correct only when the client also segmented
+ *     on whitespace. Retained so clients that do not send offsets keep working
+ *     byte-for-byte as before.
+ *
+ * Out-of-bounds offsets warn and fall back to the index path rather than
+ * throwing: a bad offset should degrade to the old behaviour, not 500 the
+ * request.
+ *
+ * Note the index path normalises internal whitespace as a side effect (it
+ * rejoins with a single space). That is pre-existing behaviour and is left
+ * alone; the offset path preserves the original spacing exactly.
+ */
+export function markTokenInText(
+  text: string,
+  position?: number | null,
+  start?: number | null,
+  end?: number | null
+): string {
+  if (!text) return text;
+
+  const hasOffsets =
+    start !== null &&
+    start !== undefined &&
+    end !== null &&
+    end !== undefined;
+
+  if (hasOffsets) {
+    const inBounds =
+      start >= 0 && end > start && end <= text.length;
+
+    if (inBounds) {
+      return `${text.slice(0, start)}[[${text.slice(start, end)}]]${text.slice(end)}`;
+    }
+
+    console.warn(
+      "[markTokenInText] focus offsets out of bounds; falling back to " +
+        "token index",
+      { start, end, textLength: text.length }
+    );
+  }
+
+  if (position === null || position === undefined) return text;
   const tokens = text.split(/\s+/);
   if (position < 0 || position >= tokens.length) return text;
   const marked = tokens.map((t, idx) =>
@@ -260,11 +311,21 @@ export function buildTokenSuggestionsPrompt(params: {
   const focus = request.focus;
   const sourceLineMarked =
     focus.sourceType === "source"
-      ? markTokenInText(request.sourceLine, focus.position)
+      ? markTokenInText(
+          request.sourceLine,
+          focus.position,
+          focus.start,
+          focus.end
+        )
       : request.sourceLine;
   const draftMarked =
     focus.sourceType === "variant" && request.targetLineDraft
-      ? markTokenInText(request.targetLineDraft, focus.position)
+      ? markTokenInText(
+          request.targetLineDraft,
+          focus.position,
+          focus.start,
+          focus.end
+        )
       : request.targetLineDraft || "";
   const extraHints = (request.extraHints || [])
     .map((hint) => hint.trim())

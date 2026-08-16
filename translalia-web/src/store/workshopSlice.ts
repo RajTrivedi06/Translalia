@@ -50,7 +50,23 @@ export interface WorkshopState {
   setCompletedLines: (lines: Record<number, string>) => void;
   setDraft: (index: number, translation: string) => void;
   setDraftLines: (lines: Record<number, string>) => void;
-  appendToDraft: (lineIndex: number, text: string) => void;
+  /**
+   * Append `text` to a line's draft.
+   *
+   * `separator` is inserted only when the draft is already non-empty and
+   * defaults to `" "`, which is the behaviour every existing caller relies on.
+   * Unspaced scripts (Chinese, Japanese) pass `""` so chip-by-chip assembly
+   * does not produce `词 词 词`.
+   *
+   * The store deliberately does NOT detect script itself — that is the calling
+   * component's job, because only the caller knows which text the separator
+   * belongs to.
+   */
+  appendToDraft: (
+    lineIndex: number,
+    text: string,
+    separator?: string
+  ) => void;
   clearDraft: (lineIndex: number) => void;
   getDisplayText: (lineIndex: number) => string;
   // Line translation actions
@@ -154,14 +170,14 @@ export const useWorkshopStore = create<WorkshopState>()(
           draftLines: lines,
         }),
 
-      appendToDraft: (lineIndex: number, text: string) => {
+      appendToDraft: (lineIndex: number, text: string, separator = " ") => {
         const state = get();
         const current = state.draftLines[lineIndex] ?? state.completedLines[lineIndex] ?? "";
-        const separator = current.trim() ? " " : "";
+        const joiner = current.trim() ? separator : "";
         set({
           draftLines: {
             ...state.draftLines,
-            [lineIndex]: current + separator + text,
+            [lineIndex]: current + joiner + text,
           },
         });
       },
