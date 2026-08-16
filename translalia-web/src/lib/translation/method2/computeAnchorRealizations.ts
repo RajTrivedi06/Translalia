@@ -11,6 +11,7 @@
 import type { Anchor } from "@/lib/ai/anchorsValidation";
 import { normalizeForContainment, containsNormalized, tokenize } from "@/lib/ai/textNormalize";
 import { pickStopwords } from "@/lib/ai/stopwords";
+import { segmentText } from "@/lib/text/segmentText";
 
 /**
  * Compute anchor realizations locally by finding substrings in variant text.
@@ -26,6 +27,34 @@ import { pickStopwords } from "@/lib/ai/stopwords";
  * @param targetLanguage - Target language hint for stopword filtering
  * @returns Record of anchor_id -> realization string (may be incomplete if no match found)
  */
+/**
+ * Widen [matchStart, matchEnd) out to the enclosing token boundaries.
+ *
+ * Uses the shared segmenter so this works for unspaced scripts. For Latin the
+ * segment boundaries are the whitespace boundaries, so the result is identical
+ * to the walk it replaces. If the offsets fall outside every segment (possible
+ * when the match lands on punctuation), the input range is returned unchanged.
+ */
+function tokenBoundsAround(
+  text: string,
+  matchStart: number,
+  matchEnd: number
+): { start: number; end: number } {
+  let start = matchStart;
+  let end = matchEnd;
+
+  for (const seg of segmentText(text)) {
+    if (seg.start <= matchStart && seg.end > matchStart) {
+      start = Math.min(start, seg.start);
+    }
+    if (seg.start < matchEnd && seg.end >= matchEnd) {
+      end = Math.max(end, seg.end);
+    }
+  }
+
+  return { start, end };
+}
+
 export function computeAnchorRealizations(
   variantText: string,
   anchors: Anchor[],
@@ -34,10 +63,10 @@ export function computeAnchorRealizations(
   const realizations: Record<string, string> = {};
   const stopwords = pickStopwords(targetLanguage);
   
-  // Tokenize variant text (preserve original for substring extraction)
+  // Lowercased copy for case-insensitive search; the original is preserved so
+  // extracted realizations keep their casing.
   const variantLower = variantText.toLowerCase();
-  const words = variantText.split(/\s+/);
-  
+
   for (const anchor of anchors) {
     const anchorId = anchor.id;
     
@@ -69,24 +98,41 @@ export function computeAnchorRealizations(
         const index = variantLower.indexOf(term, searchIndex);
         if (index === -1) break;
         
-        // Find word boundaries around this match
-        // Look backwards to find start of word/phrase
-        let start = index;
-        while (start > 0 && /\S/.test(variantText[start - 1])) {
-          start--;
-        }
-        
-        // Look forwards to find end of word/phrase
-        let end = index + term.length;
-        while (end < variantText.length && /\S/.test(variantText[end])) {
-          end++;
-        }
-        
-        // Expand to include up to 2 words before and after (for meaningful phrase)
+        // Find token boundaries around this match.
+        //
+        // The whitespace walk this replaces (`while (/\S/.test(...))`) had no
+        // stopping condition in space-free text: it ran to both ends of the
+        // line, so `start`/`end` became 0 and `variantText.length` and the
+        // resulting candidate was then discarded by the 50-char cap. Using the
+        // shared segmenter gives real boundaries for both spaced and unspaced
+        // scripts, and reduces to the identical result for Latin (segment
+        // boundaries there ARE whitespace boundaries).
+        const { start, end } = tokenBoundsAround(
+          variantText,
+          index,
+          index + term.length
+        );
+
+        // Expand to include up to 2 tokens before and after (for meaningful
+        // phrase). Segmented, not whitespace-split: in space-free text a
+        // whitespace split returns the entire prefix as a single "word", so
+        // widening the window by one token swallowed the whole line — the same
+        // failure as the boundary walk above, one step later.
+        //
+        // The `.filter(Boolean)` also fixes a second bug that affected Latin:
+        // `"".trim().split(/\s+/)` returns `[""]`, length 1 rather than 0, so
+        // an empty before/after context reported one phantom word and the
+        // expansion loop indexed a token that was not there.
         const beforeText = variantText.slice(0, start);
         const afterText = variantText.slice(end);
-        const beforeWords = beforeText.trim().split(/\s+/);
-        const afterWords = afterText.trim().split(/\s+/);
+        const beforeWords = segmentText(beforeText)
+          .filter((s) => s.wordLike)
+          .map((s) => s.text)
+          .filter(Boolean);
+        const afterWords = segmentText(afterText)
+          .filter((s) => s.wordLike)
+          .map((s) => s.text)
+          .filter(Boolean);
         
         // Try expanding window (0-2 words before, 0-2 words after)
         for (let beforeCount = 0; beforeCount <= 2; beforeCount++) {

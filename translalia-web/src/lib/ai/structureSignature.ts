@@ -6,6 +6,9 @@
  * This catches variants like "On the bus, silence..." even when Jaccard is low.
  */
 
+import { detectScript } from "@/lib/text/script";
+import { segmentText } from "@/lib/text/segmentText";
+
 // =============================================================================
 // Language-Aware Lexicons
 // =============================================================================
@@ -45,6 +48,47 @@ const DETERMINERS: Record<string, string[]> = {
   de: ["der", "die", "das", "ein", "eine", "einer", "eines", "einem", "einen", "dieser", "diese", "dieses", "jener", "jene", "jenes"],
   it: ["il", "lo", "la", "i", "gli", "le", "l", "un", "uno", "una", "questo", "questa", "questi", "queste", "quello", "quella", "quelli", "quelle"],
 };
+
+/**
+ * Closed-class CJK openers.
+ *
+ * Deliberately tiny. These are function words whose opener role is
+ * unambiguous without native-speaker judgement — coverage stops there. Content
+ * words are NOT listed and must not be added without native-speaker input:
+ * guessing at them would reintroduce the false-positive regens this exists to
+ * prevent, just with more confident-looking labels.
+ *
+ * Matched as a PREFIX of the line rather than against a segmented token,
+ * because ICU's dictionary may or may not split these the way we would (透过
+ * and 通过 in particular), and for a fixed closed-class list prefix matching is
+ * both deterministic and independent of the segmenter version.
+ *
+ * ORDER MATTERS: longest first, so 我们 wins over 我 and 透过 over a bare 透.
+ */
+const CJK_OPENERS: ReadonlyArray<readonly [string, OpenerType]> = [
+  // Two-character forms first.
+  ["透过", "PREP"],
+  ["通过", "PREP"],
+  ["我们", "PRON"],
+  ["你们", "PRON"],
+  ["他们", "PRON"],
+  // Single-character forms.
+  ["在", "PREP"],
+  ["从", "PREP"],
+  ["向", "PREP"],
+  ["对", "PREP"],
+  ["与", "PREP"],
+  ["由", "PREP"],
+  ["于", "PREP"],
+  ["我", "PRON"],
+  ["你", "PRON"],
+  ["他", "PRON"],
+  ["她", "PRON"],
+  ["它", "PRON"],
+  ["这", "DET"],
+  ["那", "DET"],
+  ["此", "DET"],
+];
 
 /**
  * Common nouns ending in "-ing" that should NOT be classified as gerunds
@@ -97,12 +141,22 @@ export function normalizeTextLight(text: string): string {
 /**
  * Tokenize text for structural analysis.
  * Returns word tokens with surrounding punctuation stripped (keeps internal apostrophes).
+ *
+ * Routes through the shared segmenter in `src/lib/text/`. For Latin this is
+ * byte-identical to the whitespace split it replaced (guaranteed by the golden
+ * test), because `segmentText` uses whitespace boundaries for spaced scripts —
+ * the edge-punctuation strip below is preserved verbatim. For unspaced scripts
+ * it is the difference between one token per line and real token counts, which
+ * is what makes `lengthBucket` stop returning "short" for everything.
  */
 export function tokenizeLight(text: string): string[] {
   const normalized = normalizeTextLight(text);
 
-  // Split on whitespace
-  const rawTokens = normalized.split(/\s+/);
+  // Keep word-like segments only: punctuation is measured separately by
+  // `punctuationProfile` and must not inflate the token count.
+  const rawTokens = segmentText(normalized)
+    .filter((s) => s.wordLike)
+    .map((s) => s.text);
 
   // Strip surrounding punctuation but keep internal apostrophes
   const tokens = rawTokens
@@ -129,19 +183,46 @@ export interface PunctuationProfile {
   dashes: number;
   colons: number;
   semicolons: number;
+  /**
+   * CJK sentence terminators (。？！) only.
+   *
+   * ASCII `.` `?` `!` are deliberately NOT counted here. They never were, and
+   * counting them now would change the signature of every Latin line that ends
+   * in a full stop — i.e. all of them — which would alter Latin gate outcomes.
+   * The result is an asymmetry (CJK terminators discriminate, ASCII ones do
+   * not) that is accepted so Latin behaviour stays frozen.
+   */
+  terminators: number;
 }
 
 /**
  * Extract punctuation profile (counts of key punctuation marks).
+ *
+ * Counts the CJK/full-width forms alongside their ASCII equivalents. Without
+ * this every Chinese line profiles as `c0d0k0s0` no matter how it is
+ * punctuated — a line visibly containing ，and 。 registered as having no
+ * punctuation at all, which is one of the three reasons every variant
+ * collapsed to an identical structural signature.
+ *
+ * Grouping follows function, not codepoint family:
+ *  - commas      ，(U+FF0C fullwidth) 、(U+3001 enumeration) + ASCII ,
+ *  - dashes      ー(U+30FC) －(U+FF0D) + ASCII - (en/em dashes are already
+ *                folded to - by normalizeTextLight)
+ *  - colons      ：(U+FF1A) + ASCII :
+ *  - semicolons  ；(U+FF1B) + ASCII ;
+ *  - terminators 。？！ — CJK only, see the field docs
  */
 export function punctuationProfile(text: string): PunctuationProfile {
   const normalized = normalizeTextLight(text);
 
+  const count = (re: RegExp) => (normalized.match(re) || []).length;
+
   return {
-    commas: (normalized.match(/,/g) || []).length,
-    dashes: (normalized.match(/-/g) || []).length,
-    colons: (normalized.match(/:/g) || []).length,
-    semicolons: (normalized.match(/;/g) || []).length,
+    commas: count(/[,，、]/g),
+    dashes: count(/[-ー－]/g),
+    colons: count(/[:：]/g),
+    semicolons: count(/[;；]/g),
+    terminators: count(/[。？！]/g),
   };
 }
 
@@ -149,13 +230,74 @@ export function punctuationProfile(text: string): PunctuationProfile {
 // Opener Type Classification
 // =============================================================================
 
-export type OpenerType = "PRON" | "PREP" | "NOUN_PHRASE" | "GERUND" | "OTHER";
+/**
+ * The opener types a CJK line can actually be classified as.
+ *
+ * Anything outside this set is unreachable for Han/Kana text: asking regen to
+ * produce a NOUN_PHRASE or GERUND opener on a Chinese line is asking for
+ * something `openerType` can never confirm, so the steering silently fails and
+ * the mismatch is logged forever.
+ */
+export const CJK_REACHABLE_OPENERS: readonly OpenerType[] = [
+  "PREP",
+  "PRON",
+  "DET",
+];
+
+/**
+ * Classify a CJK line's opener against the closed-class lexicon.
+ *
+ * Leading punctuation and quotes are stripped first, so a line opening
+ * `「在…` is classified on 在, not on the bracket.
+ */
+function cjkOpenerType(text: string): OpenerType {
+  const trimmed = text.trim().replace(/^[^\p{L}\p{N}]+/u, "");
+  if (!trimmed) return "UNKNOWN_SCRIPT";
+
+  for (const [prefix, type] of CJK_OPENERS) {
+    if (trimmed.startsWith(prefix)) return type;
+  }
+
+  // No confident classification. Say so, rather than guessing OTHER.
+  return "UNKNOWN_SCRIPT";
+}
+
+export type OpenerType =
+  | "PRON"
+  | "PREP"
+  | "NOUN_PHRASE"
+  | "GERUND"
+  /** CJK determiner (这/那/此). Latin determiners remain NOUN_PHRASE. */
+  | "DET"
+  /** Latin-script opener we recognise as none of the above. */
+  | "OTHER"
+  /**
+   * Unspaced-script opener we cannot classify.
+   *
+   * Distinct from OTHER on purpose. OTHER is a *judgement* ("we looked and it
+   * is not a pronoun/preposition/determiner"); UNKNOWN_SCRIPT is an *absence*
+   * ("we have no lexicon for this"). Collapsing them is what made three
+   * different Chinese variants look identical to the opener-equality check.
+   * Callers must treat all-UNKNOWN_SCRIPT as "no signal", never as "all same".
+   */
+  | "UNKNOWN_SCRIPT";
 
 /**
  * Classify the opener type of a text based on its first token.
  * Language-aware using pronoun/preposition/determiner lexicons.
+ *
+ * For unspaced scripts (Han/Kana) the Latin lexicons cannot see the opener at
+ * all — `tokenizeLight` returns the whole line as one token, so every variant
+ * scored OTHER regardless of how it actually began. Those route to the
+ * closed-class CJK prefix lexicon instead, and fall back to UNKNOWN_SCRIPT
+ * rather than OTHER when nothing matches.
  */
 export function openerType(text: string, langHint?: string): OpenerType {
+  const script = detectScript(text);
+  if (script === "han" || script === "kana") {
+    return cjkOpenerType(text);
+  }
+
   const tokens = tokenizeLight(text);
   if (tokens.length === 0) return "OTHER";
 
@@ -264,7 +406,10 @@ export function structuralSignature(text: string, langHint?: string): Structural
   const punct = punctuationProfile(text);
   const tense = tenseAspectApprox(text, langHint);
 
-  const signature = `${opener}|${length}|c${punct.commas}d${punct.dashes}k${punct.colons}s${punct.semicolons}|${tense}`;
+  // `t` is appended rather than inserted so the existing prefix is unchanged.
+  // Latin lines always score t0 (ASCII terminators are not counted), so no
+  // Latin equality relation shifts.
+  const signature = `${opener}|${length}|c${punct.commas}d${punct.dashes}k${punct.colons}s${punct.semicolons}t${punct.terminators}|${tense}`;
 
   return {
     signature,

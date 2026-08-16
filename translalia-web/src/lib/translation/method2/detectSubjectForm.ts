@@ -10,7 +10,28 @@
  * from the text (pronouns, verb forms), and we can detect it reliably.
  */
 
-export type SubjectForm = "we" | "I" | "you" | "third_person" | "impersonal";
+import { detectScript } from "@/lib/text/script";
+
+export type SubjectForm =
+  | "we"
+  | "I"
+  | "you"
+  | "third_person"
+  | "impersonal"
+  /**
+   * The text is in a script this detector has no rules for.
+   *
+   * Distinct from `null`, which means "we looked and could not decide". The
+   * distinction matters because the caller treats a `null` as "fall back to
+   * the model's self-report" — a reasonable response to genuine ambiguity, but
+   * the wrong response to a detector that never ran. For CJK the tokenizer
+   * below yields zero tokens, so every Chinese variant returned `null` and
+   * Phase 1 silently reverted to trusting an unverifiable claim.
+   *
+   * Chinese subject detection is NOT implemented here: Chinese routinely drops
+   * subjects, and inferring one needs linguistic input we do not have.
+   */
+  | "unsupported_script";
 
 /**
  * Detect subject form from Variant C translation text.
@@ -30,12 +51,20 @@ export function detectSubjectForm(text: string): SubjectForm | null {
     return null;
   }
 
+  // Say "we have no rules for this script" rather than "we could not decide".
+  // The tokenizer below splits on the complement of ASCII a-z, so a pure-CJK
+  // string yields zero tokens and would otherwise fall through to `null`.
+  const script = detectScript(text);
+  if (script !== "latin" && script !== "other") {
+    return "unsupported_script";
+  }
+
   const t = text.toLowerCase().trim();
-  
+
   // Tokenize on non-letters/apostrophes to reduce false positives
   // This avoids matching "you" inside "youth", "I" inside "it", etc.
   const tokens = t.split(/[^a-z']+/).filter(Boolean);
-  
+
   if (tokens.length === 0) {
     return null;
   }
@@ -118,11 +147,19 @@ export function normalizeSubjectForm(
   if (!detected) {
     return null;
   }
-  
+
+  // `unsupported_script` is not a subject form and must never be handed to the
+  // validator as one — it would be rejected as "not in allowed values". Map it
+  // back to null so the caller takes its existing "could not compute locally"
+  // path, now for a reason it can also read off the SubjectForm itself.
+  if (detected === "unsupported_script") {
+    return null;
+  }
+
   // Normalize "I" to "i" for consistency with validator
   if (detected === "I") {
     return "i";
   }
-  
+
   return detected;
 }
