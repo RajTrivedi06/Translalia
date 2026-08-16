@@ -1,15 +1,31 @@
 import { NextResponse } from "next/server";
+import { requireUser } from "@/lib/auth/requireUser";
 import { getMetricsSummary } from "@/lib/verification/monitoring";
 
 /**
  * Health check and metrics endpoint for verification system
  * Internal use only - helps monitor system performance
+ *
+ * AUTH RESTORED (F-05-003 companion finding). The `requireUser` call here had
+ * been commented out, leaving the endpoint open to anonymous callers. It is
+ * not user data, but it does disclose operational posture — success rate, p95
+ * latency, and which verification feature flags are enabled — which is exactly
+ * the reconnaissance an attacker wants and which the file itself describes as
+ * "internal use only".
+ *
+ * Requiring a session is safe for every known consumer: the only in-app caller
+ * is the signed-in verification dashboard
+ * (app/[locale]/(app)/verification-dashboard/page.tsx), whose fetch carries
+ * cookies. External uptime probes should use `/api/health`, which is a bare
+ * unauthenticated liveness check by design and exposes nothing.
+ *
+ * Not narrowed to admins only: there is no is_admin claim in this codebase to
+ * check against, and inventing one here would be worse than a session gate.
  */
 export async function GET() {
   try {
-    // Optional: restrict to admin users only
-    // const user = await requireUser();
-    // if (!user.is_admin) return 403;
+    const { user, response } = await requireUser();
+    if (!user) return response;
 
     const metrics = {
       last15min: getMetricsSummary(15),
