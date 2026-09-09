@@ -172,6 +172,13 @@ export async function POST(req: Request) {
       updatedWorkshopLinesArr.push(null);
     }
 
+    // Provenance stamps: carry forward first_saved_at and count re-saves.
+    const previousLine = updatedWorkshopLinesArr[lineIndex];
+    newLine.source = "ai";
+    newLine.chosen_variant = variant;
+    newLine.first_saved_at = previousLine?.first_saved_at ?? newLine.completedAt;
+    newLine.revision_count = previousLine ? (previousLine.revision_count ?? 0) + 1 : 0;
+
     // Set the line at the correct index
     updatedWorkshopLinesArr[lineIndex] = newLine;
 

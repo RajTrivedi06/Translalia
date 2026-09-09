@@ -78,4 +78,15 @@ export interface WorkshopLineWithVerification {
   completedAt: string;
   word_options?: WordOptionForVerification[]; // Store for verification reference
   verification?: LineVerification; // NEW
+  /**
+   * Provenance stamps (2026-09). Nothing reads these yet; they accumulate for
+   * later analysis. Written by save-line ("ai") and save-manual-line ("manual").
+   */
+  source?: "ai" | "manual";
+  /** Which of the three generated variants was accepted (save-line only). */
+  chosen_variant?: 1 | 2 | 3;
+  /** When this line index was first saved; carried forward across re-saves. */
+  first_saved_at?: string;
+  /** How many times this line index has been re-saved after its first save. */
+  revision_count?: number;
 }

@@ -63,9 +63,12 @@ comment on function public.is_admin() is
 -- asserts that against real rows.
 --
 -- Field definitions: docs/agent-temp/admin-dashboard-v1-scope.md, "Definitions
--- behind admin_overview()". The one addition is that a line is only classified
--- as by-hand or generated when it carries a `verification` key (the current
--- record shape). Older lines are left out of that ratio rather than guessed.
+-- behind admin_overview()". One deliberate narrowing: a line only enters the
+-- by-hand ratio when it carries the explicit `source` stamp written by the save
+-- routes. The older heuristic (empty word_options and selections means manual)
+-- is wrong for method-2, whose generated variants are saved as full text with
+-- no word data, so every such line looked hand-written. Lines without a stamp
+-- are left out rather than guessed; the page drops the tile below 10 lines.
 -- =============================================================================
 
 create or replace function public.admin_overview()
@@ -94,13 +97,8 @@ begin
       thread_id,
       (jsonb_typeof(val) = 'object' and coalesce(val->>'translated', '') <> '')       as saved,
       (jsonb_typeof(val) <> 'object' or coalesce(val->>'translated', '') = '')        as broken,
-      (jsonb_typeof(val) = 'object' and val ? 'verification')                          as classifiable,
-      case
-        when jsonb_typeof(val) <> 'object' then false
-        when val->>'source' is not null then val->>'source' = 'manual'
-        else coalesce(jsonb_array_length(case when jsonb_typeof(val->'selections')   = 'array' then val->'selections'   end), 0) = 0
-         and coalesce(jsonb_array_length(case when jsonb_typeof(val->'word_options') = 'array' then val->'word_options' end), 0) = 0
-      end                                                                              as manual,
+      (jsonb_typeof(val) = 'object' and val->>'source' in ('ai', 'manual'))             as classifiable,
+      (jsonb_typeof(val) = 'object' and val->>'source' = 'manual')                       as manual,
       case when jsonb_typeof(val) = 'object' and (val->>'completedAt') ~ '^\d{4}-\d{2}-\d{2}'
            then (val->>'completedAt')::timestamptz end                                 as completed_at
     from line_rows
