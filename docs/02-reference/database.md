@@ -18,6 +18,7 @@ Only entities and RPCs directly referenced by code or migrations are documented 
 | `journey_items_archive` | Archived journey items | `/api/journey/list` |
 | `prompt_audits` | Prompt/audit records | verification analytics, verification feedback, audit read routes |
 | `translation_audits` | translation-related audit records | `src/lib/ai/audit.ts` |
+| `admin_emails` | Admin allowlist keyed on lowercased email; RLS on with no policies for `authenticated` (rows added from the SQL console only) | `is_admin()`; migration `20260909_01_admin_dashboard.sql` |
 
 ## Storage Buckets
 
@@ -63,6 +64,8 @@ Only entities and RPCs directly referenced by code or migrations are documented 
 | `exec_sql` | `supabase/migrations/20240117_add_exec_sql_rpc.sql` | Parameterized SQL execution for atomic JSONB patching. |
 | `patch_thread_state_field` | `supabase/migrations/20240117_add_exec_sql_rpc.sql` | Dedicated atomic patch helper for `chat_threads.state`. |
 | `append_method2_audit` | `supabase/migrations/20240117_add_exec_sql_rpc.sql` | **Deprecated.** Legacy RPC for `state.method2_audit`; production writes use the `translation_audits` table via `src/lib/ai/audit.ts`. |
+| `is_admin` | `supabase/migrations/20260909_01_admin_dashboard.sql` | SECURITY DEFINER; true when the session's email is on `admin_emails`. Gate for `/[locale]/admin` (`src/server/admin/requireAdmin.ts`). |
+| `admin_overview` | `supabase/migrations/20260909_01_admin_dashboard.sql` | SECURITY DEFINER; raises `P0002` unless `is_admin()`. Returns the one JSON object the admin page renders: counts, dates, language labels, display names. Never poem text, lines, notes or reflections (`scripts/admin/verify-admin.ts` asserts this). |
 | `diary_completed_poems` | `supabase/migrations/20260121_diary_completed_poems.sql`; extended by `20260621_diary_express_your_view.sql` and `20260622_diary_ai_artifacts.sql` | Return completed poems for the authenticated user (includes `express_your_view`, `translation_insights`, journey summary). The API omits `refine_rhyme` from diary responses. |
 
 ## Ownership and Access
